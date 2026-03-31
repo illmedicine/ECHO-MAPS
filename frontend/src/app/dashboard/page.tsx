@@ -227,7 +227,7 @@ export default function DashboardPage() {
                   ✕
                 </button>
 
-                <Link href={`/dashboard/${env.id}`} className="block">
+                <Link href={`/dashboard/env?id=${env.id}`} className="block">
                   <div className="flex items-center gap-3 mb-3">
                     <span className="text-2xl">{ENV_TYPE_ICONS[env.type as keyof typeof ENV_TYPE_ICONS] ?? "📍"}</span>
                     <div>
