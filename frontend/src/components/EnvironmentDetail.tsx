@@ -73,7 +73,7 @@ export default function EnvironmentDetail() {
       }
       const localEnv = getLocalEnv(envId);
       if (localEnv) {
-        setEnv({ id: localEnv.id, name: localEnv.name, isCalibrated: localEnv.isCalibrated, confidence: localEnv.calibrationConfidence, dims: localEnv.dimensions });
+        setEnv({ id: localEnv.id, name: localEnv.name, isCalibrated: localEnv.isCalibrated, confidence: localEnv.calibrationConfidence, dims: localEnv.dimensions ?? { width: 5, length: 4, height: 2.7 } });
       }
     };
     loadEnv();

@@ -28,16 +28,21 @@ export interface ActivityLogEntry {
 const STORAGE_KEY = "echo_maps_environments";
 const ACTIVITY_KEY_PREFIX = "echo_maps_activity_";
 
+const DEFAULT_DIMS = { width: 5, length: 4, height: 2.7 };
+
 // ── CRUD ──
 
 export function getEnvironments(): Environment[] {
   if (typeof window === "undefined") return [];
   const raw = localStorage.getItem(STORAGE_KEY);
-  return raw ? JSON.parse(raw) : [];
+  const envs: Environment[] = raw ? JSON.parse(raw) : [];
+  return envs.map((e) => ({ ...e, dimensions: e.dimensions ?? DEFAULT_DIMS }));
 }
 
 export function getEnvironment(id: string): Environment | null {
-  return getEnvironments().find((e) => e.id === id) ?? null;
+  const env = getEnvironments().find((e) => e.id === id) ?? null;
+  if (env && !env.dimensions) env.dimensions = DEFAULT_DIMS;
+  return env;
 }
 
 export function createEnvironment(
