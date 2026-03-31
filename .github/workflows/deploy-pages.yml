@@ -34,6 +34,7 @@ jobs:
         working-directory: frontend
         env:
           GITHUB_PAGES: "true"
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: npm run build
 
       - name: Upload artifact
