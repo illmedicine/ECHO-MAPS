@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { Suspense, useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -28,6 +28,18 @@ const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer")
   ),
 });
 
+export default function EnvironmentViewPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[var(--illy-blue)] border-t-transparent rounded-full animate-spin" />
+      </main>
+    }>
+      <EnvironmentViewContent />
+    </Suspense>
+  );
+}
+
 interface EnvState {
   id: string;
   name: string;
@@ -36,7 +48,7 @@ interface EnvState {
   dims: { width: number; length: number; height: number };
 }
 
-export default function EnvironmentViewPage() {
+function EnvironmentViewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const envId = searchParams.get("id");
