@@ -64,6 +64,8 @@ function EnvironmentViewContent() {
   const [calibrating, setCalibrating] = useState(false);
   const animRef = useRef<number | null>(null);
 
+  const DEFAULT_DIMS = { width: 5, length: 4, height: 2.7 };
+
   // Load environment
   useEffect(() => {
     if (!envId) return;
@@ -77,7 +79,7 @@ function EnvironmentViewContent() {
             name: apiEnv.name,
             isCalibrated: apiEnv.is_calibrated,
             confidence: apiEnv.calibration_confidence,
-            dims: { width: 5, length: 4, height: 2.7 },
+            dims: DEFAULT_DIMS,
           });
           return;
         } catch { /* fall through to local */ }
@@ -90,7 +92,7 @@ function EnvironmentViewContent() {
           name: local.name,
           isCalibrated: local.isCalibrated,
           confidence: local.calibrationConfidence,
-          dims: local.dimensions,
+          dims: local.dimensions ?? DEFAULT_DIMS,
         });
       }
     };
