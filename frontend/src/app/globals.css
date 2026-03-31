@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --illy-blue: #0066ff;
+  --illy-green: #00cc88;
+  --illy-red: #ff3344;
+  --illy-dark: #0a0e1a;
+  --illy-surface: #111827;
+}
+
+body {
+  @apply bg-[var(--illy-dark)] text-white antialiased;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
