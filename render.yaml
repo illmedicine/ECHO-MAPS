@@ -7,7 +7,6 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    dockerTarget: prod
     plan: free
     region: oregon
     healthCheckPath: /health
