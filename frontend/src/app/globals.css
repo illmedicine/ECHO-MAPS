@@ -3,14 +3,47 @@
 @tailwind utilities;
 
 :root {
-  --illy-blue: #0066ff;
-  --illy-green: #00cc88;
-  --illy-red: #ff3344;
-  --illy-dark: #0a0e1a;
-  --illy-surface: #111827;
+  --gh-blue: #4285F4;
+  --gh-green: #34A853;
+  --gh-yellow: #FBBC05;
+  --gh-red: #EA4335;
+  --gh-bg: #0d1117;
+  --gh-surface: #1a1f2e;
+  --gh-surface-hover: #242b3d;
+  --gh-card: #202736;
+  --gh-border: #2d3548;
+  --gh-text: #e8eaed;
+  --gh-text-muted: #9aa0a6;
+  /* Legacy aliases */
+  --illy-blue: #4285F4;
+  --illy-green: #34A853;
+  --illy-red: #EA4335;
+  --illy-dark: #0d1117;
+  --illy-surface: #1a1f2e;
+  --illy-coral: #EA4335;
 }
 
 body {
-  @apply bg-[var(--illy-dark)] text-white antialiased;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  @apply antialiased;
+  background-color: var(--gh-bg);
+  color: var(--gh-text);
+  font-family: 'Google Sans', 'Inter', system-ui, -apple-system, sans-serif;
 }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--gh-bg); }
+::-webkit-scrollbar-thumb { background: var(--gh-border); border-radius: 4px; }
+
+.device-card {
+  @apply rounded-2xl p-4 transition-all duration-200 cursor-pointer;
+  background-color: var(--gh-card);
+}
+.device-card:hover { background-color: var(--gh-surface-hover); }
+.device-card.active { background-color: rgba(66, 133, 244, 0.3); }
+
+.sidebar-item {
+  @apply flex items-center gap-3 px-4 py-3 rounded-full text-sm transition-all duration-200 cursor-pointer;
+  color: var(--gh-text-muted);
+}
+.sidebar-item:hover { background-color: var(--gh-surface-hover); color: var(--gh-text); }
+.sidebar-item.active { background-color: rgba(66, 133, 244, 0.15); color: var(--gh-blue); }

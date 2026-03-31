@@ -110,18 +110,19 @@ export default function SignInPage() {
   }, [handleCredentialResponse]);
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8">
+    <main className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: "var(--gh-bg)" }}>
       <div className="max-w-md w-full text-center">
-        <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-[var(--illy-blue)] to-[var(--illy-green)] bg-clip-text text-transparent">
-          Echo Maps
+        <h1 className="text-4xl font-bold mb-1">
+          <span style={{ color: "var(--gh-blue)" }}>Echo</span>{" "}
+          <span style={{ color: "var(--gh-green)" }}>Vue</span>
         </h1>
-        <p className="text-gray-400 mb-8">by Illy Robotics</p>
+        <p className="text-sm mb-8" style={{ color: "var(--gh-text-muted)" }}>by Illy Robotics</p>
 
-        <div className="p-8 bg-[var(--illy-surface)] rounded-xl border border-gray-800">
+        <div className="p-8 rounded-2xl border" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
           <h2 className="text-xl font-semibold mb-6">Sign in to continue</h2>
 
           {!GOOGLE_CLIENT_ID ? (
-            <div className="text-yellow-400 text-sm p-4 bg-yellow-400/10 rounded-lg">
+            <div className="text-sm p-4 rounded-xl" style={{ backgroundColor: "rgba(251,188,5,0.1)", color: "var(--gh-yellow)" }}>
               <p className="font-semibold mb-1">OAuth not configured</p>
               <p>
                 Set <code>NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> in your environment
@@ -134,14 +135,15 @@ export default function SignInPage() {
             </div>
           )}
 
-          <div className="mt-6 text-sm text-gray-500">
+          <div className="mt-6 text-sm" style={{ color: "var(--gh-text-muted)" }}>
             <p>No cameras. No wearables. Pure WiFi sensing.</p>
           </div>
         </div>
 
         <a
           href="/"
-          className="mt-6 inline-block text-sm text-gray-500 hover:text-gray-300 transition"
+          className="mt-6 inline-block text-sm transition hover:opacity-80"
+          style={{ color: "var(--gh-text-muted)" }}
         >
           ← Back to home
         </a>

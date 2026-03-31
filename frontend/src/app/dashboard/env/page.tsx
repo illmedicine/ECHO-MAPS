@@ -22,7 +22,7 @@ import {
 const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-[600px] bg-[var(--illy-surface)] rounded-xl flex items-center justify-center text-gray-500">
+    <div className="w-full h-[600px] rounded-2xl flex items-center justify-center" style={{ backgroundColor: "var(--gh-surface)", color: "var(--gh-text-muted)" }}>
       Loading 3D viewer...
     </div>
   ),
@@ -32,7 +32,7 @@ export default function EnvironmentViewPage() {
   return (
     <Suspense fallback={
       <main className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[var(--illy-blue)] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-[var(--gh-blue)] border-t-transparent rounded-full animate-spin" />
       </main>
     }>
       <EnvironmentViewContent />
@@ -164,8 +164,8 @@ function EnvironmentViewContent() {
     return (
       <main className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-400 mb-4">No environment selected</p>
-          <Link href="/dashboard" className="text-[var(--illy-blue)] hover:underline">
+          <p style={{ color: "var(--gh-text-muted)" }} className="mb-4">No environment selected</p>
+          <Link href="/dashboard" className="hover:underline" style={{ color: "var(--gh-blue)" }}>
             Back to Dashboard
           </Link>
         </div>
@@ -182,16 +182,16 @@ function EnvironmentViewContent() {
   }
 
   return (
-    <main className="min-h-screen p-6">
+    <main className="min-h-screen p-6" style={{ backgroundColor: "var(--gh-bg)" }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6 max-w-6xl mx-auto">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="text-gray-500 hover:text-white transition text-sm">
+          <Link href="/dashboard" className="text-sm transition hover:opacity-80" style={{ color: "var(--gh-text-muted)" }}>
             ← Dashboard
           </Link>
           <h1 className="text-2xl font-bold">{env.name}</h1>
           {env.isCalibrated && (
-            <span className="text-xs px-2 py-0.5 bg-[var(--illy-green)]/20 text-[var(--illy-green)] rounded-full">
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(52,168,83,0.15)", color: "var(--gh-green)" }}>
               Live
             </span>
           )}
@@ -199,9 +199,8 @@ function EnvironmentViewContent() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setLive(!live)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-              live ? "bg-[var(--illy-green)] text-black" : "bg-gray-800 text-gray-400 hover:text-white"
-            }`}
+            className="px-4 py-1.5 rounded-full text-sm font-medium transition"
+            style={live ? { backgroundColor: "var(--gh-green)", color: "#000" } : { backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}
           >
             {live ? "● Live" : "○ Start Live"}
           </button>
@@ -217,11 +216,8 @@ function EnvironmentViewContent() {
               <button
                 key={v}
                 onClick={() => setView(v)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                  view === v
-                    ? "bg-[var(--illy-blue)] text-white"
-                    : "bg-[var(--illy-surface)] text-gray-400 hover:text-white"
-                }`}
+                className="px-4 py-2 rounded-full text-sm font-medium transition"
+                style={view === v ? { backgroundColor: "var(--gh-blue)" } : { backgroundColor: "var(--gh-surface)", color: "var(--gh-text-muted)" }}
               >
                 {v === "3d" ? "3D View" : v === "heatmap" ? "Heatmap" : "Vitals"}
               </button>
@@ -230,7 +226,7 @@ function EnvironmentViewContent() {
 
           {/* 3D View */}
           {view === "3d" && (
-            <div className="bg-[var(--illy-surface)] rounded-xl border border-gray-800 overflow-hidden">
+            <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
               <EnvironmentViewer
                 pointCloud={pointCloud}
                 skeleton={skeleton}
@@ -241,7 +237,7 @@ function EnvironmentViewContent() {
 
           {/* Heatmap */}
           {view === "heatmap" && (
-            <div className="bg-[var(--illy-surface)] rounded-xl border border-gray-800 p-6">
+            <div className="rounded-2xl border p-6" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
               <h3 className="text-lg font-semibold mb-4">Activity Heatmap</h3>
               <div
                 className="grid gap-1 mx-auto"
@@ -261,15 +257,15 @@ function EnvironmentViewContent() {
                   />
                 ))}
               </div>
-              <div className="flex items-center justify-center gap-4 mt-4 text-xs text-gray-500">
+              <div className="flex items-center justify-center gap-4 mt-4 text-xs" style={{ color: "var(--gh-text-muted)" }}>
                 <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-sm bg-[var(--illy-green)]/20" /> Low
+                  <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(52,168,83,0.2)" }} /> Low
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-sm bg-[var(--illy-green)]/60" /> Medium
+                  <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(52,168,83,0.6)" }} /> Medium
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-sm bg-[var(--illy-green)]" /> High
+                  <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "var(--gh-green)" }} /> High
                 </span>
               </div>
             </div>
@@ -277,7 +273,7 @@ function EnvironmentViewContent() {
 
           {/* Vitals */}
           {view === "vitals" && (
-            <div className="bg-[var(--illy-surface)] rounded-xl border border-gray-800 p-6">
+            <div className="rounded-2xl border p-6" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
               <h3 className="text-lg font-semibold mb-6">Vital Signs</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <VitalCard
@@ -285,21 +281,21 @@ function EnvironmentViewContent() {
                   value={vitals.breathingRate}
                   unit="bpm"
                   icon="🫁"
-                  color="var(--illy-blue)"
+                  color="var(--gh-blue)"
                 />
                 <VitalCard
                   label="Heart Rate"
                   value={vitals.heartRate}
                   unit="bpm"
                   icon="❤️"
-                  color="var(--illy-coral)"
+                  color="var(--gh-red)"
                 />
                 <VitalCard
                   label="Activity"
                   value={vitals.activity}
                   unit=""
                   icon="🏃"
-                  color="var(--illy-green)"
+                  color="var(--gh-green)"
                 />
               </div>
             </div>
@@ -309,27 +305,27 @@ function EnvironmentViewContent() {
         {/* Sidebar */}
         <div className="space-y-4">
           {/* Calibration Panel */}
-          <div className="bg-[var(--illy-surface)] rounded-xl border border-gray-800 p-4">
+          <div className="rounded-2xl border p-4" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
             <h3 className="font-semibold mb-3">Calibration</h3>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-gray-400">
+              <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
                 <span>Status</span>
-                <span className={env.isCalibrated ? "text-[var(--illy-green)]" : "text-yellow-500"}>
+                <span style={{ color: env.isCalibrated ? "var(--gh-green)" : "var(--gh-yellow)" }}>
                   {env.isCalibrated ? "Calibrated" : "Pending"}
                 </span>
               </div>
-              <div className="flex justify-between text-gray-400">
+              <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
                 <span>Confidence</span>
                 <span>{(env.confidence * 100).toFixed(0)}%</span>
               </div>
               {calibrating && (
-                <div className="mt-2 p-2 bg-gray-800/50 rounded text-xs text-gray-400">
-                  <p className="text-[var(--illy-blue)] font-medium">{calibration.stage.toUpperCase()}</p>
+                <div className="mt-2 p-2 rounded-xl text-xs" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>
+                  <p className="font-medium" style={{ color: "var(--gh-blue)" }}>{calibration.stage.toUpperCase()}</p>
                   <p>{calibration.message}</p>
-                  <div className="w-full h-1 bg-gray-700 rounded-full mt-2 overflow-hidden">
+                  <div className="w-full h-1 rounded-full mt-2 overflow-hidden" style={{ backgroundColor: "var(--gh-border)" }}>
                     <div
-                      className="h-full bg-[var(--illy-blue)] rounded-full transition-all duration-1000"
-                      style={{ width: `${calibration.confidence * 100}%` }}
+                      className="h-full rounded-full transition-all duration-1000"
+                      style={{ width: `${calibration.confidence * 100}%`, backgroundColor: "var(--gh-blue)" }}
                     />
                   </div>
                 </div>
@@ -337,7 +333,8 @@ function EnvironmentViewContent() {
               {!env.isCalibrated && !calibrating && (
                 <button
                   onClick={startCalibration}
-                  className="w-full mt-2 px-3 py-2 bg-[var(--illy-blue)] rounded-lg text-sm font-semibold hover:opacity-90 transition"
+                  className="w-full mt-2 px-3 py-2 rounded-full text-sm font-semibold hover:opacity-90 transition"
+                  style={{ backgroundColor: "var(--gh-blue)" }}
                 >
                   Start Calibration
                 </button>
@@ -345,10 +342,10 @@ function EnvironmentViewContent() {
             </div>
           </div>
 
-          {/* Environment Info */}
-          <div className="bg-[var(--illy-surface)] rounded-xl border border-gray-800 p-4">
-            <h3 className="font-semibold mb-3">Environment</h3>
-            <div className="space-y-2 text-sm text-gray-400">
+          {/* Space Info */}
+          <div className="rounded-2xl border p-4" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
+            <h3 className="font-semibold mb-3">Space</h3>
+            <div className="space-y-2 text-sm" style={{ color: "var(--gh-text-muted)" }}>
               <div className="flex justify-between">
                 <span>Dimensions</span>
                 <span>{env.dims.width}m × {env.dims.length}m</span>
@@ -366,18 +363,18 @@ function EnvironmentViewContent() {
 
           {/* Live Vitals Mini */}
           {live && (
-            <div className="bg-[var(--illy-surface)] rounded-xl border border-gray-800 p-4">
+            <div className="rounded-2xl border p-4" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
               <h3 className="font-semibold mb-3">Live Vitals</h3>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between text-gray-400">
+                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
                   <span>🫁 Breathing</span>
                   <span>{vitals.breathingRate?.toFixed(1) ?? "--"} bpm</span>
                 </div>
-                <div className="flex justify-between text-gray-400">
+                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
                   <span>❤️ Heart Rate</span>
                   <span>{vitals.heartRate?.toFixed(0) ?? "--"} bpm</span>
                 </div>
-                <div className="flex justify-between text-gray-400">
+                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
                   <span>🏃 Activity</span>
                   <span>{vitals.activity}</span>
                 </div>
@@ -392,13 +389,13 @@ function EnvironmentViewContent() {
 
 function VitalCard({ label, value, unit, icon, color }: { label: string; value: number | string | null; unit: string; icon: string; color: string }) {
   return (
-    <div className="bg-gray-800/50 rounded-xl p-5 text-center">
+    <div className="rounded-xl p-5 text-center" style={{ backgroundColor: "var(--gh-card)" }}>
       <p className="text-2xl mb-2">{icon}</p>
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className="text-xs mb-1" style={{ color: "var(--gh-text-muted)" }}>{label}</p>
       <p className="text-2xl font-bold" style={{ color }}>
         {typeof value === "number" ? value.toFixed(1) : value ?? "--"}
       </p>
-      {unit && <p className="text-xs text-gray-500">{unit}</p>}
+      {unit && <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{unit}</p>}
     </div>
   );
 }

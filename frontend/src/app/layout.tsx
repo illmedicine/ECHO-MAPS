@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Echo Maps — Illy Robotics",
-  description: "Privacy-first environmental digital twin via WiFi CSI sensing",
+  title: "Echo Vue — by Illy Robotics",
+  description: "Privacy-first smart environment sensing. See your space without cameras.",
 };
 
 export default function RootLayout({
