@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useMemo } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { useMemo } from "react";
+import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -63,7 +63,7 @@ function Skeleton({ keypoints }: SkeletonProps) {
         </line>
       ))}
       {keypoints.map((kp, i) => (
-        <mesh key={i} position={new THREE.Vector3(...kp)}>
+        <mesh key={i} position={[kp[0], kp[1], kp[2]]}>
           <sphereGeometry args={[0.03, 8, 8]} />
           <meshBasicMaterial color="#0066ff" />
         </mesh>

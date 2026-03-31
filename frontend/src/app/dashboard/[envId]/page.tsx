@@ -1,6 +1,3 @@
-"use client";
-
-import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import CalibrationPanel from "@/components/CalibrationPanel";
 import VitalsMonitor from "@/components/VitalsMonitor";
@@ -20,11 +17,10 @@ export function generateStaticParams() {
   return [{ envId: "demo" }];
 }
 
-export default function DashboardPage() {
-  const params = useParams();
+export default function DashboardPage({ params }: { params: { envId: string } }) {
   // In production, token comes from auth context
   const token = "";
-  const envId = (params?.envId as string) || "demo";
+  const envId = params.envId;
 
   return (
     <div className="min-h-screen p-6">

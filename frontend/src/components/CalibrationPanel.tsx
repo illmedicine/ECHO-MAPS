@@ -32,8 +32,6 @@ interface CalibrationPanelProps {
 
 export default function CalibrationPanel({ environmentId, token }: CalibrationPanelProps) {
   const [status, setStatus] = useState<CalibrationStatus | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-
   useEffect(() => {
     // Poll calibration status
     const interval = setInterval(async () => {

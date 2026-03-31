@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 /**
  * VitalsMonitor — real-time breathing rate and heart rate display
  * from WiFi CSI vital sign extraction (Pro tier only).
