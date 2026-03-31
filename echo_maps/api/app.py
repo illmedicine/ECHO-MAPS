@@ -10,13 +10,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from echo_maps.api.routes import auth, calibration, environments, health, live
 from echo_maps.config import get_settings
-from echo_maps.db.session import init_db, close_db
+from echo_maps.db.session import init_db, close_db, create_tables
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    await init_db(settings.database_url)
+    await init_db(settings.async_database_url)
+    await create_tables()
     yield
     await close_db()
 
@@ -32,10 +33,14 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.app_env != "production" else None,
     )
 
-    # CORS
+    # CORS — allow GitHub Pages and local development
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "https://echomaps.illyrobotics.com"],
+        allow_origins=[
+            "http://localhost:3000",
+            "https://illmedicine.github.io",
+            "https://echomaps.illyrobotics.com",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

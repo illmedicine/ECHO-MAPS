@@ -34,6 +34,16 @@ async def close_db() -> None:
         _engine = None
 
 
+async def create_tables() -> None:
+    """Create all tables if they don't exist (for initial deploy)."""
+    from echo_maps.db.models import Base  # noqa: E402
+
+    if _engine is None:
+        raise RuntimeError("Database not initialized. Call init_db() first.")
+    async with _engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
 @asynccontextmanager
 async def get_session() -> AsyncIterator[AsyncSession]:
     """Provide a transactional async session scope."""

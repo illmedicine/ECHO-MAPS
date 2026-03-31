@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { isBackendConfigured, verifyGoogleToken } from "@/lib/api";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
@@ -40,20 +41,30 @@ export default function SignInPage() {
   const router = useRouter();
 
   const handleCredentialResponse = useCallback(
-    (response: GoogleCredentialResponse) => {
+    async (response: GoogleCredentialResponse) => {
       const payload = parseJwt(response.credential);
 
-      // Store auth state
-      const user = {
+      // Build user object from Google's ID token
+      const user: Record<string, string> = {
         id: payload.sub,
         email: payload.email,
         name: payload.name,
         picture: payload.picture,
-        token: response.credential,
+        googleToken: response.credential,
       };
-      localStorage.setItem("echo_maps_user", JSON.stringify(user));
 
-      // Redirect to dashboard
+      // If backend is configured, verify token and get API JWT
+      if (isBackendConfigured()) {
+        try {
+          const authResponse = await verifyGoogleToken(response.credential);
+          user.apiToken = authResponse.access_token;
+          user.id = authResponse.user_id;
+        } catch (err) {
+          console.error("Backend auth failed, proceeding in demo mode:", err);
+        }
+      }
+
+      localStorage.setItem("echo_maps_user", JSON.stringify(user));
       router.push("/dashboard");
     },
     [router]

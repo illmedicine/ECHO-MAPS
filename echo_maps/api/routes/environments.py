@@ -111,3 +111,17 @@ async def get_environment(
         calibration_confidence=env.calibration_confidence,
         created_at=env.created_at.isoformat(),
     )
+
+
+@router.delete("/{env_id}", status_code=204)
+async def delete_environment(
+    env_id: str,
+    user: TokenPayload = Depends(get_current_user),
+) -> None:
+    """Delete a Place and its associated data."""
+    async with get_session() as session:
+        env = await Environment.get_by_id_and_user(session, env_id, user.user_id)
+        if env is None:
+            raise HTTPException(status_code=404, detail="Environment not found")
+        await session.delete(env)
+        await session.commit()

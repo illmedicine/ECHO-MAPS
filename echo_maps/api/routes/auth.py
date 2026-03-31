@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Response
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from pydantic import BaseModel
 
+import httpx
+
 from echo_maps.config import get_settings
 from echo_maps.api.deps import create_access_token
 from echo_maps.db.session import get_session
@@ -16,6 +18,7 @@ router = APIRouter()
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 
 
 class AuthURL(BaseModel):
@@ -28,6 +31,10 @@ class TokenResponse(BaseModel):
     user_id: str
     email: str
     name: str
+
+
+class GoogleCredential(BaseModel):
+    credential: str
 
 
 @router.get("/google/login", response_model=AuthURL)
@@ -80,6 +87,67 @@ async def google_callback(code: str, response: Response) -> TokenResponse:
 
     if not email or not google_id:
         raise HTTPException(status_code=401, detail="Incomplete user info from Google")
+
+    # Upsert user in DB
+    async with get_session() as session:
+        user = await User.get_by_google_id(session, google_id)
+        if user is None:
+            user = User(
+                google_id=google_id,
+                email=email,
+                name=name,
+                subscription_tier="personal",
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+
+    # Issue JWT
+    access_token = create_access_token(user_id=str(user.id), email=email)
+
+    return TokenResponse(
+        access_token=access_token,
+        user_id=str(user.id),
+        email=email,
+        name=name,
+    )
+
+
+@router.post("/google/verify", response_model=TokenResponse)
+async def google_verify(body: GoogleCredential) -> TokenResponse:
+    """Verify a Google ID token from client-side Sign In with Google.
+
+    The frontend uses Google Identity Services to get a credential (ID token).
+    This endpoint verifies it with Google, upserts the user, and returns a JWT.
+    """
+    settings = get_settings()
+
+    # Verify the ID token with Google
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            GOOGLE_TOKEN_INFO_URL,
+            params={"id_token": body.credential},
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google credential")
+
+    token_info = resp.json()
+
+    # Verify audience matches our client ID
+    if token_info.get("aud") != settings.google_client_id:
+        raise HTTPException(status_code=401, detail="Token audience mismatch")
+
+    email = token_info.get("email")
+    name = token_info.get("name", "")
+    google_id = token_info.get("sub")
+
+    if not email or not google_id:
+        raise HTTPException(status_code=401, detail="Incomplete user info from Google")
+
+    # Verify email is verified
+    if token_info.get("email_verified") != "true":
+        raise HTTPException(status_code=401, detail="Email not verified")
 
     # Upsert user in DB
     async with get_session() as session:

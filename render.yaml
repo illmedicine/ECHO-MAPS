@@ -1,0 +1,42 @@
+# render.yaml — Render.com Blueprint for Echo Maps backend
+# Deploy: https://render.com/deploy?repo=https://github.com/illmedicine/ECHO-MAPS
+
+services:
+  - type: web
+    name: echo-maps-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerTarget: prod
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_SECRET_KEY
+        generateValue: true
+      - key: APP_HOST
+        value: "0.0.0.0"
+      - key: APP_PORT
+        value: "8000"
+      - key: GOOGLE_CLIENT_ID
+        sync: false  # Set manually after deploy
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: "https://echo-maps-api.onrender.com/auth/google/callback"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: echo-maps-db
+          property: connectionURI
+      - key: MILVUS_HOST
+        value: "localhost"
+      - key: MILVUS_PORT
+        value: "19530"
+
+databases:
+  - name: echo-maps-db
+    plan: free
+    databaseName: echo_maps
+    user: echo
