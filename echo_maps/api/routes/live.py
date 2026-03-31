@@ -6,9 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel
 
 from echo_maps.api.deps import TokenPayload, get_current_user, verify_token
-from echo_maps.api.routes.calibration import get_engine
 
 router = APIRouter()
+
+
+def _get_engine():
+    from echo_maps.api.routes.calibration import get_engine
+    return get_engine()
 
 
 class LivePose(BaseModel):
@@ -38,7 +42,7 @@ async def live_stream(websocket: WebSocket, env_id: str) -> None:
     }
     """
     await websocket.accept()
-    engine = get_engine()
+    engine = _get_engine()
 
     try:
         # Auth
@@ -82,7 +86,7 @@ async def live_status(
     user: TokenPayload = Depends(get_current_user),
 ) -> dict:
     """Check whether an environment is ready for live mode."""
-    engine = get_engine()
+    engine = _get_engine()
     state = engine.get_session(env_id)
 
     if state is None:

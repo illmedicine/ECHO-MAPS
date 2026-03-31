@@ -6,17 +6,18 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel
 
 from echo_maps.api.deps import TokenPayload, get_current_user, verify_token
-from echo_maps.calibration import CalibrationEngine, CalibrationStage
+from echo_maps.calibration.types import CalibrationStage
 
 router = APIRouter()
 
 # Singleton engine (in production, use dependency injection / factory)
-_engine: CalibrationEngine | None = None
+_engine = None
 
 
-def get_engine() -> CalibrationEngine:
+def get_engine():
     global _engine  # noqa: PLW0603
     if _engine is None:
+        from echo_maps.calibration import CalibrationEngine
         _engine = CalibrationEngine()
     return _engine
 

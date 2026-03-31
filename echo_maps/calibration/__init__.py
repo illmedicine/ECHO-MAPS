@@ -12,46 +12,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import AsyncIterator
 
 import numpy as np
 import structlog
-import torch
 
-from echo_maps.ai.calibration_gan import CalibrationGAN
-from echo_maps.ai.cross_modal import CroSSLFramework, PoseRegressor
-from echo_maps.ai.latent_csi import LatentCSI
+# Re-export lightweight types (no torch dependency)
+from echo_maps.calibration.types import CalibrationStage, CalibrationState  # noqa: F401
 
 logger = structlog.get_logger()
-
-
-class CalibrationStage(str, Enum):
-    SETUP = "setup"
-    TRACE = "trace"
-    TRAINING = "training"
-    CONFIDENCE = "confidence"
-    LIVE = "live"
-    FAILED = "failed"
-
-
-@dataclass
-class CalibrationState:
-    """Tracks the state of an environment calibration session."""
-
-    environment_id: str
-    user_id: str
-    stage: CalibrationStage = CalibrationStage.SETUP
-    pose_match_accuracy: float = 0.0
-    confidence_threshold: float = 0.95
-    training_epoch: int = 0
-    max_epochs: int = 500
-    csi_frames_collected: int = 0
-    vision_frames_collected: int = 0
-    started_at: float = field(default_factory=time.time)
-    completed_at: float | None = None
-    error: str | None = None
 
 
 class CalibrationEngine:
@@ -68,6 +37,12 @@ class CalibrationEngine:
         confidence_threshold: float = 0.95,
         device: str = "cpu",
     ) -> None:
+        import torch
+
+        from echo_maps.ai.calibration_gan import CalibrationGAN
+        from echo_maps.ai.cross_modal import CroSSLFramework, PoseRegressor
+        from echo_maps.ai.latent_csi import LatentCSI
+
         self.device = device
         self.confidence_threshold = confidence_threshold
 
@@ -137,6 +112,8 @@ class CalibrationEngine:
         state.csi_frames_collected += 1
         state.vision_frames_collected += 1
 
+        import torch
+
         # Stack amplitude + phase into 2-channel input
         csi_input = np.stack([csi_amplitude, csi_phase], axis=0)  # (2, n_sub)
         # Add batch and time dims: (1, 2, n_sub, 1)
@@ -177,6 +154,8 @@ class CalibrationEngine:
         state = self._sessions.get(environment_id)
         if state is None:
             raise ValueError(f"No session for environment {environment_id}")
+
+        import torch
 
         state.stage = CalibrationStage.TRAINING
 
@@ -234,6 +213,8 @@ class CalibrationEngine:
         Returns:
             (33, 3) predicted 3D skeletal keypoints
         """
+        import torch
+
         csi_input = np.stack([csi_amplitude, csi_phase], axis=0)
         csi_tensor = torch.tensor(csi_input, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
         csi_tensor = csi_tensor.to(self.device)

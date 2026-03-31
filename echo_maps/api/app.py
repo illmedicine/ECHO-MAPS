@@ -16,10 +16,17 @@ from echo_maps.db.session import init_db, close_db, create_tables
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    await init_db(settings.async_database_url)
-    await create_tables()
+    try:
+        await init_db(settings.async_database_url)
+        await create_tables()
+    except Exception:
+        import structlog
+        structlog.get_logger().warning("db_init_failed", msg="Database not available — running in demo mode")
     yield
-    await close_db()
+    try:
+        await close_db()
+    except Exception:
+        pass
 
 
 def create_app() -> FastAPI:
