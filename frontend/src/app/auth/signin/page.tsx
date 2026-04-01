@@ -116,10 +116,9 @@ export default function SignInPage() {
     <main className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: "var(--gh-bg)" }}>
       <div className="max-w-md w-full text-center">
         {/* Logo */}
-        <div className="flex justify-center mb-3">
-          <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={120} height={120} unoptimized />
+        <div className="flex justify-center mb-8">
+          <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={220} height={220} unoptimized style={{ background: "transparent" }} />
         </div>
-        <p className="text-sm mb-10" style={{ color: "var(--gh-text-muted)" }}>by Illy Robotics</p>
 
         <div className="p-8 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
           <h2 className="text-xl font-semibold mb-6">Sign in to continue</h2>

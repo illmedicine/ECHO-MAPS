@@ -11,10 +11,9 @@ export default function Home() {
       {/* Hero */}
       <div className="text-center max-w-3xl">
         {/* Logo */}
-        <div className="flex justify-center mb-2">
-          <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={140} height={140} unoptimized />
+        <div className="flex justify-center mb-6">
+          <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={200} height={200} unoptimized style={{ background: "transparent" }} />
         </div>
-        <p className="text-sm mb-8" style={{ color: "var(--gh-text-muted)" }}>by Illy Robotics</p>
         <p className="text-xl mb-8 max-w-xl mx-auto leading-relaxed">
           Your home, understood. <span style={{ color: "var(--gh-text-muted)" }}>Sense every room with WiFi — no cameras, no wearables.</span>
         </p>
