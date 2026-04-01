@@ -117,7 +117,7 @@ export default function SignInPage() {
       <div className="max-w-md w-full text-center">
         {/* Logo */}
         <div className="flex justify-center mb-8">
-          <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={220} height={220} unoptimized style={{ background: "transparent" }} />
+          <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={374} height={374} unoptimized style={{ background: "transparent" }} />
         </div>
 
         <div className="p-8 rounded-2xl shadow-sm" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>

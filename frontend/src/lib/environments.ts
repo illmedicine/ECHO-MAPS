@@ -16,6 +16,7 @@ export interface EchoEnvironment {
   id: string;
   name: string;
   category: EnvCategory;
+  emoji?: string;
   address?: string;
   createdAt: string;
 }
@@ -32,12 +33,13 @@ export function getEchoEnvironment(id: string): EchoEnvironment | null {
   return getEchoEnvironments().find((e) => e.id === id) ?? null;
 }
 
-export function createEchoEnvironment(data: Pick<EchoEnvironment, "name" | "category" | "address">): EchoEnvironment {
+export function createEchoEnvironment(data: Pick<EchoEnvironment, "name" | "category" | "address" | "emoji">): EchoEnvironment {
   const envs = getEchoEnvironments();
   const env: EchoEnvironment = {
     id: crypto.randomUUID(),
     name: data.name,
     category: data.category,
+    emoji: data.emoji,
     address: data.address,
     createdAt: new Date().toISOString(),
   };
@@ -63,8 +65,9 @@ export interface Environment {
   id: string;
   environmentId?: string;  // parent EchoEnvironment id
   name: string;
-  type: "home" | "office" | "clinic" | "kitchen" | "bedroom" | "living_room" | "patio" | "factory" | "other";
+  type: "home" | "office" | "clinic" | "kitchen" | "bedroom" | "living_room" | "bathroom" | "patio" | "garage" | "factory" | "other";
   dimensions: { width: number; length: number; height: number };
+  emoji?: string;
   isCalibrated: boolean;
   calibrationConfidence: number;
   createdAt: string;
@@ -101,7 +104,7 @@ export function getEnvironment(id: string): Environment | null {
 }
 
 export function createEnvironment(
-  data: Pick<Environment, "name" | "type" | "dimensions"> & { environmentId?: string }
+  data: Pick<Environment, "name" | "type" | "dimensions"> & { environmentId?: string; emoji?: string }
 ): Environment {
   const envs = getEnvironments();
   const now = new Date().toISOString();
@@ -111,6 +114,7 @@ export function createEnvironment(
     name: data.name,
     type: data.type,
     dimensions: data.dimensions,
+    emoji: data.emoji,
     isCalibrated: false,
     calibrationConfidence: 0,
     createdAt: now,
@@ -310,6 +314,7 @@ export interface Camera {
   deviceId: string;           // MediaDevices deviceId
   roomId: string;             // linked Environment (room) id
   environmentId: string;      // parent EchoEnvironment id
+  emoji?: string;             // custom emoji avatar
   active: boolean;            // currently streaming / tuning
   createdAt: string;
 }

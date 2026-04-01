@@ -29,6 +29,7 @@ import {
   Environment,
   Camera,
 } from "@/lib/environments";
+import EmojiPicker from "@/components/EmojiPicker";
 
 interface UserData {
   id: string;
@@ -120,8 +121,8 @@ export default function DashboardPage() {
 
   const handleSignOut = () => { localStorage.removeItem("echo_maps_user"); router.push("/"); };
 
-  const handleCreateEnv = (name: string, category: EnvCategory) => {
-    const env = createEchoEnvironment({ name, category });
+  const handleCreateEnv = (name: string, category: EnvCategory, emoji?: string) => {
+    const env = createEchoEnvironment({ name, category, emoji });
     setEchoEnvs(getEchoEnvironments());
     setSelectedEnvId(env.id);
     setShowNewEnvModal(false);
@@ -135,12 +136,12 @@ export default function DashboardPage() {
     if (selectedEnvId === id) setSelectedEnvId(remaining[0]?.id ?? null);
   };
 
-  const handleCreateRoom = async (name: string, type: string, dims: { width: number; length: number; height: number }) => {
+  const handleCreateRoom = async (name: string, type: string, dims: { width: number; length: number; height: number }, emoji?: string) => {
     if (!selectedEnvId) return;
     setError(null);
     try {
-      if (backendOnline) await createEnvironment(name);
-      else createLocalRoom({ name, type: type as Environment["type"], dimensions: dims, environmentId: selectedEnvId });
+      createLocalRoom({ name, type: type as Environment["type"], dimensions: dims, environmentId: selectedEnvId, emoji });
+      if (backendOnline) { try { await createEnvironment(name); } catch { /* backend sync optional */ } }
       reloadRooms();
       setShowNewRoomModal(false);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : "Failed to create room"); }
@@ -149,8 +150,8 @@ export default function DashboardPage() {
   const handleDeleteRoom = async (id: string) => {
     if (!confirm("Remove this room?")) return;
     try {
-      if (backendOnline) await deleteEnvironment(id);
-      else deleteLocalRoom(id);
+      deleteLocalRoom(id);
+      if (backendOnline) { try { await deleteEnvironment(id); } catch { /* backend sync optional */ } }
       reloadRooms();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : "Failed to delete"); }
   };
@@ -164,7 +165,7 @@ export default function DashboardPage() {
       {/* Sidebar */}
       <aside className="w-64 border-r flex flex-col" style={{ borderColor: "var(--gh-border)", backgroundColor: "var(--gh-surface)" }}>
         <div className="p-4 flex items-center justify-center">
-          <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={100} height={100} unoptimized style={{ background: "transparent" }} />
+          <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={306} height={306} unoptimized style={{ background: "transparent" }} />
         </div>
 
         {/* Environments list */}
@@ -179,7 +180,7 @@ export default function DashboardPage() {
             {echoEnvs.map((env) => (
               <button key={env.id} onClick={() => { setSelectedEnvId(env.id); setActiveTab("spaces"); }}
                 className={`sidebar-item w-full group ${selectedEnvId === env.id && activeTab === "spaces" ? "active" : ""}`}>
-                <span className="text-base">{ENV_ICONS[env.category] ?? "📍"}</span>
+                <span className="text-base">{env.emoji ?? ENV_ICONS[env.category] ?? "📍"}</span>
                 <span className="flex-1 truncate text-left text-xs">{env.name}</span>
                 <button onClick={(e) => { e.stopPropagation(); handleDeleteEnv(env.id); }}
                   className="w-4 h-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/5" style={{ color: "var(--gh-text-muted)", fontSize: "10px" }}>✕</button>
@@ -223,7 +224,7 @@ export default function DashboardPage() {
         <header className="sticky top-0 z-10 px-8 py-4 flex items-center justify-between" style={{ backgroundColor: "var(--gh-bg)", borderBottom: "1px solid var(--gh-border)" }}>
           <div>
             <h1 className="text-xl font-semibold">
-              {activeTab === "spaces" ? (selectedEnv ? `${ENV_ICONS[selectedEnv.category] ?? "📍"} ${selectedEnv.name}` : "Select an Environment")
+              {activeTab === "spaces" ? (selectedEnv ? `${selectedEnv.emoji ?? ENV_ICONS[selectedEnv.category] ?? "📍"} ${selectedEnv.name}` : "Select an Environment")
                 : activeTab === "cameras" ? "📹 Cameras"
                 : activeTab === "automations" ? "⚡ Automations"
                 : "👤 Presence Detection"}
@@ -272,7 +273,7 @@ export default function DashboardPage() {
 
       {showNewEnvModal && <NewEnvironmentModal onClose={() => setShowNewEnvModal(false)} onCreate={handleCreateEnv} />}
       {showNewRoomModal && <NewRoomModal onClose={() => setShowNewRoomModal(false)} onCreate={handleCreateRoom} />}
-      {showAddCameraModal && <AddCameraModal rooms={rooms} selectedEnvId={selectedEnvId} onClose={() => setShowAddCameraModal(false)} />}
+      {showAddCameraModal && <AddCameraModal rooms={rooms} selectedEnvId={selectedEnvId} onClose={() => setShowAddCameraModal(false)} onRoomCreated={reloadRooms} />}
     </div>
   );
 }
@@ -484,11 +485,12 @@ function CamerasView({ onAddCamera }: { onAddCamera: () => void }) {
 }
 
 /* ── Add Camera Modal ── */
-function AddCameraModal({ rooms, selectedEnvId, onClose }: { rooms: RoomCard[]; selectedEnvId: string | null; onClose: () => void }) {
+function AddCameraModal({ rooms, selectedEnvId, onClose, onRoomCreated }: { rooms: RoomCard[]; selectedEnvId: string | null; onClose: () => void; onRoomCreated?: () => void }) {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState("");
   const [selectedRoom, setSelectedRoom] = useState("");
   const [customLabel, setCustomLabel] = useState("");
+  const [cameraEmoji, setCameraEmoji] = useState("📹");
   const [loading, setLoading] = useState(true);
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
   const previewRef = useRef<HTMLVideoElement>(null);
@@ -535,8 +537,9 @@ function AddCameraModal({ rooms, selectedEnvId, onClose }: { rooms: RoomCard[]; 
 
   const handleAdd = () => {
     if (!selectedDevice || !selectedRoom || !selectedEnvId) return;
-    addCamera({ label: customLabel, deviceId: selectedDevice, roomId: selectedRoom, environmentId: selectedEnvId, active: false });
+    addCamera({ label: customLabel, deviceId: selectedDevice, roomId: selectedRoom, environmentId: selectedEnvId, emoji: cameraEmoji, active: false });
     if (previewStream) previewStream.getTracks().forEach((t) => t.stop());
+    if (onRoomCreated) onRoomCreated();
     onClose();
   };
 
@@ -575,6 +578,7 @@ function AddCameraModal({ rooms, selectedEnvId, onClose }: { rooms: RoomCard[]; 
                 className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none"
                 style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text)" }} maxLength={60} />
             </div>
+            <EmojiPicker selected={cameraEmoji} onSelect={setCameraEmoji} label="Camera Icon" />
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Assign to Room</label>
               {allRooms.length === 0 ? (
@@ -597,9 +601,10 @@ function AddCameraModal({ rooms, selectedEnvId, onClose }: { rooms: RoomCard[]; 
 }
 
 /* ── New Environment Modal ── */
-function NewEnvironmentModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, category: EnvCategory) => void }) {
+function NewEnvironmentModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, category: EnvCategory, emoji?: string) => void }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState<EnvCategory>("home");
+  const [emoji, setEmoji] = useState("🏠");
   const categories: { key: EnvCategory; label: string; icon: string }[] = [
     { key: "home", label: "Home", icon: "🏠" }, { key: "work", label: "Work", icon: "🏢" },
     { key: "school", label: "School", icon: "🎓" }, { key: "friend", label: "Friend's Place", icon: "👋" },
@@ -612,16 +617,17 @@ function NewEnvironmentModal({ onClose, onCreate }: { onClose: () => void; onCre
           <h2 className="text-lg font-semibold">New Environment</h2>
           <button onClick={onClose} style={{ color: "var(--gh-text-muted)" }}>✕</button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) onCreate(name.trim(), category); }} className="space-y-5">
+        <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) onCreate(name.trim(), category, emoji); }} className="space-y-5">
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Environment Name</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. My Apartment, Office" className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none" style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text)" }} maxLength={100} required autoFocus />
           </div>
+          <EmojiPicker selected={emoji} onSelect={setEmoji} label="Icon" />
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Category</label>
             <div className="grid grid-cols-3 gap-2">
               {categories.map((c) => (
-                <button key={c.key} type="button" onClick={() => setCategory(c.key)}
+                <button key={c.key} type="button" onClick={() => { setCategory(c.key); if (emoji === categories.find((cat) => cat.key === category)?.icon) setEmoji(c.icon); }}
                   className="p-3 rounded-xl text-center text-xs transition"
                   style={{ backgroundColor: category === c.key ? "rgba(91,156,246,0.12)" : "var(--gh-card)", border: category === c.key ? "1px solid var(--gh-blue)" : "1px solid var(--gh-border)", color: category === c.key ? "var(--gh-blue)" : "var(--gh-text-muted)" }}>
                   <div className="text-xl mb-1">{c.icon}</div>{c.label}
@@ -637,13 +643,15 @@ function NewEnvironmentModal({ onClose, onCreate }: { onClose: () => void; onCre
 }
 
 /* ── New Room Modal ── */
-function NewRoomModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, type: string, dims: { width: number; length: number; height: number }) => Promise<void> }) {
+function NewRoomModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, type: string, dims: { width: number; length: number; height: number }, emoji?: string) => Promise<void> }) {
   const [name, setName] = useState("");
   const [type, setType] = useState("living_room");
+  const [emoji, setEmoji] = useState("🛋️");
   const [width, setWidth] = useState(5);
   const [length, setLength] = useState(4);
   const [height, setHeight] = useState(2.7);
   const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const types = [
     { key: "kitchen", label: "Kitchen", icon: "🍳" }, { key: "living_room", label: "Living Room", icon: "🛋️" },
     { key: "bedroom", label: "Bedroom", icon: "🛏️" }, { key: "office", label: "Office", icon: "💻" },
@@ -653,27 +661,37 @@ function NewRoomModal({ onClose, onCreate }: { onClose: () => void; onCreate: (n
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    setLocalError(null);
     setSubmitting(true);
-    await onCreate(name.trim(), type, { width, length, height });
-    setSubmitting(false);
+    try {
+      await onCreate(name.trim(), type, { width: width || 5, length: length || 4, height: height || 2.7 }, emoji);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Failed to create room");
+    } finally {
+      setSubmitting(false);
+    }
   };
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="rounded-2xl w-full max-w-md p-6" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+      <div className="rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">Add Room</h2>
           <button onClick={onClose} style={{ color: "var(--gh-text-muted)" }}>✕</button>
         </div>
+        {localError && (
+          <div className="mb-4 p-3 rounded-xl text-sm" style={{ backgroundColor: "rgba(232,104,90,0.1)", color: "var(--gh-red)" }}>{localError}</div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Room Name</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Master Bedroom" className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none" style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text)" }} maxLength={100} required autoFocus />
           </div>
+          <EmojiPicker selected={emoji} onSelect={setEmoji} label="Room Icon" />
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Room Type</label>
             <div className="grid grid-cols-4 gap-2">
               {types.map((t) => (
-                <button key={t.key} type="button" onClick={() => setType(t.key)}
+                <button key={t.key} type="button" onClick={() => { setType(t.key); if (emoji === types.find((tp) => tp.key === type)?.icon) setEmoji(t.icon); }}
                   className="p-2 rounded-xl text-center text-xs transition"
                   style={{ backgroundColor: type === t.key ? "rgba(91,156,246,0.12)" : "var(--gh-card)", border: type === t.key ? "1px solid var(--gh-blue)" : "1px solid var(--gh-border)", color: type === t.key ? "var(--gh-blue)" : "var(--gh-text-muted)" }}>
                   <div className="text-lg mb-0.5">{t.icon}</div>{t.label}
@@ -758,17 +776,18 @@ function PresenceView() {
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
   const [editingProfile, setEditingProfile] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editEmoji, setEditEmoji] = useState("👤");
   const [editLocation, setEditLocation] = useState("");
   const [tuningRF, setTuningRF] = useState<string | null>(null);
   const [rfProgress, setRfProgress] = useState(0);
   const [activityHistory, setActivityHistory] = useState<string | null>(null);
-  const entities = [
-    { id: "p1", name: "Person 1", type: "person" as const, status: "active", location: "Living Room", lastSeen: "Just now", confidence: 0.95, rfSignature: "RF-A7B3", activity: "Walking", breathingRate: 16.2, heartRate: 72 },
-    { id: "p2", name: "Person 2", type: "person" as const, status: "active", location: "Kitchen", lastSeen: "2 min ago", confidence: 0.88, rfSignature: "RF-C4D1", activity: "Sitting", breathingRate: 14.8, heartRate: 68 },
-    { id: "p3", name: "Person 3", type: "person" as const, status: "away", location: "—", lastSeen: "3 hours ago", confidence: 0, rfSignature: "RF-E2F9", activity: "Away", breathingRate: null, heartRate: null },
-    { id: "pet1", name: "Dog", type: "pet" as const, status: "active", location: "Patio", lastSeen: "Just now", confidence: 0.82, rfSignature: "RF-P1A2", activity: "Resting", breathingRate: 22.0, heartRate: 90 },
-    { id: "pet2", name: "Cat", type: "pet" as const, status: "active", location: "Bedroom", lastSeen: "5 min ago", confidence: 0.76, rfSignature: "RF-P3B4", activity: "Moving", breathingRate: 26.0, heartRate: 140 },
-  ];
+  const [entities, setEntities] = useState([
+    { id: "p1", name: "Person 1", type: "person" as const, status: "active", location: "Living Room", lastSeen: "Just now", confidence: 0.95, rfSignature: "RF-A7B3", activity: "Walking", breathingRate: 16.2 as number | null, heartRate: 72 as number | null, emoji: "👤" },
+    { id: "p2", name: "Person 2", type: "person" as const, status: "active", location: "Kitchen", lastSeen: "2 min ago", confidence: 0.88, rfSignature: "RF-C4D1", activity: "Sitting", breathingRate: 14.8 as number | null, heartRate: 68 as number | null, emoji: "👤" },
+    { id: "p3", name: "Person 3", type: "person" as const, status: "away", location: "—", lastSeen: "3 hours ago", confidence: 0, rfSignature: "RF-E2F9", activity: "Away", breathingRate: null as number | null, heartRate: null as number | null, emoji: "👤" },
+    { id: "pet1", name: "Dog", type: "pet" as const, status: "active", location: "Patio", lastSeen: "Just now", confidence: 0.82, rfSignature: "RF-P1A2", activity: "Resting", breathingRate: 22.0 as number | null, heartRate: 90 as number | null, emoji: "🐕" },
+    { id: "pet2", name: "Cat", type: "pet" as const, status: "active", location: "Bedroom", lastSeen: "5 min ago", confidence: 0.76, rfSignature: "RF-P3B4", activity: "Moving", breathingRate: 26.0 as number | null, heartRate: 140 as number | null, emoji: "🐈" },
+  ]);
   const people = entities.filter((e) => e.type === "person");
   const pets = entities.filter((e) => e.type === "pet");
   const selected = entities.find((e) => e.id === selectedEntity);
@@ -786,7 +805,7 @@ function PresenceView() {
               {people.map((p) => (
                 <button key={p.id} onClick={() => setSelectedEntity(p.id)} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-blue)" } : {}}>
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ backgroundColor: p.status === "active" ? "rgba(94,187,127,0.12)" : "rgba(139,143,154,0.12)" }}>
-                    {p.status === "active" ? "🟢" : "⚫"}
+                    {p.emoji || (p.status === "active" ? "🟢" : "⚫")}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -810,7 +829,7 @@ function PresenceView() {
               {pets.map((p) => (
                 <button key={p.id} onClick={() => setSelectedEntity(p.id)} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-yellow)" } : {}}>
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ backgroundColor: "rgba(245,197,66,0.12)" }}>
-                    {p.name === "Dog" ? "🐕" : "🐈"}
+                    {p.emoji || "🐾"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -829,7 +848,7 @@ function PresenceView() {
           {selected ? (
             <div className="rounded-2xl p-5 sticky top-20" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
               <div className="text-center mb-4">
-                <div className="text-4xl mb-2">{selected.type === "person" ? "👤" : selected.name === "Dog" ? "🐕" : "🐈"}</div>
+                <div className="text-4xl mb-2">{selected.emoji || "👤"}</div>
                 <h3 className="font-bold text-lg">{selected.name}</h3>
                 <p className="text-xs font-mono" style={{ color: "var(--gh-text-muted)" }}>{selected.rfSignature}</p>
                 <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full" style={{
@@ -862,7 +881,7 @@ function PresenceView() {
                 )}
                 <hr style={{ borderColor: "var(--gh-border)" }} />
                 <div className="space-y-2">
-                  <button onClick={() => { setEditName(selected.name); setEditLocation(selected.location); setEditingProfile(selected.id); }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Edit Profile</button>
+                  <button onClick={() => { setEditName(selected.name); setEditLocation(selected.location); setEditEmoji(selected.emoji || "👤"); setEditingProfile(selected.id); }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Edit Profile</button>
                   <button onClick={() => { setRfProgress(0); setTuningRF(selected.id); }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Tune RF Signature</button>
                   <button onClick={() => setActivityHistory(selected.id)} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>View Activity History</button>
                 </div>
@@ -883,9 +902,13 @@ function PresenceView() {
         if (!entity) return null;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setEditingProfile(null)}>
-            <div className="rounded-2xl p-6 w-full max-w-md" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
               <h3 className="text-lg font-semibold mb-4">Edit Profile — {entity.name}</h3>
               <div className="space-y-3">
+                <div className="flex justify-center mb-2">
+                  <div className="text-5xl">{editEmoji}</div>
+                </div>
+                <EmojiPicker selected={editEmoji} onSelect={setEditEmoji} label="Profile Avatar" />
                 <div>
                   <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Display Name</label>
                   <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm bg-transparent border outline-none focus:ring-1" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
@@ -905,7 +928,10 @@ function PresenceView() {
               </div>
               <div className="flex gap-2 mt-5">
                 <button onClick={() => setEditingProfile(null)} className="flex-1 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: "var(--gh-border)" }}>Cancel</button>
-                <button onClick={() => { setEditingProfile(null); }} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary">Save Changes</button>
+                <button onClick={() => {
+                  setEntities((prev) => prev.map((ent) => ent.id === editingProfile ? { ...ent, name: editName, location: editLocation, emoji: editEmoji } : ent));
+                  setEditingProfile(null);
+                }} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary">Save Changes</button>
               </div>
             </div>
           </div>

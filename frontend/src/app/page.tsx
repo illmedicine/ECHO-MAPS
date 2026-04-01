@@ -12,7 +12,7 @@ export default function Home() {
       <div className="text-center max-w-3xl">
         {/* Logo */}
         <div className="flex justify-center mb-6">
-          <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={200} height={200} unoptimized style={{ background: "transparent" }} />
+          <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={340} height={340} unoptimized style={{ background: "transparent" }} />
         </div>
         <p className="text-xl mb-8 max-w-xl mx-auto leading-relaxed">
           Your home, understood. <span style={{ color: "var(--gh-text-muted)" }}>Sense every room with WiFi — no cameras, no wearables.</span>

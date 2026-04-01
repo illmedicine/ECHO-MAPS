@@ -14,9 +14,37 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {/* XL transparent logo watermark */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`${basePath}/logo.png`}
+            alt=""
+            style={{
+              width: 520,
+              height: 520,
+              opacity: 0.045,
+              userSelect: "none",
+            }}
+          />
+        </div>
+        <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
+      </body>
     </html>
   );
 }
