@@ -22,16 +22,16 @@ class TierLimits:
 
 TIER_CONFIG: dict[SubscriptionTier, TierLimits] = {
     SubscriptionTier.PERSONAL: TierLimits(
-        max_environments=2,
-        playback_hours=24,
-        heatmap_days=0,
-        vital_signs=False,
+        max_environments=10,
+        playback_hours=72,
+        heatmap_days=7,
+        vital_signs=True,
         real_time_alerts=False,
     ),
     SubscriptionTier.PRO: TierLimits(
-        max_environments=5,
-        playback_hours=720,  # 30 days
-        heatmap_days=30,
+        max_environments=50,
+        playback_hours=2160,  # 90 days
+        heatmap_days=90,
         vital_signs=True,
         real_time_alerts=True,
     ),

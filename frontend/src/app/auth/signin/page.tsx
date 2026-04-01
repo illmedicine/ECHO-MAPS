@@ -120,7 +120,7 @@ export default function SignInPage() {
           <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={220} height={220} unoptimized style={{ background: "transparent" }} />
         </div>
 
-        <div className="p-8 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
+        <div className="p-8 rounded-2xl shadow-sm" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
           <h2 className="text-xl font-semibold mb-6">Sign in to continue</h2>
 
           {!GOOGLE_CLIENT_ID ? (

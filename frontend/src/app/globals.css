@@ -3,25 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --gh-blue: #5B9CF6;
-  --gh-green: #5EBB7F;
-  --gh-yellow: #F5C542;
-  --gh-red: #E8685A;
-  --gh-bg: #121318;
-  --gh-surface: #1c1d24;
-  --gh-surface-hover: #26272f;
-  --gh-card: #1f2028;
-  --gh-border: #2e303a;
-  --gh-text: #ecedf0;
-  --gh-text-muted: #8b8f9a;
-  --gh-accent: #7c8cf8;
+  --gh-blue: #4285F4;
+  --gh-green: #34A853;
+  --gh-yellow: #FBBC05;
+  --gh-red: #EA4335;
+  --gh-bg: #F8F9FC;
+  --gh-surface: #FFFFFF;
+  --gh-surface-hover: #F0F2F8;
+  --gh-card: #F3F4F9;
+  --gh-border: #E0E3EB;
+  --gh-text: #1F2937;
+  --gh-text-muted: #6B7280;
+  --gh-accent: #6366F1;
   /* Legacy aliases */
-  --illy-blue: #5B9CF6;
-  --illy-green: #5EBB7F;
-  --illy-red: #E8685A;
-  --illy-dark: #121318;
-  --illy-surface: #1c1d24;
-  --illy-coral: #E8685A;
+  --illy-blue: #4285F4;
+  --illy-green: #34A853;
+  --illy-red: #EA4335;
+  --illy-dark: #1F2937;
+  --illy-surface: #FFFFFF;
+  --illy-coral: #EA4335;
 }
 
 body {
@@ -38,23 +38,24 @@ body {
 
 .device-card {
   @apply rounded-2xl p-4 transition-all duration-200 cursor-pointer;
-  background-color: var(--gh-card);
-  border: 1px solid transparent;
+  background-color: var(--gh-surface);
+  border: 1px solid var(--gh-border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.device-card:hover { background-color: var(--gh-surface-hover); border-color: var(--gh-border); transform: translateY(-1px); }
-.device-card.active { background-color: rgba(91, 156, 246, 0.12); border-color: var(--gh-blue); }
+.device-card:hover { background-color: var(--gh-surface-hover); border-color: var(--gh-blue); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+.device-card.active { background-color: rgba(66, 133, 244, 0.06); border-color: var(--gh-blue); }
 
 .sidebar-item {
   @apply flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-all duration-200 cursor-pointer;
   color: var(--gh-text-muted);
 }
 .sidebar-item:hover { background-color: var(--gh-surface-hover); color: var(--gh-text); }
-.sidebar-item.active { background-color: rgba(91, 156, 246, 0.12); color: var(--gh-blue); }
+.sidebar-item.active { background-color: rgba(66, 133, 244, 0.08); color: var(--gh-blue); font-weight: 500; }
 
 .btn-primary {
   @apply px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200;
   background: linear-gradient(135deg, var(--gh-blue), var(--gh-accent));
   color: white;
 }
-.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(91, 156, 246, 0.3); }
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3); }
 .btn-primary:disabled { opacity: 0.5; transform: none; box-shadow: none; }

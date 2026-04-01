@@ -68,7 +68,7 @@ export default function Home() {
             { step: "3", title: "Live Awareness", desc: "Know who's where, their activity, even vital signs", icon: "💡" },
             { step: "4", title: "Automate", desc: "Lights, locks, alerts — all hands-free", icon: "🎯" },
           ].map((s) => (
-            <div key={s.step} className="text-center p-5 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)" }}>
+            <div key={s.step} className="text-center p-5 rounded-2xl shadow-sm" style={{ backgroundColor: "var(--gh-surface)" }}>
               <div className="text-3xl mb-3">{s.icon}</div>
               <div className="text-[10px] font-bold mb-1" style={{ color: "var(--gh-blue)" }}>STEP {s.step}</div>
               <h3 className="font-semibold mb-1">{s.title}</h3>
@@ -82,11 +82,11 @@ export default function Home() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl w-full">
         <PricingCard
           tier="Personal"
-          features={["2 Environments", "Presence & activity", "Basic automations", "24h history"]}
+          features={["10 Environments", "Presence & activity", "Vital signs", "Basic automations", "72h history"]}
         />
         <PricingCard
           tier="Pro"
-          features={["10 Environments", "Vital signs & wellness", "Smart automations", "30-day history", "Family & pet profiles"]}
+          features={["50 Environments", "Vital signs & wellness", "Smart automations", "Real-time alerts", "90-day history", "Family & pet profiles"]}
           highlighted
         />
       </div>
@@ -101,7 +101,7 @@ export default function Home() {
 
 function FeatureCard({ title, description, icon, color }: { title: string; description: string; icon: string; color: string }) {
   return (
-    <div className="p-6 rounded-2xl border" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
+    <div className="p-6 rounded-2xl border shadow-sm" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
       <div className="text-3xl mb-3">{icon}</div>
       <h3 className="text-lg font-semibold mb-2" style={{ color }}>{title}</h3>
       <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>{description}</p>
@@ -112,7 +112,7 @@ function FeatureCard({ title, description, icon, color }: { title: string; descr
 function PricingCard({ tier, features, highlighted = false }: { tier: string; features: string[]; highlighted?: boolean }) {
   return (
     <div
-      className="p-6 rounded-2xl border"
+      className="p-6 rounded-2xl border shadow-sm"
       style={{
         backgroundColor: "var(--gh-surface)",
         borderColor: highlighted ? "var(--gh-blue)" : "var(--gh-border)",

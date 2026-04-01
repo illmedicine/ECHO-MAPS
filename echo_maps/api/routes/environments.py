@@ -34,8 +34,8 @@ class EnvironmentList(BaseModel):
 
 # ── Tier limits ──
 TIER_LIMITS = {
-    "personal": 2,
-    "pro": 5,
+    "personal": 10,
+    "pro": 50,
 }
 
 

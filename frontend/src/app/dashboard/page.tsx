@@ -162,26 +162,16 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
-      <aside className="w-64 border-r flex flex-col" style={{ borderColor: "var(--gh-border)", backgroundColor: "var(--gh-bg)" }}>
-        <div className="p-5 flex items-center gap-3">
-          <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={40} height={40} unoptimized />
-          <div>
-            <span className="font-bold text-base">
-              <span style={{ color: "var(--gh-blue)" }}>Echo</span>{" "}
-              <span style={{ color: "var(--gh-green)" }}>Vue</span>
-            </span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: backendOnline ? "var(--gh-green)" : "var(--gh-yellow)" }} />
-              <span className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{backendOnline ? "Connected" : "Demo"}</span>
-            </div>
-          </div>
+      <aside className="w-64 border-r flex flex-col" style={{ borderColor: "var(--gh-border)", backgroundColor: "var(--gh-surface)" }}>
+        <div className="p-4 flex items-center justify-center">
+          <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={100} height={100} unoptimized style={{ background: "transparent" }} />
         </div>
 
         {/* Environments list */}
         <div className="px-3 mb-2">
           <div className="flex items-center justify-between px-2 mb-1">
             <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--gh-text-muted)" }}>Environments</span>
-            <button onClick={() => setShowNewEnvModal(true)} className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10 transition" style={{ color: "var(--gh-text-muted)" }}>
+            <button onClick={() => setShowNewEnvModal(true)} className="w-5 h-5 rounded flex items-center justify-center hover:bg-black/5 transition" style={{ color: "var(--gh-text-muted)" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
             </button>
           </div>
@@ -192,7 +182,7 @@ export default function DashboardPage() {
                 <span className="text-base">{ENV_ICONS[env.category] ?? "📍"}</span>
                 <span className="flex-1 truncate text-left text-xs">{env.name}</span>
                 <button onClick={(e) => { e.stopPropagation(); handleDeleteEnv(env.id); }}
-                  className="w-4 h-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-white/10" style={{ color: "var(--gh-text-muted)", fontSize: "10px" }}>✕</button>
+                  className="w-4 h-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/5" style={{ color: "var(--gh-text-muted)", fontSize: "10px" }}>✕</button>
               </button>
             ))}
             {echoEnvs.length === 0 && <p className="text-[10px] px-2 py-2" style={{ color: "var(--gh-text-muted)" }}>No environments yet</p>}
@@ -203,13 +193,13 @@ export default function DashboardPage() {
 
         <nav className="flex-1 px-3 mt-2 space-y-0.5">
           {([
-            { tab: "spaces" as const, label: "Rooms", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg> },
-            { tab: "cameras" as const, label: "Cameras", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg> },
-            { tab: "automations" as const, label: "Automations", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3v6h5l-7 11v-6H6l7-11z"/></svg> },
-            { tab: "presence" as const, label: "Presence", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg> },
+            { tab: "spaces" as const, label: "Rooms", icon: "🏠" },
+            { tab: "cameras" as const, label: "Cameras", icon: "📹" },
+            { tab: "automations" as const, label: "Automations", icon: "⚡" },
+            { tab: "presence" as const, label: "Presence", icon: "👤" },
           ]).map(({ tab, label, icon }) => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`sidebar-item w-full ${activeTab === tab ? "active" : ""}`}>
-              {icon}{label}
+              <span className="text-lg">{icon}</span>{label}
             </button>
           ))}
         </nav>
@@ -221,7 +211,7 @@ export default function DashboardPage() {
               <p className="text-sm font-medium truncate">{user.name}</p>
               <p className="text-[10px] truncate" style={{ color: "var(--gh-text-muted)" }}>{user.email}</p>
             </div>
-            <button onClick={handleSignOut} className="text-xs px-2 py-1 rounded-xl hover:bg-white/10 transition" style={{ color: "var(--gh-text-muted)" }} title="Sign out">
+            <button onClick={handleSignOut} className="text-xs px-2 py-1 rounded-xl hover:bg-black/5 transition" style={{ color: "var(--gh-text-muted)" }} title="Sign out">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
             </button>
           </div>
@@ -766,6 +756,12 @@ function AutomationsView() {
 /* ── Presence Detection View ── */
 function PresenceView() {
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
+  const [editingProfile, setEditingProfile] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editLocation, setEditLocation] = useState("");
+  const [tuningRF, setTuningRF] = useState<string | null>(null);
+  const [rfProgress, setRfProgress] = useState(0);
+  const [activityHistory, setActivityHistory] = useState<string | null>(null);
   const entities = [
     { id: "p1", name: "Person 1", type: "person" as const, status: "active", location: "Living Room", lastSeen: "Just now", confidence: 0.95, rfSignature: "RF-A7B3", activity: "Walking", breathingRate: 16.2, heartRate: 72 },
     { id: "p2", name: "Person 2", type: "person" as const, status: "active", location: "Kitchen", lastSeen: "2 min ago", confidence: 0.88, rfSignature: "RF-C4D1", activity: "Sitting", breathingRate: 14.8, heartRate: 68 },
@@ -866,9 +862,9 @@ function PresenceView() {
                 )}
                 <hr style={{ borderColor: "var(--gh-border)" }} />
                 <div className="space-y-2">
-                  <button className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Edit Profile</button>
-                  <button className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Tune RF Signature</button>
-                  <button className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>View Activity History</button>
+                  <button onClick={() => { setEditName(selected.name); setEditLocation(selected.location); setEditingProfile(selected.id); }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Edit Profile</button>
+                  <button onClick={() => { setRfProgress(0); setTuningRF(selected.id); }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Tune RF Signature</button>
+                  <button onClick={() => setActivityHistory(selected.id)} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>View Activity History</button>
                 </div>
               </div>
             </div>
@@ -880,6 +876,121 @@ function PresenceView() {
           )}
         </div>
       </div>
+
+      {/* Edit Profile Modal */}
+      {editingProfile && (() => {
+        const entity = entities.find((e) => e.id === editingProfile);
+        if (!entity) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setEditingProfile(null)}>
+            <div className="rounded-2xl p-6 w-full max-w-md" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold mb-4">Edit Profile — {entity.name}</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Display Name</label>
+                  <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm bg-transparent border outline-none focus:ring-1" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Assigned Location</label>
+                  <input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm bg-transparent border outline-none focus:ring-1" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Entity Type</label>
+                  <p className="text-sm capitalize">{entity.type}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>RF Signature</label>
+                  <p className="text-sm font-mono">{entity.rfSignature}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-5">
+                <button onClick={() => setEditingProfile(null)} className="flex-1 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: "var(--gh-border)" }}>Cancel</button>
+                <button onClick={() => { setEditingProfile(null); }} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary">Save Changes</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Tune RF Signature Modal */}
+      {tuningRF && (() => {
+        const entity = entities.find((e) => e.id === tuningRF);
+        if (!entity) return null;
+        const isRunning = rfProgress > 0 && rfProgress < 100;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { if (!isRunning) setTuningRF(null); }}>
+            <div className="rounded-2xl p-6 w-full max-w-md" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold mb-1">Tune RF Signature</h3>
+              <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>{entity.name} — {entity.rfSignature}</p>
+              <div className="p-4 rounded-xl mb-4" style={{ backgroundColor: "var(--gh-card)" }}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl" style={{ backgroundColor: "rgba(124,140,248,0.12)" }}>📡</div>
+                  <div>
+                    <p className="text-sm font-medium">WiFi CSI Signal</p>
+                    <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Capturing RF patterns for {entity.name}</p>
+                  </div>
+                </div>
+                <div className="w-full rounded-full h-2 mb-1" style={{ backgroundColor: "var(--gh-border)" }}>
+                  <div className="h-2 rounded-full transition-all duration-300" style={{ width: `${rfProgress}%`, backgroundColor: rfProgress >= 100 ? "var(--gh-green)" : "var(--gh-accent)" }} />
+                </div>
+                <p className="text-[10px] text-right" style={{ color: "var(--gh-text-muted)" }}>{rfProgress}%</p>
+              </div>
+              {rfProgress >= 100 && (
+                <div className="p-3 rounded-xl mb-4 text-sm flex items-center gap-2" style={{ backgroundColor: "rgba(94,187,127,0.1)", color: "var(--gh-green)" }}>
+                  ✓ RF signature tuned successfully. Confidence improved.
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => setTuningRF(null)} className="flex-1 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: "var(--gh-border)" }} disabled={isRunning}>{rfProgress >= 100 ? "Done" : "Cancel"}</button>
+                {rfProgress < 100 && (
+                  <button onClick={() => {
+                    setRfProgress(1);
+                    let p = 0;
+                    const iv = setInterval(() => { p += Math.random() * 8 + 2; if (p >= 100) { p = 100; clearInterval(iv); } setRfProgress(Math.round(p)); }, 200);
+                  }} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary" disabled={isRunning}>{isRunning ? "Tuning…" : "Start Tuning"}</button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* View Activity History Modal */}
+      {activityHistory && (() => {
+        const entity = entities.find((e) => e.id === activityHistory);
+        if (!entity) return null;
+        const mockHistory = [
+          { time: "Just now", activity: entity.activity, location: entity.location, confidence: entity.confidence },
+          { time: "5 min ago", activity: "Standing", location: entity.location, confidence: 0.92 },
+          { time: "12 min ago", activity: "Walking", location: "Hallway", confidence: 0.87 },
+          { time: "25 min ago", activity: "Sitting", location: entity.location, confidence: 0.94 },
+          { time: "1 hour ago", activity: "Walking", location: "Kitchen", confidence: 0.89 },
+          { time: "1.5 hours ago", activity: "Standing", location: "Living Room", confidence: 0.91 },
+          { time: "2 hours ago", activity: "Sitting", location: "Office", confidence: 0.93 },
+          { time: "3 hours ago", activity: entity.status === "away" ? "Left area" : "Walking", location: "Front Door", confidence: 0.85 },
+        ];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActivityHistory(null)}>
+            <div className="rounded-2xl p-6 w-full max-w-lg max-h-[80vh] flex flex-col" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold mb-1">Activity History</h3>
+              <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>{entity.name} — {entity.rfSignature}</p>
+              <div className="flex-1 overflow-y-auto space-y-1">
+                {mockHistory.map((h, i) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: i === 0 ? "rgba(91,156,246,0.06)" : "transparent" }}>
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: i === 0 ? "var(--gh-green)" : "var(--gh-text-muted)" }} />
+                    <span className="text-[10px] w-20 flex-shrink-0" style={{ color: "var(--gh-text-muted)" }}>{h.time}</span>
+                    <span className="text-xs font-medium flex-1">{h.activity}</span>
+                    <span className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{h.location}</span>
+                    <span className="text-[10px] font-mono" style={{ color: "var(--gh-green)" }}>{(h.confidence * 100).toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setActivityHistory(null)} className="mt-4 w-full py-2 rounded-xl text-sm font-medium border" style={{ borderColor: "var(--gh-border)" }}>Close</button>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="mt-8 p-5 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
         <div className="flex items-center gap-3 mb-3"><span className="text-xl">🧠</span><h3 className="font-semibold">AI Detection Engine</h3></div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
