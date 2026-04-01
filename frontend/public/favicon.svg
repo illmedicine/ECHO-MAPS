@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- House shape (Google Home inspired) -->
+  <path d="M24 4L4 20h6v20h28V20h6L24 4z" fill="#4285F4"/>
+  <path d="M24 4L4 20h6v20h14V4z" fill="#4285F4"/>
+  <path d="M24 4l20 16h-6v20H24V4z" fill="#34A853"/>
+  <path d="M10 20v20h14V28h-4v12H14V22l10-8 10 8v18h-4V28h-4v12" fill="none" stroke="#0a0e1a" stroke-width="0.5"/>
+  <!-- WiFi waves left (blue) -->
+  <path d="M8 18c-3-2-5-5-5-9" stroke="#4285F4" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <path d="M6 16c-2-1.5-3.5-3.5-3.5-6.5" stroke="#4285F4" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <!-- WiFi waves right (red) -->
+  <path d="M40 18c3-2 5-5 5-9" stroke="#EA4335" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <path d="M42 16c2-1.5 3.5-3.5 3.5-6.5" stroke="#EA4335" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <!-- Eye (center) -->
+  <circle cx="24" cy="26" r="6" fill="#FBBC05"/>
+  <circle cx="24" cy="26" r="3.5" fill="#4285F4"/>
+  <circle cx="24" cy="26" r="1.5" fill="#0a0e1a"/>
+  <!-- Ear (listening) -->
+  <path d="M30 24c2 0 3.5 1.5 3.5 3.5S32 31 30 31" stroke="#FBBC05" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+</svg>

@@ -30,12 +30,12 @@ export default function Home() {
           >
             Get Started
           </Link>
-          <Link
-            href="/about"
+          <a
+            href="#how-it-works"
             className="px-8 py-3 border border-[var(--gh-border)] rounded-full font-semibold hover:border-[var(--gh-text-muted)] transition"
           >
             Learn More
-          </Link>
+          </a>
         </div>
       </div>
 
@@ -63,7 +63,7 @@ export default function Home() {
 
       {/* How it works */}
       <div className="max-w-4xl w-full mb-16">
-        <h2 className="text-2xl font-bold text-center mb-8">How Echo Vue Works</h2>
+        <h2 id="how-it-works" className="text-2xl font-bold text-center mb-8">How Echo Vue Works</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
             { step: "1", title: "Calibrate", desc: "Quick camera trace learns your space's WiFi signature", icon: "📐" },

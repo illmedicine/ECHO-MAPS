@@ -19,10 +19,15 @@ models/
 *.safetensors
 data/
 
+# Dependencies
+node_modules/
+
 # Build
 dist/
 build/
 *.egg-info/
+.next/
+out/
 
 # OS
 .DS_Store

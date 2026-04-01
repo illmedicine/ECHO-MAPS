@@ -47,7 +47,7 @@ const SPACE_ICONS: Record<string, string> = {
   other: "\uD83D\uDCCD",
 };
 
-type TabView = "spaces" | "automations";
+type TabView = "spaces" | "automations" | "presence";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -152,6 +152,10 @@ export default function DashboardPage() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
             Automations
           </button>
+          <button onClick={() => setActiveTab("presence")} className={`sidebar-item w-full ${activeTab === "presence" ? "active" : ""}`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            Presence
+          </button>
         </nav>
 
         {/* User */}
@@ -173,7 +177,7 @@ export default function DashboardPage() {
       <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "var(--gh-bg)" }}>
         {/* Top bar */}
         <header className="sticky top-0 z-10 px-8 py-4 flex items-center justify-between" style={{ backgroundColor: "var(--gh-bg)", borderBottom: "1px solid var(--gh-border)" }}>
-          <h1 className="text-xl font-semibold">{activeTab === "spaces" ? "Spaces" : "Automations"}</h1>
+          <h1 className="text-xl font-semibold">{activeTab === "spaces" ? "Spaces" : activeTab === "automations" ? "Automations" : "Presence Detection"}</h1>
           <div className="flex items-center gap-3">
             {activeTab === "spaces" && (
               <button onClick={() => setShowNewModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-blue)" }}>
@@ -245,9 +249,10 @@ export default function DashboardPage() {
                 ))
               )}
             </>
-          ) : (
-            /* Automations Tab */
+          ) : activeTab === "automations" ? (
             <AutomationsView />
+          ) : (
+            <PresenceView />
           )}
         </div>
       </main>
@@ -388,6 +393,190 @@ function NewSpaceModal({ onClose, onCreate }: { onClose: () => void; onCreate: (
             {submitting ? "Creating..." : "Add Space"}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Presence Detection Tab ─── */
+function PresenceView() {
+  const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
+
+  const entities = [
+    { id: "p1", name: "Person 1", type: "person" as const, status: "active", location: "Living Room", lastSeen: "Just now", confidence: 0.95, rfSignature: "RF-A7B3", activity: "Walking", breathingRate: 16.2, heartRate: 72 },
+    { id: "p2", name: "Person 2", type: "person" as const, status: "active", location: "Kitchen", lastSeen: "2 min ago", confidence: 0.88, rfSignature: "RF-C4D1", activity: "Sitting", breathingRate: 14.8, heartRate: 68 },
+    { id: "p3", name: "Person 3", type: "person" as const, status: "away", location: "—", lastSeen: "3 hours ago", confidence: 0, rfSignature: "RF-E2F9", activity: "Away", breathingRate: null, heartRate: null },
+    { id: "pet1", name: "Dog", type: "pet" as const, status: "active", location: "Patio", lastSeen: "Just now", confidence: 0.82, rfSignature: "RF-P1A2", activity: "Resting", breathingRate: 22.0, heartRate: 90 },
+    { id: "pet2", name: "Cat", type: "pet" as const, status: "active", location: "Bedroom", lastSeen: "5 min ago", confidence: 0.76, rfSignature: "RF-P3B4", activity: "Moving", breathingRate: 26.0, heartRate: 140 },
+  ];
+
+  const people = entities.filter((e) => e.type === "person");
+  const pets = entities.filter((e) => e.type === "pet");
+  const selected = entities.find((e) => e.id === selectedEntity);
+
+  return (
+    <div>
+      <p className="text-sm mb-6" style={{ color: "var(--gh-text-muted)" }}>
+        AI-detected entities across all spaces. Tune RF signatures, manage profiles, and review detection data.
+      </p>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Entity List */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* People */}
+          <div>
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <span>👤</span> People <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(66,133,244,0.15)", color: "var(--gh-blue)" }}>{people.length}</span>
+            </h3>
+            <div className="space-y-2">
+              {people.map((p) => (
+                <button key={p.id} onClick={() => setSelectedEntity(p.id)} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-blue)" } : {}}>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ backgroundColor: p.status === "active" ? "rgba(52,168,83,0.15)" : "rgba(154,160,166,0.15)" }}>
+                    {p.status === "active" ? "🟢" : "⚫"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium text-sm">{p.name}</h4>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
+                    </div>
+                    <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>
+                      {p.location} · {p.activity} · {p.lastSeen}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-medium" style={{ color: p.confidence > 0.5 ? "var(--gh-green)" : "var(--gh-text-muted)" }}>
+                      {p.confidence > 0 ? `${(p.confidence * 100).toFixed(0)}%` : "—"}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Pets */}
+          <div>
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <span>🐾</span> Pets <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(251,188,5,0.15)", color: "var(--gh-yellow)" }}>{pets.length}</span>
+            </h3>
+            <div className="space-y-2">
+              {pets.map((p) => (
+                <button key={p.id} onClick={() => setSelectedEntity(p.id)} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-yellow)" } : {}}>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ backgroundColor: "rgba(251,188,5,0.15)" }}>
+                    {p.name === "Dog" ? "🐕" : "🐈"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium text-sm">{p.name}</h4>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
+                    </div>
+                    <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>
+                      {p.location} · {p.activity} · {p.lastSeen}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-medium" style={{ color: "var(--gh-yellow)" }}>
+                      {(p.confidence * 100).toFixed(0)}%
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Entity Detail Panel */}
+        <div>
+          {selected ? (
+            <div className="rounded-2xl border p-5 sticky top-20" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
+              <div className="text-center mb-4">
+                <div className="text-4xl mb-2">{selected.type === "person" ? "👤" : selected.name === "Dog" ? "🐕" : "🐈"}</div>
+                <h3 className="font-bold text-lg">{selected.name}</h3>
+                <p className="text-xs font-mono" style={{ color: "var(--gh-text-muted)" }}>{selected.rfSignature}</p>
+                <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full" style={{
+                  backgroundColor: selected.status === "active" ? "rgba(52,168,83,0.15)" : "rgba(154,160,166,0.15)",
+                  color: selected.status === "active" ? "var(--gh-green)" : "var(--gh-text-muted)",
+                }}>
+                  {selected.status === "active" ? "● Active" : "○ Away"}
+                </span>
+              </div>
+
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
+                  <span>Location</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.location}</span>
+                </div>
+                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
+                  <span>Activity</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.activity}</span>
+                </div>
+                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
+                  <span>Last Seen</span><span>{selected.lastSeen}</span>
+                </div>
+                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
+                  <span>Confidence</span><span>{selected.confidence > 0 ? `${(selected.confidence * 100).toFixed(0)}%` : "—"}</span>
+                </div>
+
+                {/* Vitals */}
+                {selected.status === "active" && (
+                  <>
+                    <hr style={{ borderColor: "var(--gh-border)" }} />
+                    <h4 className="font-semibold text-xs" style={{ color: "var(--gh-text-muted)" }}>VITALS</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2 rounded-lg text-center" style={{ backgroundColor: "var(--gh-card)" }}>
+                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Breathing</p>
+                        <p className="text-base font-bold" style={{ color: "var(--gh-blue)" }}>{selected.breathingRate?.toFixed(1) ?? "—"}</p>
+                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>bpm</p>
+                      </div>
+                      <div className="p-2 rounded-lg text-center" style={{ backgroundColor: "var(--gh-card)" }}>
+                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Heart Rate</p>
+                        <p className="text-base font-bold" style={{ color: "var(--gh-red)" }}>{selected.heartRate ?? "—"}</p>
+                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>bpm</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Actions */}
+                <hr style={{ borderColor: "var(--gh-border)" }} />
+                <div className="space-y-2">
+                  <button className="w-full py-2 rounded-full text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text)" }}>
+                    Edit Profile
+                  </button>
+                  <button className="w-full py-2 rounded-full text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text)" }}>
+                    Tune RF Signature
+                  </button>
+                  <button className="w-full py-2 rounded-full text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text)" }}>
+                    View Activity History
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border p-8 text-center" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
+              <div className="text-4xl mb-3 opacity-30">👤</div>
+              <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>Select an entity to view details</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* AI Engine Info */}
+      <div className="mt-8 p-5 rounded-2xl border" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-xl">🧠</span>
+          <h3 className="font-semibold">AI Detection Engine</h3>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: "Entities Tracked", value: `${entities.filter((e) => e.status === "active").length} active`, color: "var(--gh-green)" },
+            { label: "RF Signatures", value: `${entities.length} stored`, color: "var(--gh-blue)" },
+            { label: "Detection Model", value: "LatentCSI v2", color: "var(--gh-yellow)" },
+            { label: "Avg. Confidence", value: `${(entities.filter((e) => e.confidence > 0).reduce((a, e) => a + e.confidence, 0) / entities.filter((e) => e.confidence > 0).length * 100).toFixed(0)}%`, color: "var(--gh-text)" },
+          ].map((stat) => (
+            <div key={stat.label} className="p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)" }}>
+              <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{stat.label}</p>
+              <p className="text-sm font-bold mt-0.5" style={{ color: stat.color }}>{stat.value}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
