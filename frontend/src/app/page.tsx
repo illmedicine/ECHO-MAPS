@@ -11,28 +11,25 @@ export default function Home() {
       {/* Hero */}
       <div className="text-center max-w-3xl">
         {/* Logo */}
-        <div className="flex justify-center mb-6">
-          <Image src={`${basePath}/logo.svg`} alt="Echo Vue" width={80} height={80} unoptimized />
+        <div className="flex justify-center mb-2">
+          <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={140} height={140} unoptimized />
         </div>
-        <h1 className="text-5xl font-bold mb-2">
-          <span className="text-[var(--gh-blue)]">Echo</span>{" "}
-          <span className="text-[var(--gh-green)]">Vue</span>
-        </h1>
-        <p className="text-lg text-[var(--gh-text-muted)] mb-1">by Illy Robotics</p>
-        <p className="text-base text-[var(--gh-text)] mb-8 max-w-xl mx-auto">
-          See your space without cameras. Automate your world with WiFi sensing.
+        <p className="text-sm mb-8" style={{ color: "var(--gh-text-muted)" }}>by Illy Robotics</p>
+        <p className="text-xl mb-8 max-w-xl mx-auto leading-relaxed">
+          Your home, understood. <span style={{ color: "var(--gh-text-muted)" }}>Sense every room with WiFi — no cameras, no wearables.</span>
         </p>
 
         <div className="flex gap-4 justify-center mb-16">
           <Link
             href="/auth/signin"
-            className="px-8 py-3 bg-[var(--gh-blue)] rounded-full font-semibold hover:opacity-90 transition text-white"
+            className="btn-primary px-8 py-3 rounded-xl font-semibold text-base"
           >
             Get Started
           </Link>
           <a
             href="#how-it-works"
-            className="px-8 py-3 border border-[var(--gh-border)] rounded-full font-semibold hover:border-[var(--gh-text-muted)] transition"
+            className="px-8 py-3 border rounded-xl font-semibold hover:border-[var(--gh-text-muted)] transition"
+            style={{ borderColor: "var(--gh-border)" }}
           >
             Learn More
           </a>
@@ -42,40 +39,41 @@ export default function Home() {
       {/* Feature Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl w-full mb-16">
         <FeatureCard
-          title="Smart Sensing"
-          description="WiFi CSI detects presence, movement, and vital signs — no cameras, no wearables, total privacy."
-          icon="📡"
+          title="Know Who's Home"
+          description="Sense presence, movement, even breathing — all through WiFi. No cameras watching, just quiet awareness."
+          icon="🏠"
           color="var(--gh-blue)"
         />
         <FeatureCard
-          title="Automations"
-          description="IFTTT-style workflows: lights off when you leave, doors lock when no one's home, AC adjusts to occupancy."
-          icon="⚡"
+          title="Your Home, Automated"
+          description="Lights off when you leave, doors lock at bedtime, AC adjusts to who's around. It just works."
+          icon="✨"
           color="var(--gh-yellow)"
         />
         <FeatureCard
-          title="Energy & Security"
-          description="Reduce energy bills in factories, secure facilities by activity, identify personnel by RF signatures."
-          icon="🛡️"
+          title="Peace of Mind"
+          description="Check on loved ones, pets, or your space from anywhere. Private by design — your data stays yours."
+          icon="💚"
           color="var(--gh-green)"
         />
       </div>
 
       {/* How it works */}
       <div className="max-w-4xl w-full mb-16">
-        <h2 id="how-it-works" className="text-2xl font-bold text-center mb-8">How Echo Vue Works</h2>
+        <h2 id="how-it-works" className="text-2xl font-bold text-center mb-2">How It Works</h2>
+        <p className="text-sm text-center mb-8" style={{ color: "var(--gh-text-muted)" }}>Set up in minutes, works quietly forever.</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
-            { step: "1", title: "Calibrate", desc: "Quick camera trace learns your space's WiFi signature", icon: "📐" },
-            { step: "2", title: "Camera Off", desc: "Camera turns off forever. WiFi CSI takes over.", icon: "📴" },
-            { step: "3", title: "Detect", desc: "AI maps presence, movement, breathing, heart rate", icon: "🧠" },
-            { step: "4", title: "Automate", desc: "Trigger actions — lights, locks, HVAC, alerts", icon: "🔁" },
+            { step: "1", title: "Walk the Room", desc: "A quick camera scan teaches Echo Vue your space", icon: "🚶" },
+            { step: "2", title: "Camera Off", desc: "The camera turns off for good. WiFi takes over.", icon: "🔒" },
+            { step: "3", title: "Live Awareness", desc: "Know who's where, their activity, even vital signs", icon: "💡" },
+            { step: "4", title: "Automate", desc: "Lights, locks, alerts — all hands-free", icon: "🎯" },
           ].map((s) => (
-            <div key={s.step} className="text-center p-4 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)" }}>
-              <div className="text-3xl mb-2">{s.icon}</div>
-              <div className="text-xs text-[var(--gh-blue)] font-bold mb-1">STEP {s.step}</div>
+            <div key={s.step} className="text-center p-5 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)" }}>
+              <div className="text-3xl mb-3">{s.icon}</div>
+              <div className="text-[10px] font-bold mb-1" style={{ color: "var(--gh-blue)" }}>STEP {s.step}</div>
               <h3 className="font-semibold mb-1">{s.title}</h3>
-              <p className="text-xs text-[var(--gh-text-muted)]">{s.desc}</p>
+              <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{s.desc}</p>
             </div>
           ))}
         </div>
@@ -85,11 +83,11 @@ export default function Home() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl w-full">
         <PricingCard
           tier="Personal"
-          features={["2 Spaces", "Activity detection", "Basic automations", "24h playback"]}
+          features={["2 Environments", "Presence & activity", "Basic automations", "24h history"]}
         />
         <PricingCard
           tier="Pro"
-          features={["10 Spaces", "Vital signs monitoring", "Advanced automations & IFTTT", "30-day history", "Personnel identification"]}
+          features={["10 Environments", "Vital signs & wellness", "Smart automations", "30-day history", "Family & pet profiles"]}
           highlighted
         />
       </div>

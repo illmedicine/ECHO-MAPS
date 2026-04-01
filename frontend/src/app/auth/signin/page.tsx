@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { isBackendConfigured, verifyGoogleToken } from "@/lib/api";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
@@ -109,20 +110,22 @@ export default function SignInPage() {
     };
   }, [handleCredentialResponse]);
 
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: "var(--gh-bg)" }}>
       <div className="max-w-md w-full text-center">
-        <h1 className="text-4xl font-bold mb-1">
-          <span style={{ color: "var(--gh-blue)" }}>Echo</span>{" "}
-          <span style={{ color: "var(--gh-green)" }}>Vue</span>
-        </h1>
-        <p className="text-sm mb-8" style={{ color: "var(--gh-text-muted)" }}>by Illy Robotics</p>
+        {/* Logo */}
+        <div className="flex justify-center mb-3">
+          <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={120} height={120} unoptimized />
+        </div>
+        <p className="text-sm mb-10" style={{ color: "var(--gh-text-muted)" }}>by Illy Robotics</p>
 
-        <div className="p-8 rounded-2xl border" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
+        <div className="p-8 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
           <h2 className="text-xl font-semibold mb-6">Sign in to continue</h2>
 
           {!GOOGLE_CLIENT_ID ? (
-            <div className="text-sm p-4 rounded-xl" style={{ backgroundColor: "rgba(251,188,5,0.1)", color: "var(--gh-yellow)" }}>
+            <div className="text-sm p-4 rounded-xl" style={{ backgroundColor: "rgba(245,197,66,0.08)", color: "var(--gh-yellow)" }}>
               <p className="font-semibold mb-1">OAuth not configured</p>
               <p>
                 Set <code>NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> in your environment
@@ -135,17 +138,17 @@ export default function SignInPage() {
             </div>
           )}
 
-          <div className="mt-6 text-sm" style={{ color: "var(--gh-text-muted)" }}>
-            <p>No cameras. No wearables. Pure WiFi sensing.</p>
-          </div>
+          <p className="mt-6 text-sm" style={{ color: "var(--gh-text-muted)" }}>
+            No cameras. No wearables. Pure WiFi sensing.
+          </p>
         </div>
 
         <a
           href="/"
-          className="mt-6 inline-block text-sm transition hover:opacity-80"
+          className="mt-8 inline-block text-sm transition hover:opacity-80"
           style={{ color: "var(--gh-text-muted)" }}
         >
-          ← Back to home
+          &larr; Back to home
         </a>
       </div>
     </main>

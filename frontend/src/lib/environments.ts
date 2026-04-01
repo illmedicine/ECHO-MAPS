@@ -1,14 +1,69 @@
 "use client";
 
 /**
- * Environment CRUD backed by localStorage.
- * When the backend is deployed, swap these functions to hit the API.
+ * Environment & Room CRUD backed by localStorage.
+ *
+ * Hierarchy:
+ *   EchoEnvironment (Home, Work, School, Friend's House)
+ *     └── Environment (Room: Kitchen, Bedroom, Office — each calibrated separately)
  */
+
+/* ── Top-level environment (container) ── */
+
+export type EnvCategory = "home" | "work" | "school" | "friend" | "business" | "other";
+
+export interface EchoEnvironment {
+  id: string;
+  name: string;
+  category: EnvCategory;
+  address?: string;
+  createdAt: string;
+}
+
+const ENV_STORAGE_KEY = "echo_vue_environments";
+
+export function getEchoEnvironments(): EchoEnvironment[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(ENV_STORAGE_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function getEchoEnvironment(id: string): EchoEnvironment | null {
+  return getEchoEnvironments().find((e) => e.id === id) ?? null;
+}
+
+export function createEchoEnvironment(data: Pick<EchoEnvironment, "name" | "category" | "address">): EchoEnvironment {
+  const envs = getEchoEnvironments();
+  const env: EchoEnvironment = {
+    id: crypto.randomUUID(),
+    name: data.name,
+    category: data.category,
+    address: data.address,
+    createdAt: new Date().toISOString(),
+  };
+  envs.push(env);
+  localStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(envs));
+  return env;
+}
+
+export function deleteEchoEnvironment(id: string): boolean {
+  const envs = getEchoEnvironments();
+  const filtered = envs.filter((e) => e.id !== id);
+  if (filtered.length === envs.length) return false;
+  localStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(filtered));
+  // Also delete all rooms in this environment
+  const rooms = getEnvironments().filter((r) => r.environmentId === id);
+  rooms.forEach((r) => deleteEnvironment(r.id));
+  return true;
+}
+
+/* ── Room (per-room, calibrated individually) ── */
 
 export interface Environment {
   id: string;
+  environmentId?: string;  // parent EchoEnvironment id
   name: string;
-  type: "home" | "office" | "clinic" | "other";
+  type: "home" | "office" | "clinic" | "kitchen" | "bedroom" | "living_room" | "patio" | "factory" | "other";
   dimensions: { width: number; length: number; height: number };
   isCalibrated: boolean;
   calibrationConfidence: number;
@@ -46,12 +101,13 @@ export function getEnvironment(id: string): Environment | null {
 }
 
 export function createEnvironment(
-  data: Pick<Environment, "name" | "type" | "dimensions">
+  data: Pick<Environment, "name" | "type" | "dimensions"> & { environmentId?: string }
 ): Environment {
   const envs = getEnvironments();
   const now = new Date().toISOString();
   const env: Environment = {
     id: crypto.randomUUID(),
+    environmentId: data.environmentId,
     name: data.name,
     type: data.type,
     dimensions: data.dimensions,
@@ -85,6 +141,10 @@ export function deleteEnvironment(id: string): boolean {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
   localStorage.removeItem(ACTIVITY_KEY_PREFIX + id);
   return true;
+}
+
+export function getRoomsForEnvironment(envId: string): Environment[] {
+  return getEnvironments().filter((e) => e.environmentId === envId);
 }
 
 // ── Activity Log ──
@@ -239,3 +299,79 @@ export const ENV_TYPE_ICONS: Record<Environment["type"], string> = {
   clinic: "🏥",
   other: "📍",
 };
+
+/* ══════════════════════════════════════════════
+   Camera Management
+   ══════════════════════════════════════════════ */
+
+export interface Camera {
+  id: string;
+  label: string;              // user-facing name, e.g. "OBS Virtual Camera"
+  deviceId: string;           // MediaDevices deviceId
+  roomId: string;             // linked Environment (room) id
+  environmentId: string;      // parent EchoEnvironment id
+  active: boolean;            // currently streaming / tuning
+  createdAt: string;
+}
+
+const CAMERA_STORAGE_KEY = "echo_vue_cameras";
+
+export function getCameras(): Camera[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(CAMERA_STORAGE_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function getCamerasForRoom(roomId: string): Camera[] {
+  return getCameras().filter((c) => c.roomId === roomId);
+}
+
+export function getCamerasForEnvironment(envId: string): Camera[] {
+  return getCameras().filter((c) => c.environmentId === envId);
+}
+
+export function addCamera(data: Omit<Camera, "id" | "createdAt">): Camera {
+  const cams = getCameras();
+  const cam: Camera = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+  cams.push(cam);
+  localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify(cams));
+  return cam;
+}
+
+export function updateCamera(id: string, updates: Partial<Omit<Camera, "id" | "createdAt">>): Camera | null {
+  const cams = getCameras();
+  const idx = cams.findIndex((c) => c.id === id);
+  if (idx === -1) return null;
+  cams[idx] = { ...cams[idx], ...updates };
+  localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify(cams));
+  return cams[idx];
+}
+
+export function removeCamera(id: string): boolean {
+  const cams = getCameras();
+  const filtered = cams.filter((c) => c.id !== id);
+  if (filtered.length === cams.length) return false;
+  localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify(filtered));
+  return true;
+}
+
+/* ── Calibration Activity Prompts ── */
+
+export interface CalibrationActivity {
+  id: string;
+  label: string;
+  instruction: string;
+  durationSec: number;
+  icon: string;
+}
+
+export const CALIBRATION_ACTIVITIES: CalibrationActivity[] = [
+  { id: "walk_perimeter",  label: "Walk the perimeter",     instruction: "Walk slowly along every wall so Echo Vue can map the room boundaries.", durationSec: 30, icon: "🚶" },
+  { id: "walk_center",     label: "Walk through center",    instruction: "Walk through the center of the room at a normal pace.",                 durationSec: 20, icon: "🚶‍♂️" },
+  { id: "stand_still",     label: "Stand still",            instruction: "Stand in the center of the room and breathe normally.",                 durationSec: 15, icon: "🧍" },
+  { id: "sit_down",        label: "Sit down",               instruction: "Sit in a chair or on the couch — let Echo Vue learn seated posture.",  durationSec: 15, icon: "🪑" },
+  { id: "wave_arms",       label: "Wave your arms",         instruction: "Move your arms in different directions to help calibrate motion.",      durationSec: 10, icon: "🙋" },
+  { id: "lie_down",        label: "Lie down / rest",        instruction: "Lie on a bed or couch — this teaches resting/sleeping patterns.",       durationSec: 15, icon: "🛏️" },
+  { id: "use_device",      label: "Use phone / computer",   instruction: "Sit and interact with a device to capture subtle movement.",            durationSec: 15, icon: "💻" },
+  { id: "pet_interact",    label: "Interact with a pet",    instruction: "If a pet is nearby, interact with it so Echo Vue can distinguish.",    durationSec: 10, icon: "🐕" },
+];

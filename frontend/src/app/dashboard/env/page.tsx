@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useRef } from "react";
+import { Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -64,8 +64,40 @@ function EnvironmentViewContent() {
   const [calProgress, setCalProgress] = useState(0);
   const [calMessage, setCalMessage] = useState("");
   const animRef = useRef<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   const DEFAULT_DIMS = { width: 5, length: 4, height: 2.7 };
+
+  /* Camera helpers */
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraActive(true);
+    } catch (err) {
+      setCameraError(err instanceof Error ? err.message : "Camera access denied");
+      setCameraActive(false);
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraActive(false);
+  }, []);
 
   useEffect(() => {
     if (!envId) return;
@@ -106,17 +138,28 @@ function EnvironmentViewContent() {
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, [live, env]);
 
+  /* Cleanup camera on unmount */
+  useEffect(() => {
+    return () => { stopCamera(); };
+  }, [stopCamera]);
+
   /* Step-by-step calibration matching landing page Steps 1-3 */
   const runCalibration = async () => {
     if (!env) return;
 
-    if (isBackendConfigured()) {
-      try { await apiStartCalibration(envId!); } catch { /* simulate */ }
+    // Only call backend if we have a real API token (avoids CORS errors in demo mode)
+    const stored = typeof window !== "undefined" ? localStorage.getItem("echo_maps_user") : null;
+    const hasToken = stored ? !!JSON.parse(stored).apiToken : false;
+    if (hasToken && isBackendConfigured()) {
+      try { await apiStartCalibration(envId!); } catch { /* simulate locally */ }
     }
 
     // Step 1: Calibrate - camera trace learning WiFi signature
     setCalStep("calibrating");
-    setCalMessage("Walk through your space with phone camera...");
+    setCalMessage("Starting camera... Walk slowly through your space.");
+    await startCamera();
+    await tick(500);
+    setCalMessage("Camera active — walk through your space to map WiFi signatures...");
     for (let p = 0; p <= 40; p += 2) {
       await tick(150);
       setCalProgress(p);
@@ -126,6 +169,7 @@ function EnvironmentViewContent() {
     // Step 2: Camera Off - WiFi CSI takes over
     setCalStep("camera-off");
     setCalMessage("Camera turning off... WiFi CSI taking over.");
+    stopCamera();
     for (let p = 40; p <= 70; p += 2) {
       await tick(120);
       setCalProgress(p);
@@ -141,10 +185,12 @@ function EnvironmentViewContent() {
     for (let p = 70; p <= 98; p += 2) {
       await tick(100);
       setCalProgress(p);
-      setPointCloud(generateSimulatedPointCloud(env.dims));
-      setSkeleton(generateSimulatedSkeleton(env.dims));
-      setVitals(generateSimulatedVitals());
-      setHeatmapData(generateHeatmapData(env.dims));
+      if (p % 10 === 0) {
+        setPointCloud(generateSimulatedPointCloud(env.dims));
+        setSkeleton(generateSimulatedSkeleton(env.dims));
+        setVitals(generateSimulatedVitals());
+        setHeatmapData(generateHeatmapData(env.dims));
+      }
     }
 
     // Complete
@@ -240,6 +286,35 @@ function EnvironmentViewContent() {
             <p className="text-sm mt-3 text-center" style={{ color: calStep === "complete" ? "var(--gh-green)" : "var(--gh-text-muted)" }}>
               {calMessage} <span className="font-mono text-xs">({calProgress}%)</span>
             </p>
+
+            {/* Live Camera Feed — shown during Step 1 */}
+            {calStep === "calibrating" && (
+              <div className="mt-4 rounded-xl overflow-hidden border relative" style={{ borderColor: "var(--gh-border)" }}>
+                {cameraError ? (
+                  <div className="h-[300px] flex items-center justify-center text-center p-4" style={{ backgroundColor: "var(--gh-card)" }}>
+                    <div>
+                      <p className="text-2xl mb-2">📷</p>
+                      <p className="text-sm font-medium" style={{ color: "var(--gh-red)" }}>Camera unavailable</p>
+                      <p className="text-xs mt-1" style={{ color: "var(--gh-text-muted)" }}>{cameraError}</p>
+                      <p className="text-xs mt-2" style={{ color: "var(--gh-text-muted)" }}>Calibration will continue with simulated data</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-[300px] object-cover" style={{ backgroundColor: "#000" }} />
+                    {cameraActive && (
+                      <div className="absolute top-3 left-3 flex items-center gap-2 px-2 py-1 rounded-full" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+                        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                        <span className="text-[10px] text-white font-medium">RECORDING</span>
+                      </div>
+                    )}
+                    <div className="absolute bottom-3 left-3 right-3 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(0,0,0,0.6)", color: "var(--gh-text)" }}>
+                      Walk slowly through the room — the camera maps spatial features to WiFi CSI signatures
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

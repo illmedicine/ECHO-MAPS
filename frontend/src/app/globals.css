@@ -3,24 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --gh-blue: #4285F4;
-  --gh-green: #34A853;
-  --gh-yellow: #FBBC05;
-  --gh-red: #EA4335;
-  --gh-bg: #0d1117;
-  --gh-surface: #1a1f2e;
-  --gh-surface-hover: #242b3d;
-  --gh-card: #202736;
-  --gh-border: #2d3548;
-  --gh-text: #e8eaed;
-  --gh-text-muted: #9aa0a6;
+  --gh-blue: #5B9CF6;
+  --gh-green: #5EBB7F;
+  --gh-yellow: #F5C542;
+  --gh-red: #E8685A;
+  --gh-bg: #121318;
+  --gh-surface: #1c1d24;
+  --gh-surface-hover: #26272f;
+  --gh-card: #1f2028;
+  --gh-border: #2e303a;
+  --gh-text: #ecedf0;
+  --gh-text-muted: #8b8f9a;
+  --gh-accent: #7c8cf8;
   /* Legacy aliases */
-  --illy-blue: #4285F4;
-  --illy-green: #34A853;
-  --illy-red: #EA4335;
-  --illy-dark: #0d1117;
-  --illy-surface: #1a1f2e;
-  --illy-coral: #EA4335;
+  --illy-blue: #5B9CF6;
+  --illy-green: #5EBB7F;
+  --illy-red: #E8685A;
+  --illy-dark: #121318;
+  --illy-surface: #1c1d24;
+  --illy-coral: #E8685A;
 }
 
 body {
@@ -30,20 +31,30 @@ body {
   font-family: 'Google Sans', 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: var(--gh-bg); }
-::-webkit-scrollbar-thumb { background: var(--gh-border); border-radius: 4px; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gh-border); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gh-text-muted); }
 
 .device-card {
   @apply rounded-2xl p-4 transition-all duration-200 cursor-pointer;
   background-color: var(--gh-card);
+  border: 1px solid transparent;
 }
-.device-card:hover { background-color: var(--gh-surface-hover); }
-.device-card.active { background-color: rgba(66, 133, 244, 0.3); }
+.device-card:hover { background-color: var(--gh-surface-hover); border-color: var(--gh-border); transform: translateY(-1px); }
+.device-card.active { background-color: rgba(91, 156, 246, 0.12); border-color: var(--gh-blue); }
 
 .sidebar-item {
-  @apply flex items-center gap-3 px-4 py-3 rounded-full text-sm transition-all duration-200 cursor-pointer;
+  @apply flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-all duration-200 cursor-pointer;
   color: var(--gh-text-muted);
 }
 .sidebar-item:hover { background-color: var(--gh-surface-hover); color: var(--gh-text); }
-.sidebar-item.active { background-color: rgba(66, 133, 244, 0.15); color: var(--gh-blue); }
+.sidebar-item.active { background-color: rgba(91, 156, 246, 0.12); color: var(--gh-blue); }
+
+.btn-primary {
+  @apply px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200;
+  background: linear-gradient(135deg, var(--gh-blue), var(--gh-accent));
+  color: white;
+}
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(91, 156, 246, 0.3); }
+.btn-primary:disabled { opacity: 0.5; transform: none; box-shadow: none; }
