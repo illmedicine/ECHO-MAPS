@@ -88,7 +88,7 @@ function EnvironmentViewContent() {
   useEffect(() => {
     if (!env) return;
     setPointCloud(generateSimulatedPointCloud(env.dims));
-    setSkeleton(generateSimulatedSkeleton());
+    setSkeleton(generateSimulatedSkeleton(env.dims));
     setHeatmapData(generateHeatmapData(env.dims));
     setVitals(generateSimulatedVitals());
   }, [env]);
@@ -97,7 +97,7 @@ function EnvironmentViewContent() {
     if (!live || !env) { if (animRef.current) cancelAnimationFrame(animRef.current); return; }
     const animate = () => {
       setPointCloud(generateSimulatedPointCloud(env.dims));
-      setSkeleton(generateSimulatedSkeleton());
+      setSkeleton(generateSimulatedSkeleton(env.dims));
       setVitals(generateSimulatedVitals());
       setHeatmapData(generateHeatmapData(env.dims));
       animRef.current = requestAnimationFrame(() => { setTimeout(() => { animRef.current = requestAnimationFrame(animate); }, 500); });
@@ -131,7 +131,7 @@ function EnvironmentViewContent() {
       setCalProgress(p);
       if (p % 8 === 0) {
         setPointCloud(generateSimulatedPointCloud(env.dims));
-        setSkeleton(generateSimulatedSkeleton());
+        setSkeleton(generateSimulatedSkeleton(env.dims));
       }
     }
 
@@ -142,7 +142,7 @@ function EnvironmentViewContent() {
       await tick(100);
       setCalProgress(p);
       setPointCloud(generateSimulatedPointCloud(env.dims));
-      setSkeleton(generateSimulatedSkeleton());
+      setSkeleton(generateSimulatedSkeleton(env.dims));
       setVitals(generateSimulatedVitals());
       setHeatmapData(generateHeatmapData(env.dims));
     }
