@@ -18,6 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
         {/* XL transparent logo watermark */}
         <div
           aria-hidden="true"
@@ -28,7 +29,7 @@ export default function RootLayout({
             alignItems: "center",
             justifyContent: "center",
             pointerEvents: "none",
-            zIndex: 0,
+            zIndex: 9999,
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -36,14 +37,13 @@ export default function RootLayout({
             src={`${basePath}/logo.png`}
             alt=""
             style={{
-              width: 520,
-              height: 520,
+              width: "min(90vw, 90vh)",
+              height: "min(90vw, 90vh)",
               opacity: 0.045,
               userSelect: "none",
             }}
           />
         </div>
-        <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
       </body>
     </html>
   );
