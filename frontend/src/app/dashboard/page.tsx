@@ -10,6 +10,8 @@ import {
   deleteEnvironment,
   healthCheck,
 } from "@/lib/api";
+import { estimatePose, preloadModel, isModelLoaded } from "@/lib/poseEstimator";
+import { storeFrame, getCollectionStats, type CollectedFrame } from "@/lib/collectedData";
 import {
   getEnvironments,
   createEnvironment as createLocalRoom,
@@ -84,6 +86,7 @@ export default function DashboardPage() {
   const [showNewEnvModal, setShowNewEnvModal] = useState(false);
   const [showNewRoomModal, setShowNewRoomModal] = useState(false);
   const [showAddCameraModal, setShowAddCameraModal] = useState(false);
+  const [cameraVersion, setCameraVersion] = useState(0);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -262,7 +265,7 @@ export default function DashboardPage() {
           {activeTab === "spaces" ? (
             <RoomsView rooms={rooms} selectedEnvId={selectedEnvId} selectedEnv={selectedEnv ?? null} onAddEnv={() => setShowNewEnvModal(true)} onAddRoom={() => setShowNewRoomModal(true)} onDeleteRoom={handleDeleteRoom} />
           ) : activeTab === "cameras" ? (
-            <CamerasView onAddCamera={() => setShowAddCameraModal(true)} />
+            <CamerasView key={cameraVersion} onAddCamera={() => setShowAddCameraModal(true)} />
           ) : activeTab === "automations" ? (
             <AutomationsView />
           ) : (
@@ -272,8 +275,8 @@ export default function DashboardPage() {
       </main>
 
       {showNewEnvModal && <NewEnvironmentModal onClose={() => setShowNewEnvModal(false)} onCreate={handleCreateEnv} />}
-      {showNewRoomModal && <NewRoomModal onClose={() => setShowNewRoomModal(false)} onCreate={handleCreateRoom} />}
-      {showAddCameraModal && <AddCameraModal rooms={rooms} selectedEnvId={selectedEnvId} onClose={() => setShowAddCameraModal(false)} onRoomCreated={reloadRooms} />}
+      {showNewRoomModal && <NewRoomModal onClose={() => { setShowNewRoomModal(false); setCameraVersion((v) => v + 1); }} onCreate={handleCreateRoom} />}
+      {showAddCameraModal && <AddCameraModal rooms={rooms} selectedEnvId={selectedEnvId} onClose={() => { setShowAddCameraModal(false); setCameraVersion((v) => v + 1); }} onRoomCreated={reloadRooms} />}
     </div>
   );
 }
@@ -354,23 +357,123 @@ function CamerasView({ onAddCamera }: { onAddCamera: () => void }) {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [activeStreams, setActiveStreams] = useState<Record<string, MediaStream>>({});
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+  const poseLoopRefs = useRef<Record<string, number>>({});
+  const [poseStats, setPoseStats] = useState<Record<string, { fps: number; detected: boolean; confidence: number }>>({});
+  const [totalFrames, setTotalFrames] = useState(0);
+  const frameCountRef = useRef(0);
 
   useEffect(() => { setCameras(getCameras()); }, []);
   useEffect(() => {
-    return () => { Object.values(activeStreams).forEach((s) => s.getTracks().forEach((t) => t.stop())); };
+    // Load total collected frames count on mount
+    getCollectionStats().then((stats) => {
+      setTotalFrames(stats.totalFrames);
+      frameCountRef.current = stats.totalFrames;
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    return () => {
+      Object.values(activeStreams).forEach((s) => s.getTracks().forEach((t) => t.stop()));
+      // Stop all pose loops
+      Object.values(poseLoopRefs.current).forEach((id) => cancelAnimationFrame(id));
+    };
   }, [activeStreams]);
+
+  // Pose extraction loop for a specific camera
+  const startPoseLoop = useCallback((camId: string, roomId: string) => {
+    let lastTime = 0;
+    let framesSinceLastSec = 0;
+    let lastSecond = Date.now();
+    let storeCounter = 0;
+
+    const loop = async () => {
+      const video = videoRefs.current[camId];
+      if (!video || video.paused || video.ended || !video.videoWidth) {
+        poseLoopRefs.current[camId] = requestAnimationFrame(loop);
+        return;
+      }
+
+      const now = performance.now();
+      if (now - lastTime < 80) { // ~12fps cap to avoid overload
+        poseLoopRefs.current[camId] = requestAnimationFrame(loop);
+        return;
+      }
+      lastTime = now;
+
+      try {
+        const result = await estimatePose(video, { width: 5, length: 4, height: 2.7 });
+        if (result) {
+          framesSinceLastSec++;
+          const nowMs = Date.now();
+          if (nowMs - lastSecond >= 1000) {
+            setPoseStats((prev) => ({
+              ...prev,
+              [camId]: {
+                fps: framesSinceLastSec,
+                detected: result.isDetected,
+                confidence: result.confidence,
+              },
+            }));
+            framesSinceLastSec = 0;
+            lastSecond = nowMs;
+          }
+
+          // Store every 10th frame for the learning engine
+          storeCounter++;
+          if (result.isDetected && storeCounter % 10 === 0) {
+            const frame: CollectedFrame = {
+              id: `${camId}-${Date.now()}`,
+              envId: "", // camera may span environments
+              roomId,
+              timestamp: Date.now(),
+              keypoints3d: result.keypoints3d,
+              keypoints2d: result.keypoints2d,
+              confidence: result.confidence,
+              activity: "camera_tuning",
+              source: "camera",
+            };
+            storeFrame(frame).catch(() => {});
+            frameCountRef.current++;
+            if (storeCounter % 50 === 0) {
+              setTotalFrames(frameCountRef.current);
+            }
+          }
+        }
+      } catch {
+        // pose estimation error — skip frame
+      }
+
+      poseLoopRefs.current[camId] = requestAnimationFrame(loop);
+    };
+    poseLoopRefs.current[camId] = requestAnimationFrame(loop);
+  }, []);
+
+  const stopPoseLoop = useCallback((camId: string) => {
+    if (poseLoopRefs.current[camId]) {
+      cancelAnimationFrame(poseLoopRefs.current[camId]);
+      delete poseLoopRefs.current[camId];
+    }
+    setPoseStats((prev) => { const copy = { ...prev }; delete copy[camId]; return copy; });
+  }, []);
 
   const startStream = async (cam: Camera) => {
     try {
+      // Pre-load pose model before starting the stream
+      preloadModel();
       const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: cam.deviceId } }, audio: false });
       setActiveStreams((prev) => ({ ...prev, [cam.id]: stream }));
-      setTimeout(() => { const el = videoRefs.current[cam.id]; if (el) { el.srcObject = stream; el.play(); } }, 50);
+      setTimeout(() => {
+        const el = videoRefs.current[cam.id];
+        if (el) { el.srcObject = stream; el.play(); }
+        // Start real pose extraction loop
+        startPoseLoop(cam.id, cam.roomId);
+      }, 50);
       updateCamera(cam.id, { active: true });
       setCameras(getCameras());
     } catch (err) { alert(`Could not start camera: ${err instanceof Error ? err.message : err}`); }
   };
 
   const stopStream = (camId: string) => {
+    stopPoseLoop(camId);
     const stream = activeStreams[camId];
     if (stream) stream.getTracks().forEach((t) => t.stop());
     setActiveStreams((prev) => { const copy = { ...prev }; delete copy[camId]; return copy; });
@@ -435,8 +538,10 @@ function CamerasView({ onAddCamera }: { onAddCamera: () => void }) {
                         </div>
                       )}
                       {isLive && (
-                        <div className="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-[10px]" style={{ backgroundColor: "rgba(0,0,0,0.6)", color: "var(--gh-green)" }}>
-                          🧠 AI tuning active
+                        <div className="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-[10px]" style={{ backgroundColor: "rgba(0,0,0,0.6)", color: poseStats[cam.id]?.detected ? "var(--gh-green)" : "var(--gh-yellow)" }}>
+                          🧠 {poseStats[cam.id]?.detected
+                            ? `Pose detected · ${(poseStats[cam.id].confidence * 100).toFixed(0)}% · ${poseStats[cam.id].fps}fps`
+                            : isModelLoaded() ? "Scanning for pose..." : "Loading AI model..."}
                         </div>
                       )}
                     </div>
@@ -469,8 +574,8 @@ function CamerasView({ onAddCamera }: { onAddCamera: () => void }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { label: "Active Cameras", value: `${Object.keys(activeStreams).length}`, color: "var(--gh-green)" },
-            { label: "Total Cameras", value: `${cameras.length}`, color: "var(--gh-blue)" },
-            { label: "Detection Model", value: "LatentCSI v2", color: "var(--gh-yellow)" },
+            { label: "Frames Collected", value: `${totalFrames}`, color: "var(--gh-blue)" },
+            { label: "Detection Model", value: isModelLoaded() ? "MoveNet Lightning" : "Loading...", color: "var(--gh-yellow)" },
             { label: "Learning Mode", value: Object.keys(activeStreams).length > 0 ? "Active" : "Paused", color: Object.keys(activeStreams).length > 0 ? "var(--gh-green)" : "var(--gh-text-muted)" },
           ].map((s) => (
             <div key={s.label} className="p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)" }}>

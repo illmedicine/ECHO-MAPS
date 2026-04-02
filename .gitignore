@@ -28,6 +28,7 @@ build/
 *.egg-info/
 .next/
 out/
+*.tsbuildinfo
 
 # OS
 .DS_Store

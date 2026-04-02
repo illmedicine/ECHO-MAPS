@@ -200,58 +200,86 @@ export function generateSimulatedSkeleton(
   dims: Environment["dimensions"],
   time: number = 0
 ): number[][] {
-  // Simulate a person standing/walking in the room
-  const cx = dims.width / 2 + Math.sin(time * 0.5) * 1.5;
-  const cz = dims.length / 2 + Math.cos(time * 0.3) * 1.0;
+  // Simulate a person walking around the room with natural body mechanics
+  const walkSpeed = 0.4;
+  const pathRadius = Math.min(dims.width, dims.length) * 0.25;
+  const cx = dims.width / 2 + Math.sin(time * walkSpeed) * pathRadius;
+  const cz = dims.length / 2 + Math.cos(time * walkSpeed * 0.7) * pathRadius * 0.8;
   const baseY = 0;
 
-  // 33 MediaPipe keypoints (simplified — key ones positioned, rest interpolated)
+  // Walking cycle — gait frequency
+  const gaitFreq = 2.5; // steps per second
+  const gaitPhase = time * gaitFreq;
+  const walkCycle = Math.sin(gaitPhase * Math.PI);
+  const walkCycleR = Math.sin(gaitPhase * Math.PI + Math.PI); // opposite phase
+
+  // Subtle vertical bob from walking
+  const bobY = Math.abs(Math.sin(gaitPhase * Math.PI)) * 0.02;
+
+  // Torso sway — slight lateral shift per step
+  const sway = Math.sin(gaitPhase * Math.PI) * 0.03;
+
+  // Breathing — subtle chest expansion
+  const breathCycle = Math.sin(time * 1.0) * 0.008; // ~15 bpm
+
+  // 33 MediaPipe keypoints with natural walking motion
   const keypoints: number[][] = [];
 
-  // Head (0-10)
-  keypoints[0] = [cx, baseY + 1.7, cz];                    // nose
-  keypoints[1] = [cx - 0.03, baseY + 1.75, cz - 0.02];    // left eye inner
-  keypoints[2] = [cx - 0.06, baseY + 1.75, cz - 0.02];    // left eye
-  keypoints[3] = [cx - 0.09, baseY + 1.75, cz - 0.02];    // left eye outer
-  keypoints[4] = [cx + 0.03, baseY + 1.75, cz - 0.02];    // right eye inner
-  keypoints[5] = [cx + 0.06, baseY + 1.75, cz - 0.02];    // right eye
-  keypoints[6] = [cx + 0.09, baseY + 1.75, cz - 0.02];    // right eye outer
-  keypoints[7] = [cx - 0.12, baseY + 1.72, cz];            // left ear
-  keypoints[8] = [cx + 0.12, baseY + 1.72, cz];            // right ear
-  keypoints[9] = [cx - 0.04, baseY + 1.65, cz + 0.02];    // mouth left
-  keypoints[10] = [cx + 0.04, baseY + 1.65, cz + 0.02];   // mouth right
+  // Head (0-10) — slight head bob and turn
+  const headTurn = Math.sin(time * 0.3) * 0.02;
+  keypoints[0] = [cx + headTurn, baseY + 1.7 + bobY, cz];                    // nose
+  keypoints[1] = [cx - 0.03 + headTurn, baseY + 1.75 + bobY, cz - 0.02];    // left eye inner
+  keypoints[2] = [cx - 0.06 + headTurn, baseY + 1.75 + bobY, cz - 0.02];    // left eye
+  keypoints[3] = [cx - 0.09 + headTurn, baseY + 1.75 + bobY, cz - 0.02];    // left eye outer
+  keypoints[4] = [cx + 0.03 + headTurn, baseY + 1.75 + bobY, cz - 0.02];    // right eye inner
+  keypoints[5] = [cx + 0.06 + headTurn, baseY + 1.75 + bobY, cz - 0.02];    // right eye
+  keypoints[6] = [cx + 0.09 + headTurn, baseY + 1.75 + bobY, cz - 0.02];    // right eye outer
+  keypoints[7] = [cx - 0.12 + headTurn, baseY + 1.72 + bobY, cz];            // left ear
+  keypoints[8] = [cx + 0.12 + headTurn, baseY + 1.72 + bobY, cz];            // right ear
+  keypoints[9] = [cx - 0.04 + headTurn, baseY + 1.65 + bobY, cz + 0.02];    // mouth left
+  keypoints[10] = [cx + 0.04 + headTurn, baseY + 1.65 + bobY, cz + 0.02];   // mouth right
 
-  // Shoulders (11-12)
-  keypoints[11] = [cx - 0.2, baseY + 1.45, cz];            // left shoulder
-  keypoints[12] = [cx + 0.2, baseY + 1.45, cz];            // right shoulder
+  // Shoulders (11-12) — sway with gait + breathing expansion
+  keypoints[11] = [cx - 0.2 + sway - breathCycle, baseY + 1.45 + bobY, cz];  // left shoulder
+  keypoints[12] = [cx + 0.2 + sway + breathCycle, baseY + 1.45 + bobY, cz];  // right shoulder
 
-  // Arms (13-22)
-  const armSwing = Math.sin(time * 2) * 0.15;
-  keypoints[13] = [cx - 0.35, baseY + 1.15 + armSwing, cz];      // left elbow
-  keypoints[14] = [cx + 0.35, baseY + 1.15 - armSwing, cz];      // right elbow
-  keypoints[15] = [cx - 0.4, baseY + 0.9 + armSwing, cz + 0.05]; // left wrist
-  keypoints[16] = [cx + 0.4, baseY + 0.9 - armSwing, cz + 0.05]; // right wrist
-  keypoints[17] = [cx - 0.42, baseY + 0.85 + armSwing, cz + 0.06]; // left pinky
-  keypoints[18] = [cx + 0.42, baseY + 0.85 - armSwing, cz + 0.06]; // right pinky
-  keypoints[19] = [cx - 0.43, baseY + 0.86 + armSwing, cz + 0.04]; // left index
-  keypoints[20] = [cx + 0.43, baseY + 0.86 - armSwing, cz + 0.04]; // right index
-  keypoints[21] = [cx - 0.41, baseY + 0.87 + armSwing, cz + 0.05]; // left thumb
-  keypoints[22] = [cx + 0.41, baseY + 0.87 - armSwing, cz + 0.05]; // right thumb
+  // Arms (13-22) — natural arm swing opposite to legs
+  const armSwingL = walkCycleR * 0.2;  // left arm swings with right leg
+  const armSwingR = walkCycle * 0.2;    // right arm swings with left leg
+  const armBendL = 0.15 + Math.abs(armSwingL) * 0.1; // elbow bend increases with swing
+  const armBendR = 0.15 + Math.abs(armSwingR) * 0.1;
 
-  // Hips (23-24)
-  keypoints[23] = [cx - 0.15, baseY + 0.9, cz];            // left hip
-  keypoints[24] = [cx + 0.15, baseY + 0.9, cz];            // right hip
+  keypoints[13] = [cx - 0.3 + sway, baseY + 1.2 + bobY, cz + armSwingL];           // left elbow
+  keypoints[14] = [cx + 0.3 + sway, baseY + 1.2 + bobY, cz + armSwingR];           // right elbow
+  keypoints[15] = [cx - 0.32 + sway, baseY + 1.0 + bobY - armBendL, cz + armSwingL * 1.3]; // left wrist
+  keypoints[16] = [cx + 0.32 + sway, baseY + 1.0 + bobY - armBendR, cz + armSwingR * 1.3]; // right wrist
+  keypoints[17] = [cx - 0.33 + sway, baseY + 0.95 + bobY - armBendL, cz + armSwingL * 1.35]; // left pinky
+  keypoints[18] = [cx + 0.33 + sway, baseY + 0.95 + bobY - armBendR, cz + armSwingR * 1.35]; // right pinky
+  keypoints[19] = [cx - 0.34 + sway, baseY + 0.96 + bobY - armBendL, cz + armSwingL * 1.32]; // left index
+  keypoints[20] = [cx + 0.34 + sway, baseY + 0.96 + bobY - armBendR, cz + armSwingR * 1.32]; // right index
+  keypoints[21] = [cx - 0.32 + sway, baseY + 0.97 + bobY - armBendL, cz + armSwingL * 1.28]; // left thumb
+  keypoints[22] = [cx + 0.32 + sway, baseY + 0.97 + bobY - armBendR, cz + armSwingR * 1.28]; // right thumb
 
-  // Legs (25-32)
-  const legSwing = Math.sin(time * 2) * 0.1;
-  keypoints[25] = [cx - 0.15, baseY + 0.5 + legSwing, cz + 0.05];  // left knee
-  keypoints[26] = [cx + 0.15, baseY + 0.5 - legSwing, cz + 0.05];  // right knee
-  keypoints[27] = [cx - 0.15, baseY + 0.05, cz + legSwing * 0.5];  // left ankle
-  keypoints[28] = [cx + 0.15, baseY + 0.05, cz - legSwing * 0.5];  // right ankle
-  keypoints[29] = [cx - 0.15, baseY + 0.02, cz + 0.1 + legSwing * 0.5]; // left heel
-  keypoints[30] = [cx + 0.15, baseY + 0.02, cz + 0.1 - legSwing * 0.5]; // right heel
-  keypoints[31] = [cx - 0.15, baseY + 0.0, cz + 0.15 + legSwing * 0.5]; // left foot
-  keypoints[32] = [cx + 0.15, baseY + 0.0, cz + 0.15 - legSwing * 0.5]; // right foot
+  // Hips (23-24) — sway with walking
+  keypoints[23] = [cx - 0.12 + sway * 0.5, baseY + 0.9 + bobY * 0.5, cz];  // left hip
+  keypoints[24] = [cx + 0.12 + sway * 0.5, baseY + 0.9 + bobY * 0.5, cz];  // right hip
+
+  // Legs (25-32) — natural walking gait cycle
+  const legStrideL = walkCycle * 0.25;   // left leg stride
+  const legStrideR = walkCycleR * 0.25;  // right leg stride (opposite)
+  const kneeBendL = Math.max(0, walkCycle) * 0.12;   // knee lifts on forward swing
+  const kneeBendR = Math.max(0, walkCycleR) * 0.12;
+  const footLiftL = Math.max(0, Math.sin(gaitPhase * Math.PI)) * 0.08;
+  const footLiftR = Math.max(0, Math.sin(gaitPhase * Math.PI + Math.PI)) * 0.08;
+
+  keypoints[25] = [cx - 0.12, baseY + 0.48 + kneeBendL, cz + legStrideL * 0.5];  // left knee
+  keypoints[26] = [cx + 0.12, baseY + 0.48 + kneeBendR, cz + legStrideR * 0.5];  // right knee
+  keypoints[27] = [cx - 0.12, baseY + 0.05 + footLiftL, cz + legStrideL];         // left ankle
+  keypoints[28] = [cx + 0.12, baseY + 0.05 + footLiftR, cz + legStrideR];         // right ankle
+  keypoints[29] = [cx - 0.12, baseY + 0.02 + footLiftL * 0.5, cz + legStrideL - 0.05]; // left heel
+  keypoints[30] = [cx + 0.12, baseY + 0.02 + footLiftR * 0.5, cz + legStrideR - 0.05]; // right heel
+  keypoints[31] = [cx - 0.12, baseY + 0.0 + footLiftL * 0.3, cz + legStrideL + 0.1];   // left foot index
+  keypoints[32] = [cx + 0.12, baseY + 0.0 + footLiftR * 0.3, cz + legStrideR + 0.1];   // right foot index
 
   return keypoints;
 }
@@ -301,6 +329,13 @@ export const ENV_TYPE_ICONS: Record<Environment["type"], string> = {
   home: "🏠",
   office: "🏢",
   clinic: "🏥",
+  kitchen: "🍳",
+  bedroom: "🛏️",
+  living_room: "🛋️",
+  bathroom: "🚿",
+  patio: "☀️",
+  garage: "🚗",
+  factory: "🏭",
   other: "📍",
 };
 

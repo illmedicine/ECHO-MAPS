@@ -9,11 +9,21 @@ from enum import Enum
 
 class CalibrationStage(str, Enum):
     SETUP = "setup"
-    TRACE = "trace"
-    TRAINING = "training"
-    CONFIDENCE = "confidence"
-    LIVE = "live"
+    TRACE = "trace"                           # Phase 1: Visual Handshake
+    ANCHOR_EXTRACTION = "anchor_extraction"   # Phase 2: Building RF Signatures
+    TRAINING = "training"                     # Phase 3: GAN training
+    CONFIDENCE = "confidence"                 # Phase 3: RF-only hits 90%+
+    HANDOFF = "handoff"                       # Phase 3: "Environment Synced"
+    LIVE = "live"                             # Phase 3→4: Active Sonar Mode
     FAILED = "failed"
+
+
+class TrackingConfidence(str, Enum):
+    """Phase 5: Per-track confidence state."""
+    FULL = "full"           # 90%+ confidence
+    DEGRADED = "degraded"   # 70–90% — still tracking but lower certainty
+    GHOSTED = "ghosted"     # <70% — approximate location, translucent avatar
+    LOST = "lost"           # 0% — track pruned
 
 
 @dataclass
@@ -32,3 +42,19 @@ class CalibrationState:
     started_at: float = field(default_factory=time.time)
     completed_at: float | None = None
     error: str | None = None
+
+    # Phase 2: Anchor Extraction
+    rf_signatures_extracted: int = 0
+    walking_samples_collected: int = 0
+    stationary_samples_collected: int = 0
+
+    # Phase 3: RF Handoff
+    rf_only_accuracy: float = 0.0
+    rf_sustained_frames: int = 0
+    rf_required_frames: int = 1000  # 10s at 100Hz
+    handoff_triggered: bool = False
+    camera_terminated: bool = False
+
+    # Phase 4–5: Active tracking
+    active_tracks: int = 0
+    ghosted_tracks: int = 0

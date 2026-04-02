@@ -94,3 +94,49 @@ class ActivityLog(Base):
     occupancy_count: Mapped[int] = mapped_column(default=0)
 
     environment: Mapped[Environment] = relationship(back_populates="activity_logs")
+
+
+class RFSignatureRecord(Base):
+    """Persisted RF Signature for a tracked person in an environment.
+
+    Stores the 512-dim combined vector extracted during Phase 2 (Anchor Extraction)
+    so the system can re-identify returning users without re-calibration.
+    """
+    __tablename__ = "rf_signatures"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    user_tag: Mapped[str] = mapped_column(String(50))  # "User_A", "User_B", etc.
+    signature_vector: Mapped[bytes] = mapped_column()   # 512 × float32 = 2048 bytes
+    gait_embedding: Mapped[bytes] = mapped_column()     # 64 × float32 = 256 bytes
+    breathing_embedding: Mapped[bytes] = mapped_column() # 32 × float32 = 128 bytes
+    mass_reflection: Mapped[bytes] = mapped_column()    # 16 × float32 = 64 bytes
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    @classmethod
+    async def get_for_environment(
+        cls, session: AsyncSession, environment_id: str
+    ) -> list[Self]:
+        result = await session.execute(
+            select(cls).where(
+                cls.environment_id == uuid.UUID(environment_id),
+                cls.is_active == True,
+            )
+        )
+        return list(result.scalars().all())
+
+    @classmethod
+    async def delete_for_environment(
+        cls, session: AsyncSession, environment_id: str
+    ) -> None:
+        """Soft-delete all signatures for an environment (re-calibration)."""
+        from sqlalchemy import update
+        await session.execute(
+            update(cls)
+            .where(cls.environment_id == uuid.UUID(environment_id))
+            .values(is_active=False)
+        )
