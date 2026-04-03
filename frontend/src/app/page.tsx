@@ -25,6 +25,13 @@ export default function Home() {
           >
             Get Started
           </Link>
+          <Link
+            href="/research"
+            className="px-8 py-3 border rounded-xl font-semibold hover:border-[var(--gh-text-muted)] transition"
+            style={{ borderColor: "var(--gh-border)" }}
+          >
+            Research
+          </Link>
           <a
             href="#how-it-works"
             className="px-8 py-3 border rounded-xl font-semibold hover:border-[var(--gh-text-muted)] transition"

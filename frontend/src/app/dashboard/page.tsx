@@ -218,6 +218,12 @@ export default function DashboardPage() {
           ))}
         </nav>
 
+        <div className="px-3 mb-2">
+          <Link href="/research" className="sidebar-item w-full">
+            <span className="text-lg">📄</span>Research
+          </Link>
+        </div>
+
         <div className="p-4 border-t" style={{ borderColor: "var(--gh-border)" }}>
           <div className="flex items-center gap-3">
             {user.picture && <img src={user.picture} alt="" className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />}
