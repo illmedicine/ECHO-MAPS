@@ -36,6 +36,8 @@ import {
   Environment,
   Camera,
   TrackedEntity,
+  generateSimulatedSkeleton,
+  generateSimulatedPointCloud,
 } from "@/lib/environments";
 import EmojiPicker from "@/components/EmojiPicker";
 import { subscribePose, hasActivePose, getLatestPose } from "@/lib/poseBus";
@@ -985,6 +987,22 @@ function PresenceView() {
   const [hasPose, setHasPose] = useState(false);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Skeleton animation state for live 3D rendering
+  const [skeleton, setSkeleton] = useState<number[][]>([]);
+  const [pointCloud, setPointCloud] = useState<number[][]>([]);
+  const skelTimeRef = useRef(0);
+
+  // Animate simulated skeleton in the 3D viewer
+  useEffect(() => {
+    const dims = { width: 5, length: 4, height: 2.7 };
+    setPointCloud(generateSimulatedPointCloud(dims, 200));
+    const iv = setInterval(() => {
+      skelTimeRef.current += 0.1;
+      setSkeleton(generateSimulatedSkeleton(dims, skelTimeRef.current));
+    }, 100); // ~10fps
+    return () => clearInterval(iv);
+  }, []);
+
   // Load entities from localStorage
   useEffect(() => { setEntities(getEntities()); }, []);
   // Subscribe to pose bus for live detection status
@@ -1298,6 +1316,8 @@ function PresenceView() {
             {/* 3D Viewer — shows tracked entities as dots */}
             <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)", height: 260 }}>
               <EnvironmentViewer
+                skeleton={skeleton}
+                pointCloud={pointCloud}
                 trackedPersons={entities.filter((e) => e.type === "person" && e.status === "active").map((e, i) => ({
                   track_id: e.id,
                   user_tag: e.name,
