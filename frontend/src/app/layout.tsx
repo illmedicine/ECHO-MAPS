@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ChunkErrorRecover from "@/components/ChunkErrorRecover";
 
 export const metadata: Metadata = {
   title: "Echo Vue — by Illy Robotics",
@@ -18,6 +19,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <ChunkErrorRecover />
         <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
         {/* XL transparent logo watermark */}
         <div
