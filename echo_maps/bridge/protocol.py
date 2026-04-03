@@ -20,6 +20,8 @@ class BridgeCommand(IntEnum):
     START_CSI_STREAM = 0x10
     STOP_CSI_STREAM = 0x11
     SET_SAMPLE_RATE = 0x12
+    START_BLE_SCAN = 0x13
+    STOP_BLE_SCAN = 0x14
     START_CALIBRATION = 0x20
     STOP_CALIBRATION = 0x21
     GET_STATUS = 0x30
@@ -46,6 +48,7 @@ class BridgeEvent(IntEnum):
     MOTION_DETECTED = 0x03
     VITAL_ALERT = 0x04
     ERROR_REPORT = 0x05
+    BLE_SCAN = 0x06            # BLE advertisement batch from passive scan
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,3 +167,54 @@ def parse_csi_payload(payload: bytes) -> dict:
         "antenna_config": antenna_config,
         "antennas": antennas,
     }
+
+
+def parse_ble_scan_payload(payload: bytes) -> list[dict]:
+    """Parse a BLE_SCAN event payload from the bridge.
+
+    The bridge performs passive BLE scanning and batches advertisements.
+
+    Payload format:
+        [n_devices(1B)]
+        for each device:
+            [mac(6B)][rssi(1B signed)][addr_type(1B)][name_len(1B)][name(name_len B)]
+
+    addr_type: 0 = public, 1 = random (iOS/Android private address)
+    """
+    if len(payload) < 1:
+        raise ValueError("BLE scan payload empty")
+
+    n_devices = payload[0]
+    offset = 1
+    devices = []
+
+    for _ in range(n_devices):
+        if offset + 9 > len(payload):
+            break
+
+        mac_bytes = payload[offset : offset + 6]
+        mac = ":".join(f"{b:02X}" for b in mac_bytes)
+        offset += 6
+
+        rssi = struct.unpack("<b", payload[offset : offset + 1])[0]
+        offset += 1
+
+        addr_type = payload[offset]
+        offset += 1
+
+        name_len = payload[offset]
+        offset += 1
+
+        name = ""
+        if name_len > 0 and offset + name_len <= len(payload):
+            name = payload[offset : offset + name_len].decode("utf-8", errors="replace")
+            offset += name_len
+
+        devices.append({
+            "mac": mac,
+            "rssi": rssi,
+            "is_random": addr_type == 1,
+            "device_name": name,
+        })
+
+    return devices

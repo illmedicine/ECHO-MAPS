@@ -34,6 +34,10 @@ class TrackedPersonOut(BaseModel):
     last_activity: str
     breathing_rate: float | None = None
     heart_rate: float | None = None
+    device_mac_suffix: str | None = None        # last 8 chars of tethered BLE MAC
+    device_tether_status: str = "none"           # tethered / awaiting_new_mac / none
+    device_rssi: float | None = None             # avg RSSI of tethered device
+    device_distance_m: float | None = None       # estimated device distance (m)
 
 
 @router.websocket("/stream/{env_id}")
@@ -164,4 +168,5 @@ async def live_tracks(
         "tracks": engine.get_tracking_snapshot(),
         "active_tracks": state.active_tracks,
         "ghosted_tracks": state.ghosted_tracks,
+        "device_tethers": engine.tracker.ble_tether.get_tether_snapshot(),
     }

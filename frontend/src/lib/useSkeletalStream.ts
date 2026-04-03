@@ -31,6 +31,10 @@ export interface TrackedPerson {
   is_ghosted: boolean;
   last_activity: string;
   skeleton?: number[][];
+  device_mac_suffix?: string | null;
+  device_tether_status?: string;       // "tethered" | "awaiting_new_mac" | "none"
+  device_rssi?: number | null;
+  device_distance_m?: number | null;
 }
 
 interface UseSkeletalStreamOptions {

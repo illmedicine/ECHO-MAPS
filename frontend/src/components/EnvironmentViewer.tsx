@@ -324,6 +324,10 @@ interface TrackedPerson {
   is_ghosted: boolean;
   last_activity: string;
   skeleton?: number[][];
+  device_mac_suffix?: string | null;
+  device_tether_status?: string;
+  device_rssi?: number | null;
+  device_distance_m?: number | null;
 }
 
 interface EnvironmentViewerProps {
@@ -437,6 +441,7 @@ export default function EnvironmentViewer({
               confidence={person.confidence}
               isGhosted={person.is_ghosted}
               isRegistered={person.is_registered}
+              deviceTetherStatus={person.device_tether_status}
             />
           </group>
         ))}

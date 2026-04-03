@@ -1,1 +1,1 @@
-"""Multi-person RF tracking — Kalman filtering, RF signatures, and uncertainty."""
+"""Multi-person RF tracking — Kalman filtering, RF signatures, BLE tethering, and uncertainty."""

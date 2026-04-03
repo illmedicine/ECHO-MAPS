@@ -20,6 +20,11 @@ import structlog
 
 from echo_maps.tracking.kalman import KalmanTracker, TrackState
 from echo_maps.tracking.rf_signature import RFSignature, RFSignatureBuilder
+from echo_maps.tracking.ble_tether import (
+    BLETetherEngine,
+    BLEScan,
+    TetherStatus,
+)
 
 logger = structlog.get_logger()
 
@@ -56,6 +61,10 @@ class TrackedPerson:
     is_ghosted: bool = False               # Phase 5 ghost state
     rf_signature: Optional[RFSignature] = None
     last_activity: str = "idle"
+    device_mac_suffix: Optional[str] = None       # last 8 chars of tethered BLE MAC
+    device_tether_status: str = "none"             # tethered / awaiting_new_mac / none
+    device_rssi: Optional[float] = None            # current RSSI of tethered device
+    device_distance_m: Optional[float] = None      # estimated device distance
     breathing_rate: Optional[float] = None
     heart_rate: Optional[float] = None
     skeleton_keypoints: Optional[np.ndarray] = None  # (33, 3) during visual phase
@@ -106,6 +115,9 @@ class MultiPersonTracker:
         # RF-only confidence tracking (Phase 3)
         self._rf_only_correct_frames: int = 0
         self._rf_only_required_frames: int = int(sample_rate_hz * 10)  # 10s sustained
+
+        # CSI Anchor Protocol — BLE MAC tethering
+        self.ble_tether = BLETetherEngine()
 
     @property
     def phase(self) -> TrackingPhase:
@@ -547,7 +559,52 @@ class MultiPersonTracker:
             logger.info("track_pruned", track_id=tid,
                         user_tag=self._tracks[tid].user_tag)
             self.kalman.remove_track(tid)
+            self.ble_tether.remove_track(tid)
             del self._tracks[tid]
+
+    # ──────────────────────────────────────────────────────────
+    # BLE Tethering (CSI Anchor Protocol)
+    # ──────────────────────────────────────────────────────────
+
+    def ingest_ble_scans(self, scans: list[BLEScan]) -> list[dict]:
+        """Process BLE advertisement scans and update device tethers.
+
+        The CSI RF Signature remains the identity anchor — BLE MACs
+        are volatile accessories that get re-tethered after rotation.
+
+        Args:
+            scans: BLE advertisements from the bridge
+
+        Returns:
+            List of tether events (mac_dropped, mac_retethered, etc.)
+        """
+        # Build current position map
+        tracked_positions = {
+            tid: p.position for tid, p in self._tracks.items()
+        }
+
+        events = self.ble_tether.ingest_ble_scan(scans, tracked_positions)
+
+        # Sync tether state back to TrackedPerson objects
+        for person in self._tracks.values():
+            tether = self.ble_tether.tethers.get(person.track_id)
+            if tether:
+                person.device_mac_suffix = tether.mac[-8:]
+                person.device_tether_status = TetherStatus.TETHERED.value
+                person.device_rssi = tether.avg_rssi
+                person.device_distance_m = tether.estimated_distance_m
+            elif person.track_id in self.ble_tether.awaiting_tracks:
+                person.device_mac_suffix = None
+                person.device_tether_status = TetherStatus.AWAITING_NEW_MAC.value
+                person.device_rssi = None
+                person.device_distance_m = None
+            else:
+                person.device_mac_suffix = None
+                person.device_tether_status = "none"
+                person.device_rssi = None
+                person.device_distance_m = None
+
+        return events
 
     # ──────────────────────────────────────────────────────────
     # Query interface
@@ -557,6 +614,7 @@ class MultiPersonTracker:
         """Get a JSON-serializable snapshot of all tracked persons."""
         snapshot = []
         for person in self._tracks.values():
+            tether_info = self.ble_tether.tethers.get(person.track_id)
             snapshot.append({
                 "track_id": person.track_id,
                 "user_tag": person.user_tag,
@@ -569,5 +627,9 @@ class MultiPersonTracker:
                 "last_activity": person.last_activity,
                 "breathing_rate": person.breathing_rate,
                 "heart_rate": person.heart_rate,
+                "device_mac_suffix": person.device_mac_suffix,
+                "device_tether_status": person.device_tether_status,
+                "device_rssi": round(tether_info.avg_rssi, 1) if tether_info else None,
+                "device_distance_m": round(tether_info.estimated_distance_m, 2) if tether_info else None,
             })
         return snapshot

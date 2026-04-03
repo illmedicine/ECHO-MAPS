@@ -590,6 +590,49 @@ function EnvironmentViewContent() {
               </div>
             </div>
           )}
+
+          {/* Presence & Devices — CSI Anchor Protocol */}
+          {live && liveTracks.length > 0 && (
+            <div className="rounded-2xl border p-4" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
+              <h3 className="font-semibold mb-3">Presence &amp; Devices</h3>
+              <div className="space-y-3">
+                {liveTracks.map((t) => (
+                  <div key={t.track_id} className="rounded-xl p-3 border" style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", opacity: t.is_ghosted ? 0.5 : 1 }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold">{t.user_tag}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{
+                        backgroundColor: t.is_ghosted ? "rgba(234,179,8,0.2)" : t.is_registered ? "rgba(0,204,136,0.2)" : "rgba(0,102,255,0.2)",
+                        color: t.is_ghosted ? "#eab308" : t.is_registered ? "#00cc88" : "#0066ff",
+                      }}>
+                        {t.is_ghosted ? "Ghost" : t.is_registered ? "Anchored" : "Tracking"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--gh-text-muted)" }}>
+                      {t.device_tether_status === "tethered" ? (
+                        <>
+                          <span style={{ color: "#38bdf8" }}>📱</span>
+                          <span>
+                            {t.device_mac_suffix ?? "Device"}{t.device_distance_m != null ? ` · ${t.device_distance_m.toFixed(1)}m` : ""}
+                          </span>
+                        </>
+                      ) : t.device_tether_status === "awaiting_new_mac" ? (
+                        <>
+                          <span className="animate-pulse" style={{ color: "#f97316" }}>📱</span>
+                          <span style={{ color: "#f97316" }}>Reassigning device…</span>
+                        </>
+                      ) : (
+                        <span>No device detected</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-[10px]" style={{ color: "var(--gh-text-muted)" }}>
+                      <span>Conf: {(t.confidence * 100).toFixed(0)}%</span>
+                      <span>Speed: {t.speed.toFixed(1)} m/s</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
