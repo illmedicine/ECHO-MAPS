@@ -206,16 +206,30 @@ export async function syncPullFromCloud(): Promise<boolean> {
   }
 }
 
-/* ── Debounced auto-sync ── */
+/* ── Debounced auto-sync with circuit breaker ── */
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
+let syncBackoff = 0; // ms to wait before retrying after failure
+let lastSyncFail = 0;
 
-/** Schedule a debounced push to cloud (5 second delay) */
+/** Schedule a debounced push to cloud (5 second delay). Backs off on repeated failures. */
 export function scheduleSyncPush(): void {
   if (!isCloudAvailable()) return;
+  // Circuit breaker: if last sync failed recently, don't retry yet
+  if (syncBackoff > 0 && Date.now() - lastSyncFail < syncBackoff) return;
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
-    syncPushToCloud().catch(() => {});
+    syncPushToCloud().then((ok) => {
+      if (ok) {
+        syncBackoff = 0; // reset on success
+      } else {
+        lastSyncFail = Date.now();
+        syncBackoff = Math.min((syncBackoff || 30000) * 2, 600000); // 30s → 60s → … → 10min max
+      }
+    }).catch(() => {
+      lastSyncFail = Date.now();
+      syncBackoff = Math.min((syncBackoff || 30000) * 2, 600000);
+    });
   }, 5000);
 }
 

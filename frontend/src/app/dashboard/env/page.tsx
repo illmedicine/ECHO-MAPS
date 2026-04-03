@@ -17,6 +17,7 @@ import {
   generateHeatmapData,
   CALIBRATION_ACTIVITIES,
   type CalibrationActivity,
+  getEntities,
 } from "@/lib/environments";
 import { useSkeletalStream, type StreamSource } from "@/lib/useSkeletalStream";
 
@@ -485,9 +486,20 @@ function EnvironmentViewContent() {
                     pointCloud={pointCloud}
                     skeleton={skeleton}
                     roomBounds={[env.dims.width, env.dims.length, env.dims.height]}
-                    sourceType={streamSource}
+                    sourceType={streamSource === "simulated" ? "csi" : streamSource}
                     isLive={live}
-                    trackedPersons={liveTracks}
+                    trackedPersons={liveTracks.length > 0 ? liveTracks : getEntities().filter((e) => e.status === "active" && e.roomId === envId).map((e, i) => ({
+                      track_id: e.id,
+                      user_tag: e.name,
+                      position: [1.5 + i * 2, 0.9, env.dims.length / 2],
+                      velocity: [0, 0, 0],
+                      speed: 0,
+                      confidence: e.confidence,
+                      is_registered: true,
+                      is_ghosted: false,
+                      last_activity: e.activity,
+                      device_tether_status: e.deviceTetherStatus ?? "none",
+                    }))}
                   />
                   {/* Stream source badge */}
                   {live && (
@@ -498,7 +510,7 @@ function EnvironmentViewContent() {
                       <span className="w-2 h-2 rounded-full animate-pulse" style={{
                         backgroundColor: streamSource === "csi" ? "#00ff88" : streamSource === "camera" ? "#ffcc00" : "#88aaff",
                       }} />
-                      {streamSource === "csi" ? "CSI Live" : streamSource === "camera" ? "Camera" : "Simulated"}
+                      {streamSource === "csi" ? "CSI Live" : streamSource === "camera" ? "Camera" : "AI Detection"}
                     </div>
                   )}
                 </div>

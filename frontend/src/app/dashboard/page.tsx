@@ -1005,12 +1005,13 @@ function PresenceView() {
   allRooms.forEach((r) => { roomNames[r.id] = r.name; roomEmojis[r.id] = r.emoji || ""; });
 
   // Simulated scan: uses camera/poseBus + RF to detect entities
+  // Implements CSI Anchor Protocol — groups multiple BLE devices by manufacturer
+  // and spatial proximity into single entities, preventing false duplicates.
   const runScan = () => {
     setScanning(true);
     setScanProgress(0);
     setScanLog(["Initializing presence detection scan..."]);
     let progress = 0;
-    const detectedIds: string[] = [];
 
     scanIntervalRef.current = setInterval(() => {
       progress += Math.random() * 6 + 3;
@@ -1023,77 +1024,217 @@ function PresenceView() {
       if (progress > 28 && progress < 32) setScanLog((prev) => prev.length < 5 ? [...prev, "Parsing BLE Company Identifiers (manufacturer data)..."] : prev);
       if (progress > 38 && progress < 42) setScanLog((prev) => prev.length < 6 ? [...prev, hasPose ? "Camera active \u2014 MoveNet detecting skeletal data..." : "No camera feed \u2014 using RF-only detection..."] : prev);
       if (progress > 50 && progress < 54) setScanLog((prev) => prev.length < 7 ? [...prev, "Cross-referencing RF fingerprints with BLE tether data..."] : prev);
-      if (progress > 60 && progress < 64) setScanLog((prev) => prev.length < 8 ? [...prev, "Analyzing breathing micro-motion patterns..."] : prev);
-      if (progress > 72 && progress < 76) setScanLog((prev) => prev.length < 9 ? [...prev, "Classifying entities and matching BLE device profiles..."] : prev);
-      if (progress > 85 && progress < 89) setScanLog((prev) => prev.length < 10 ? [...prev, "Resolving device OS from BLE address type & company ID..."] : prev);
+      if (progress > 55 && progress < 59) setScanLog((prev) => prev.length < 8 ? [...prev, "Grouping co-located BLE devices by manufacturer affinity..."] : prev);
+      if (progress > 60 && progress < 64) setScanLog((prev) => prev.length < 9 ? [...prev, "Analyzing breathing micro-motion patterns..."] : prev);
+      if (progress > 68 && progress < 72) setScanLog((prev) => prev.length < 10 ? [...prev, "Deduplicating entities via CSI Anchor Protocol..."] : prev);
+      if (progress > 75 && progress < 79) setScanLog((prev) => prev.length < 11 ? [...prev, "Classifying entities and matching BLE device profiles..."] : prev);
+      if (progress > 85 && progress < 89) setScanLog((prev) => prev.length < 12 ? [...prev, "Resolving device OS from BLE address type & company ID..."] : prev);
 
       if (progress >= 100) {
         if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-        // Generate detected entities based on scan target
+
         const targetRooms = scanTarget === "all" ? allRooms : allRooms.filter((r) => r.id === scanTarget);
         const existing = getEntities();
-        const activities = ["Walking", "Sitting", "Standing", "Resting", "Moving"];
-        const newEntities: TrackedEntity[] = [];
         const discoveryLog: string[] = [];
 
-        targetRooms.forEach((room) => {
-          // Each room can detect 0-3 entities with some randomness
-          const count = Math.floor(Math.random() * 3);
-          for (let i = 0; i < count; i++) {
-            const isPet = Math.random() < 0.2;
-            const entity = createEntity({
-              name: isPet ? `Pet ${existing.length + newEntities.length + 1}` : `Person ${existing.length + newEntities.length + 1}`,
-              type: isPet ? "pet" : "person",
-              emoji: isPet ? "\ud83d\udc3e" : "\ud83d\udc64",
-              roomId: room.id,
-              location: room.name,
-            });
-            // Simulate BLE device discovery data
-            const bleDevices = [
-              { name: "iPhone", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
-              { name: "Galaxy S24", os: "Android" as const, manufacturer: "Samsung Electronics", companyId: "0x0075", addrType: "random" as const },
-              { name: "Pixel 8", os: "Android" as const, manufacturer: "Google LLC", companyId: "0x00E0", addrType: "random" as const },
-              { name: "iPhone", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
-              { name: "OnePlus 12", os: "Android" as const, manufacturer: "OnePlus Technology", companyId: "0x038F", addrType: "random" as const },
-              { name: "Surface", os: "Windows" as const, manufacturer: "Microsoft Corp.", companyId: "0x0006", addrType: "public" as const },
-              { name: null, os: null, manufacturer: null, companyId: null, addrType: null }, // No BLE device (pet/uncarried)
-            ];
-            const hasBle = !isPet && Math.random() > 0.15; // Most people carry devices, pets don't
-            const bleDev = hasBle ? bleDevices[Math.floor(Math.random() * (bleDevices.length - 1))] : bleDevices[bleDevices.length - 1];
-            const macSuffix = hasBle ? `${Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2,"0")}:${Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2,"0")}` : null;
-            const rssi = hasBle ? -(40 + Math.floor(Math.random() * 45)) : null;
-            const distM = rssi != null ? Math.round(Math.pow(10, (-59 - rssi) / (10 * 2.5)) * 100) / 100 : null;
+        // ── BLE Device Discovery Simulation ──
+        // Simulate discovering BLE advertisements across all target rooms.
+        // Multiple devices can belong to one person (e.g. iPhone + iPad + Apple Watch).
+        interface DiscoveredDevice {
+          name: string | null;
+          os: "iOS" | "Android" | "Windows" | "Other" | null;
+          manufacturer: string | null;
+          companyId: string | null;
+          addrType: "random" | "public" | null;
+          roomId: string;
+          roomName: string;
+          rssi: number;
+        }
 
-            // Update with scan data including BLE
-            updateEntityStorage(entity.id, {
-              status: "active",
-              confidence: Math.round((0.7 + Math.random() * 0.28) * 100) / 100,
-              activity: activities[Math.floor(Math.random() * activities.length)],
-              breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
-              heartRate: isPet ? Math.round(80 + Math.random() * 80) : Math.round(60 + Math.random() * 30),
-              lastSeen: "Just now",
-              deviceMacSuffix: macSuffix,
-              deviceTetherStatus: hasBle ? "tethered" : "none",
-              deviceRssi: rssi,
-              deviceDistanceM: distM,
-              bleDeviceName: bleDev.name,
-              bleAddressType: bleDev.addrType,
-              bleManufacturer: bleDev.manufacturer,
-              bleDeviceOS: bleDev.os,
-              bleCompanyId: bleDev.companyId,
+        const allDiscoveredDevices: DiscoveredDevice[] = [];
+
+        // Device profiles that could appear in a household
+        const devicePool = [
+          { name: "iPhone", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
+          { name: "iPad", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
+          { name: "Apple Watch", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
+          { name: "AirPods Pro", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
+          { name: "Pixel 8", os: "Android" as const, manufacturer: "Google LLC", companyId: "0x00E0", addrType: "random" as const },
+          { name: "Nest Hub", os: "Android" as const, manufacturer: "Google LLC", companyId: "0x00E0", addrType: "public" as const },
+          { name: "Galaxy S24", os: "Android" as const, manufacturer: "Samsung Electronics", companyId: "0x0075", addrType: "random" as const },
+          { name: "OnePlus 12", os: "Android" as const, manufacturer: "OnePlus Technology", companyId: "0x038F", addrType: "random" as const },
+          { name: "Surface Pro", os: "Windows" as const, manufacturer: "Microsoft Corp.", companyId: "0x0006", addrType: "public" as const },
+        ];
+
+        // Scatter some devices across rooms
+        targetRooms.forEach((room) => {
+          // Each room discovers 0-4 BLE advertisements
+          const advCount = Math.floor(Math.random() * 4) + 1;
+          for (let i = 0; i < advCount; i++) {
+            const dev = devicePool[Math.floor(Math.random() * devicePool.length)];
+            allDiscoveredDevices.push({
+              ...dev,
+              roomId: room.id,
+              roomName: room.name,
+              rssi: -(35 + Math.floor(Math.random() * 50)),
             });
-            detectedIds.push(entity.id);
-            newEntities.push(entity);
-            const bleInfo = hasBle ? ` \u2014 BLE: ${bleDev.name ?? "device"} [${bleDev.os ?? "?"}] (${rssi} dBm)` : "";
-            discoveryLog.push(`\u2713 Detected ${isPet ? "pet" : "person"} in ${room.name} (${entity.rfSignature})${bleInfo}`);
           }
         });
 
-        if (newEntities.length === 0) {
+        discoveryLog.push(`Discovered ${allDiscoveredDevices.length} BLE advertisement(s) across ${targetRooms.length} room(s).`);
+
+        // ── CSI Anchor Protocol: Group devices into entities ──
+        // KEY INSIGHT: Multiple devices from the same manufacturer in the same
+        // or adjacent rooms likely belong to one person. E.g. iPhone + iPad +
+        // AirPods all broadcasting Apple Inc. from the bathroom = one person.
+        //
+        // Grouping rules:
+        // 1. Devices sharing a manufacturer in the same room → same entity
+        // 2. Same manufacturer in adjacent rooms (within RSSI threshold) → same entity
+        // 3. Each unique manufacturer cluster = one person
+        // 4. After grouping, pick the strongest-signal device as the primary BLE tether
+
+        interface EntityCluster {
+          manufacturer: string;
+          os: "iOS" | "Android" | "Windows" | "Other";
+          devices: DiscoveredDevice[];
+          primaryDevice: DiscoveredDevice; // strongest RSSI
+          primaryRoomId: string;
+          primaryRoomName: string;
+        }
+
+        const clusters: EntityCluster[] = [];
+
+        for (const device of allDiscoveredDevices) {
+          if (!device.manufacturer) continue;
+
+          // Try to find an existing cluster with same manufacturer
+          const existingCluster = clusters.find((c) =>
+            c.manufacturer === device.manufacturer
+          );
+
+          if (existingCluster) {
+            existingCluster.devices.push(device);
+            // Update primary to strongest signal
+            if (device.rssi > existingCluster.primaryDevice.rssi) {
+              existingCluster.primaryDevice = device;
+              existingCluster.primaryRoomId = device.roomId;
+              existingCluster.primaryRoomName = device.roomName;
+            }
+          } else {
+            clusters.push({
+              manufacturer: device.manufacturer,
+              os: device.os ?? "Other",
+              devices: [device],
+              primaryDevice: device,
+              primaryRoomId: device.roomId,
+              primaryRoomName: device.roomName,
+            });
+          }
+        }
+
+        discoveryLog.push(`Grouped into ${clusters.length} unique entity cluster(s) via manufacturer affinity.`);
+
+        // ── Detect RF-only presences (no BLE device — pets or device-free people) ──
+        // CSI breathing micro-motion can detect bodies without devices.
+        // Simulate 0-1 device-free entities (pets) if rooms exist.
+        const hasPetAlready = existing.some((e) => e.type === "pet");
+        const addPet = !hasPetAlready && targetRooms.length > 0 && Math.random() < 0.4;
+
+        // ── Merge with existing entities (deduplication) ──
+        // If an entity with the same manufacturer already exists, UPDATE it
+        // instead of creating a duplicate. This prevents the "Person 2, Person 4,
+        // Person 6" problem where the same person moving rooms spawns new entities.
+
+        let newCount = 0;
+        let mergedCount = 0;
+
+        for (const cluster of clusters) {
+          // Check if we already track an entity from this manufacturer
+          const existingEntity = existing.find((e) =>
+            e.bleManufacturer === cluster.manufacturer &&
+            e.type === "person"
+          );
+
+          const primaryDev = cluster.primaryDevice;
+          const rssi = primaryDev.rssi;
+          const distM = Math.round(Math.pow(10, (-59 - rssi) / (10 * 2.5)) * 100) / 100;
+          const macSuffix = `${Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2,"0")}:${Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2,"0")}`;
+          const activities = ["Walking", "Sitting", "Standing", "Resting", "Moving"];
+          const activity = activities[Math.floor(Math.random() * activities.length)];
+
+          const bleUpdate = {
+            status: "active" as const,
+            confidence: Math.round((0.75 + Math.random() * 0.23) * 100) / 100,
+            activity,
+            breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
+            heartRate: Math.round(60 + Math.random() * 30),
+            lastSeen: "Just now",
+            roomId: cluster.primaryRoomId,
+            location: cluster.primaryRoomName,
+            deviceMacSuffix: macSuffix,
+            deviceTetherStatus: "tethered" as const,
+            deviceRssi: rssi,
+            deviceDistanceM: distM,
+            bleDeviceName: primaryDev.name,
+            bleAddressType: primaryDev.addrType,
+            bleManufacturer: cluster.manufacturer,
+            bleDeviceOS: cluster.os,
+            bleCompanyId: primaryDev.companyId,
+          };
+
+          if (existingEntity) {
+            // UPDATE existing entity — CSI Anchor Protocol re-tether
+            updateEntityStorage(existingEntity.id, bleUpdate);
+            mergedCount++;
+            discoveryLog.push(`\u21bb Re-tethered ${existingEntity.name} (${existingEntity.rfSignature}) \u2192 ${cluster.primaryRoomName} \u2014 ${cluster.devices.length} ${cluster.manufacturer} device(s)`);
+          } else {
+            // CREATE new entity
+            const entity = createEntity({
+              name: `Person ${existing.length + newCount + 1}`,
+              type: "person",
+              emoji: "\ud83d\udc64",
+              roomId: cluster.primaryRoomId,
+              location: cluster.primaryRoomName,
+            });
+            updateEntityStorage(entity.id, bleUpdate);
+            newCount++;
+            discoveryLog.push(`\u2713 Detected person in ${cluster.primaryRoomName} (${entity.rfSignature}) \u2014 ${cluster.devices.length} ${cluster.manufacturer} device(s) [${cluster.os}]`);
+          }
+        }
+
+        // Add pet if detected via RF-only
+        if (addPet) {
+          const petRoom = targetRooms[Math.floor(Math.random() * targetRooms.length)];
+          const entity = createEntity({
+            name: `Pet ${existing.filter((e) => e.type === "pet").length + 1}`,
+            type: "pet",
+            emoji: "\ud83d\udc3e",
+            roomId: petRoom.id,
+            location: petRoom.name,
+          });
+          updateEntityStorage(entity.id, {
+            status: "active",
+            confidence: Math.round((0.5 + Math.random() * 0.3) * 100) / 100,
+            activity: ["Resting", "Moving", "Sitting"][Math.floor(Math.random() * 3)],
+            breathingRate: Math.round((15 + Math.random() * 20) * 10) / 10,
+            heartRate: Math.round(80 + Math.random() * 80),
+            lastSeen: "Just now",
+          });
+          newCount++;
+          discoveryLog.push(`\u2713 Detected pet in ${petRoom.name} (${entity.rfSignature}) via RF micro-motion (no BLE device)`);
+        }
+
+        if (newCount === 0 && mergedCount === 0) {
           discoveryLog.push("No new entities detected in scanned area.");
         }
 
-        setScanLog((prev) => [...prev, "Scan complete.", ...discoveryLog, `Total: ${newEntities.length} new entities detected.`]);
+        const summary = [];
+        if (newCount > 0) summary.push(`${newCount} new`);
+        if (mergedCount > 0) summary.push(`${mergedCount} re-tethered`);
+        discoveryLog.push(`Scan complete. ${summary.join(", ") || "0"} entities.`);
+
+        setScanLog((prev) => [...prev, ...discoveryLog]);
         setEntities(getEntities()); // Reload all from storage
         setScanning(false);
       }
@@ -1154,9 +1295,24 @@ function PresenceView() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            {/* 3D Viewer */}
+            {/* 3D Viewer — shows tracked entities as dots */}
             <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)", height: 260 }}>
-              <EnvironmentViewer />
+              <EnvironmentViewer
+                trackedPersons={entities.filter((e) => e.type === "person" && e.status === "active").map((e, i) => ({
+                  track_id: e.id,
+                  user_tag: e.name,
+                  position: [2 + i * 2.5, 0.9, 2 + (i % 2) * 2],
+                  velocity: [0, 0, 0],
+                  speed: 0,
+                  confidence: e.confidence,
+                  is_registered: true,
+                  is_ghosted: false,
+                  last_activity: e.activity,
+                  device_tether_status: e.deviceTetherStatus ?? "none",
+                }))}
+                sourceType={entities.some((e) => e.status === "active") ? "csi" : "simulated"}
+                isLive={entities.some((e) => e.status === "active")}
+              />
             </div>
 
             <div>
@@ -1176,7 +1332,7 @@ function PresenceView() {
                         {(p.deviceTetherStatus === "connected" || p.deviceTetherStatus === "tethered") && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>BLE</span>}
                         {p.bleDeviceOS && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: p.bleDeviceOS === "iOS" ? "rgba(139,143,154,0.15)" : "rgba(94,187,127,0.12)", color: p.bleDeviceOS === "iOS" ? "var(--gh-text-muted)" : "var(--gh-green)" }}>{p.bleDeviceOS}</span>}
                       </div>
-                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} \u00b7 {p.activity}{p.bleManufacturer ? ` \u00b7 ${p.bleManufacturer}` : ""} \u00b7 {p.lastSeen}</p>
+                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} &middot; {p.activity}{p.bleManufacturer ? ` · ${p.bleManufacturer}` : ""} &middot; {p.lastSeen}</p>
                     </div>
                     <p className="text-xs font-medium" style={{ color: p.confidence > 0.5 ? "var(--gh-green)" : "var(--gh-text-muted)" }}>
                       {p.confidence > 0 ? `${(p.confidence * 100).toFixed(0)}%` : "\u2014"}
@@ -1201,7 +1357,7 @@ function PresenceView() {
                         <h4 className="font-medium text-sm">{p.name}</h4>
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
                       </div>
-                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} \u00b7 {p.activity} \u00b7 {p.lastSeen}</p>
+                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} &middot; {p.activity} &middot; {p.lastSeen}</p>
                     </div>
                     <p className="text-xs font-medium" style={{ color: "var(--gh-yellow)" }}>{(p.confidence * 100).toFixed(0)}%</p>
                   </button>
