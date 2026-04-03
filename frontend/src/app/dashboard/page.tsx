@@ -960,11 +960,14 @@ function PresenceView() {
       setScanProgress(Math.round(progress));
 
       // Simulate phased scan log messages
-      if (progress > 10 && progress < 15) setScanLog((prev) => prev.length < 3 ? [...prev, "Scanning WiFi CSI channels for RF signatures..."] : prev);
-      if (progress > 25 && progress < 30) setScanLog((prev) => prev.length < 4 ? [...prev, hasPose ? "Camera active \u2014 MoveNet detecting skeletal data..." : "No camera feed \u2014 using RF-only detection..."] : prev);
-      if (progress > 40 && progress < 45) setScanLog((prev) => prev.length < 5 ? [...prev, "Cross-referencing RF fingerprints with known signatures..."] : prev);
-      if (progress > 55 && progress < 60) setScanLog((prev) => prev.length < 6 ? [...prev, "Analyzing breathing micro-motion patterns..."] : prev);
-      if (progress > 75 && progress < 80) setScanLog((prev) => prev.length < 7 ? [...prev, "Classifying entities (person vs. pet vs. object)..."] : prev);
+      if (progress > 8 && progress < 12) setScanLog((prev) => prev.length < 3 ? [...prev, "Scanning WiFi CSI channels for RF signatures..."] : prev);
+      if (progress > 18 && progress < 22) setScanLog((prev) => prev.length < 4 ? [...prev, "BLE passive scan \u2014 listening for device advertisements..."] : prev);
+      if (progress > 28 && progress < 32) setScanLog((prev) => prev.length < 5 ? [...prev, "Parsing BLE Company Identifiers (manufacturer data)..."] : prev);
+      if (progress > 38 && progress < 42) setScanLog((prev) => prev.length < 6 ? [...prev, hasPose ? "Camera active \u2014 MoveNet detecting skeletal data..." : "No camera feed \u2014 using RF-only detection..."] : prev);
+      if (progress > 50 && progress < 54) setScanLog((prev) => prev.length < 7 ? [...prev, "Cross-referencing RF fingerprints with BLE tether data..."] : prev);
+      if (progress > 60 && progress < 64) setScanLog((prev) => prev.length < 8 ? [...prev, "Analyzing breathing micro-motion patterns..."] : prev);
+      if (progress > 72 && progress < 76) setScanLog((prev) => prev.length < 9 ? [...prev, "Classifying entities and matching BLE device profiles..."] : prev);
+      if (progress > 85 && progress < 89) setScanLog((prev) => prev.length < 10 ? [...prev, "Resolving device OS from BLE address type & company ID..."] : prev);
 
       if (progress >= 100) {
         if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
@@ -987,7 +990,23 @@ function PresenceView() {
               roomId: room.id,
               location: room.name,
             });
-            // Update with scan data
+            // Simulate BLE device discovery data
+            const bleDevices = [
+              { name: "iPhone", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
+              { name: "Galaxy S24", os: "Android" as const, manufacturer: "Samsung Electronics", companyId: "0x0075", addrType: "random" as const },
+              { name: "Pixel 8", os: "Android" as const, manufacturer: "Google LLC", companyId: "0x00E0", addrType: "random" as const },
+              { name: "iPhone", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
+              { name: "OnePlus 12", os: "Android" as const, manufacturer: "OnePlus Technology", companyId: "0x038F", addrType: "random" as const },
+              { name: "Surface", os: "Windows" as const, manufacturer: "Microsoft Corp.", companyId: "0x0006", addrType: "public" as const },
+              { name: null, os: null, manufacturer: null, companyId: null, addrType: null }, // No BLE device (pet/uncarried)
+            ];
+            const hasBle = !isPet && Math.random() > 0.15; // Most people carry devices, pets don't
+            const bleDev = hasBle ? bleDevices[Math.floor(Math.random() * (bleDevices.length - 1))] : bleDevices[bleDevices.length - 1];
+            const macSuffix = hasBle ? `${Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2,"0")}:${Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2,"0")}` : null;
+            const rssi = hasBle ? -(40 + Math.floor(Math.random() * 45)) : null;
+            const distM = rssi != null ? Math.round(Math.pow(10, (-59 - rssi) / (10 * 2.5)) * 100) / 100 : null;
+
+            // Update with scan data including BLE
             updateEntityStorage(entity.id, {
               status: "active",
               confidence: Math.round((0.7 + Math.random() * 0.28) * 100) / 100,
@@ -995,10 +1014,20 @@ function PresenceView() {
               breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
               heartRate: isPet ? Math.round(80 + Math.random() * 80) : Math.round(60 + Math.random() * 30),
               lastSeen: "Just now",
+              deviceMacSuffix: macSuffix,
+              deviceTetherStatus: hasBle ? "tethered" : "none",
+              deviceRssi: rssi,
+              deviceDistanceM: distM,
+              bleDeviceName: bleDev.name,
+              bleAddressType: bleDev.addrType,
+              bleManufacturer: bleDev.manufacturer,
+              bleDeviceOS: bleDev.os,
+              bleCompanyId: bleDev.companyId,
             });
             detectedIds.push(entity.id);
             newEntities.push(entity);
-            discoveryLog.push(`\u2713 Detected ${isPet ? "pet" : "person"} in ${room.name} (${entity.rfSignature})`);
+            const bleInfo = hasBle ? ` \u2014 BLE: ${bleDev.name ?? "device"} [${bleDev.os ?? "?"}] (${rssi} dBm)` : "";
+            discoveryLog.push(`\u2713 Detected ${isPet ? "pet" : "person"} in ${room.name} (${entity.rfSignature})${bleInfo}`);
           }
         });
 
@@ -1086,9 +1115,10 @@ function PresenceView() {
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium text-sm">{p.name}</h4>
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
-                        {p.deviceTetherStatus === "connected" && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>BLE</span>}
+                        {(p.deviceTetherStatus === "connected" || p.deviceTetherStatus === "tethered") && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>BLE</span>}
+                        {p.bleDeviceOS && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: p.bleDeviceOS === "iOS" ? "rgba(139,143,154,0.15)" : "rgba(94,187,127,0.12)", color: p.bleDeviceOS === "iOS" ? "var(--gh-text-muted)" : "var(--gh-green)" }}>{p.bleDeviceOS}</span>}
                       </div>
-                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} \u00b7 {p.activity} \u00b7 {p.lastSeen}</p>
+                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} \u00b7 {p.activity}{p.bleManufacturer ? ` \u00b7 ${p.bleManufacturer}` : ""} \u00b7 {p.lastSeen}</p>
                     </div>
                     <p className="text-xs font-medium" style={{ color: p.confidence > 0.5 ? "var(--gh-green)" : "var(--gh-text-muted)" }}>
                       {p.confidence > 0 ? `${(p.confidence * 100).toFixed(0)}%` : "\u2014"}
@@ -1142,7 +1172,19 @@ function PresenceView() {
                   <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Last Seen</span><span>{selected.lastSeen}</span></div>
                   <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Confidence</span><span>{selected.confidence > 0 ? `${(selected.confidence * 100).toFixed(0)}%` : "\u2014"}</span></div>
                   {selected.deviceTetherStatus !== "none" && (
-                    <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>BLE Tether</span><span className="font-medium" style={{ color: selected.deviceTetherStatus === "connected" ? "var(--gh-green)" : "var(--gh-text-muted)" }}>{selected.deviceTetherStatus} {selected.deviceRssi != null ? `(${selected.deviceRssi} dBm)` : ""}</span></div>
+                    <>
+                      <hr style={{ borderColor: "var(--gh-border)" }} />
+                      <h4 className="font-semibold text-xs" style={{ color: "var(--gh-text-muted)" }}>BLE DEVICE</h4>
+                      <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Tether Status</span><span className="font-medium" style={{ color: (selected.deviceTetherStatus === "connected" || selected.deviceTetherStatus === "tethered") ? "var(--gh-green)" : "var(--gh-text-muted)" }}>{selected.deviceTetherStatus}</span></div>
+                      {selected.bleManufacturer && <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Manufacturer</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.bleManufacturer}</span></div>}
+                      {selected.bleDeviceOS && <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Device OS</span><span className="font-medium inline-flex items-center gap-1.5" style={{ color: "var(--gh-text)" }}>{selected.bleDeviceOS === "iOS" ? "\ud83c\udf4e" : selected.bleDeviceOS === "Android" ? "\ud83e\udd16" : "\ud83d\udcbb"} {selected.bleDeviceOS}</span></div>}
+                      {selected.bleDeviceName && <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Device Name</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.bleDeviceName}</span></div>}
+                      {selected.bleCompanyId && <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Company ID</span><span className="font-mono text-xs">{selected.bleCompanyId}</span></div>}
+                      {selected.deviceMacSuffix && <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>MAC (suffix)</span><span className="font-mono text-xs">**:**:**:**:{selected.deviceMacSuffix}</span></div>}
+                      {selected.bleAddressType && <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Address Type</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.bleAddressType === "random" ? "Random (privacy)" : "Public"}</span></div>}
+                      {selected.deviceRssi != null && <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Signal (RSSI)</span><span className="font-medium" style={{ color: selected.deviceRssi > -60 ? "var(--gh-green)" : selected.deviceRssi > -75 ? "var(--gh-yellow)" : "var(--gh-red)" }}>{selected.deviceRssi} dBm</span></div>}
+                      {selected.deviceDistanceM != null && <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Est. Distance</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.deviceDistanceM.toFixed(1)} m</span></div>}
+                    </>
                   )}
                   {selected.status === "active" && (
                     <>
@@ -1195,7 +1237,7 @@ function PresenceView() {
           {[
             { label: "Entities Tracked", value: `${entities.filter((e) => e.status === "active").length} active`, color: "var(--gh-green)" },
             { label: "RF Signatures", value: `${entities.length} stored`, color: "var(--gh-blue)" },
-            { label: "Detection Model", value: "LatentCSI v2", color: "var(--gh-yellow)" },
+            { label: "BLE Tethered", value: `${entities.filter((e) => e.deviceTetherStatus === "tethered" || e.deviceTetherStatus === "connected").length} devices`, color: "var(--gh-accent)" },
             { label: "Avg. Confidence", value: entities.filter((e) => e.confidence > 0).length > 0 ? `${(entities.filter((e) => e.confidence > 0).reduce((a, e) => a + e.confidence, 0) / entities.filter((e) => e.confidence > 0).length * 100).toFixed(0)}%` : "\u2014", color: "var(--gh-text)" },
           ].map((s) => (
             <div key={s.label} className="p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)" }}>
@@ -1233,6 +1275,10 @@ function PresenceView() {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: hasPose ? "var(--gh-green)" : "var(--gh-text-muted)" }} />
                     <span>Camera skeletal tracking <span style={{ color: "var(--gh-text-muted)" }}>\u2014 {hasPose ? "active" : "no feed"}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-green)" }} />
+                    <span>BLE passive scan <span style={{ color: "var(--gh-text-muted)" }}>\u2014 manufacturer & OS detection</span></span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-blue)" }} />
@@ -1314,6 +1360,18 @@ function PresenceView() {
                   <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>RF Signature</label>
                   <p className="text-sm font-mono" style={{ color: "var(--gh-text-muted)" }}>{entity.rfSignature}</p>
                 </div>
+                {entity.bleManufacturer && (
+                  <div className="p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)" }}>
+                    <label className="text-xs font-medium block mb-2" style={{ color: "var(--gh-text-muted)" }}>BLE Device Info</label>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between"><span style={{ color: "var(--gh-text-muted)" }}>Manufacturer</span><span>{entity.bleManufacturer}</span></div>
+                      {entity.bleDeviceOS && <div className="flex justify-between"><span style={{ color: "var(--gh-text-muted)" }}>OS</span><span>{entity.bleDeviceOS === "iOS" ? "\ud83c\udf4e" : entity.bleDeviceOS === "Android" ? "\ud83e\udd16" : "\ud83d\udcbb"} {entity.bleDeviceOS}</span></div>}
+                      {entity.bleDeviceName && <div className="flex justify-between"><span style={{ color: "var(--gh-text-muted)" }}>Device</span><span>{entity.bleDeviceName}</span></div>}
+                      {entity.bleCompanyId && <div className="flex justify-between"><span style={{ color: "var(--gh-text-muted)" }}>Company ID</span><span className="font-mono">{entity.bleCompanyId}</span></div>}
+                      {entity.deviceRssi != null && <div className="flex justify-between"><span style={{ color: "var(--gh-text-muted)" }}>RSSI</span><span>{entity.deviceRssi} dBm</span></div>}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Detected</label>
                   <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>{new Date(entity.createdAt).toLocaleString()}</p>
@@ -1336,14 +1394,14 @@ function PresenceView() {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { if (!isRunning) setTuningRF(null); }}>
             <div className="rounded-2xl p-6 w-full max-w-md" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold mb-1">Tune RF Signature</h3>
-              <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>{entity.name} \u2014 {entity.rfSignature}</p>
+              <h3 className="text-lg font-semibold mb-1">Tune RF + BLE Signature</h3>
+              <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>{entity.name} \u2014 {entity.rfSignature}{entity.bleDeviceOS ? ` \u2014 ${entity.bleDeviceOS}` : ""}</p>
               <div className="p-4 rounded-xl mb-4" style={{ backgroundColor: "var(--gh-card)" }}>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl" style={{ backgroundColor: "rgba(124,140,248,0.12)" }}>\ud83d\udce1</div>
                   <div>
-                    <p className="text-sm font-medium">WiFi CSI Signal</p>
-                    <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Capturing RF patterns for {entity.name}</p>
+                    <p className="text-sm font-medium">WiFi CSI + BLE Signal</p>
+                    <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Capturing RF & BLE patterns for {entity.name}</p>
                   </div>
                 </div>
                 <div className="w-full rounded-full h-2 mb-1" style={{ backgroundColor: "var(--gh-border)" }}>
@@ -1352,8 +1410,9 @@ function PresenceView() {
                 <p className="text-[10px] text-right" style={{ color: "var(--gh-text-muted)" }}>{rfProgress}%</p>
               </div>
               {rfProgress >= 100 && (
-                <div className="p-3 rounded-xl mb-4 text-sm flex items-center gap-2" style={{ backgroundColor: "rgba(94,187,127,0.1)", color: "var(--gh-green)" }}>
-                  \u2713 RF signature tuned successfully. Confidence improved.
+                <div className="p-3 rounded-xl mb-4 text-sm space-y-1" style={{ backgroundColor: "rgba(94,187,127,0.1)", color: "var(--gh-green)" }}>
+                  <p>\u2713 RF signature tuned successfully. Confidence improved.</p>
+                  {entity.bleManufacturer && <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>BLE tether re-calibrated \u2014 {entity.bleManufacturer} ({entity.bleDeviceOS ?? "unknown OS"})</p>}
                 </div>
               )}
               <div className="flex gap-2">

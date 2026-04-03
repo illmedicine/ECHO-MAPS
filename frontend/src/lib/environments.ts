@@ -417,6 +417,11 @@ export interface TrackedEntity {
   deviceTetherStatus: string;
   deviceRssi: number | null;
   deviceDistanceM: number | null;
+  bleDeviceName: string | null;
+  bleAddressType: "public" | "random" | null;
+  bleManufacturer: string | null;
+  bleDeviceOS: "iOS" | "Android" | "Windows" | "Other" | null;
+  bleCompanyId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -454,6 +459,11 @@ export function createEntity(data: Pick<TrackedEntity, "name" | "type" | "emoji"
     deviceTetherStatus: "none",
     deviceRssi: null,
     deviceDistanceM: null,
+    bleDeviceName: null,
+    bleAddressType: null,
+    bleManufacturer: null,
+    bleDeviceOS: null,
+    bleCompanyId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
