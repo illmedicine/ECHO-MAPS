@@ -395,6 +395,90 @@ export function removeCamera(id: string): boolean {
   return true;
 }
 
+/* ══════════════════════════════════════════════
+   Tracked Entity Persistence
+   ══════════════════════════════════════════════ */
+
+export interface TrackedEntity {
+  id: string;
+  name: string;
+  type: "person" | "pet";
+  emoji: string;
+  rfSignature: string;
+  roomId: string;
+  location: string;
+  status: "active" | "away";
+  confidence: number;
+  activity: string;
+  breathingRate: number | null;
+  heartRate: number | null;
+  lastSeen: string;
+  deviceMacSuffix: string | null;
+  deviceTetherStatus: string;
+  deviceRssi: number | null;
+  deviceDistanceM: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const ENTITY_STORAGE_KEY = "echo_vue_entities";
+
+export function getEntities(): TrackedEntity[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(ENTITY_STORAGE_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function getEntity(id: string): TrackedEntity | null {
+  return getEntities().find((e) => e.id === id) ?? null;
+}
+
+export function createEntity(data: Pick<TrackedEntity, "name" | "type" | "emoji" | "roomId" | "location">): TrackedEntity {
+  const entities = getEntities();
+  const sigNum = (entities.length + 1).toString(16).toUpperCase().padStart(4, "0");
+  const entity: TrackedEntity = {
+    id: crypto.randomUUID(),
+    name: data.name,
+    type: data.type,
+    emoji: data.emoji,
+    rfSignature: `RF-${sigNum}`,
+    roomId: data.roomId,
+    location: data.location || "Unassigned",
+    status: "away",
+    confidence: 0,
+    activity: "Unknown",
+    breathingRate: null,
+    heartRate: null,
+    lastSeen: "Never",
+    deviceMacSuffix: null,
+    deviceTetherStatus: "none",
+    deviceRssi: null,
+    deviceDistanceM: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  entities.push(entity);
+  localStorage.setItem(ENTITY_STORAGE_KEY, JSON.stringify(entities));
+  return entity;
+}
+
+export function updateEntity(id: string, updates: Partial<Omit<TrackedEntity, "id" | "createdAt">>): TrackedEntity | null {
+  const entities = getEntities();
+  const idx = entities.findIndex((e) => e.id === id);
+  if (idx === -1) return null;
+  entities[idx] = { ...entities[idx], ...updates, updatedAt: new Date().toISOString() };
+  localStorage.setItem(ENTITY_STORAGE_KEY, JSON.stringify(entities));
+  return entities[idx];
+}
+
+export function deleteEntity(id: string): boolean {
+  const entities = getEntities();
+  const filtered = entities.filter((e) => e.id !== id);
+  if (filtered.length === entities.length) return false;
+  localStorage.setItem(ENTITY_STORAGE_KEY, JSON.stringify(filtered));
+  return true;
+}
+
 /* ── Calibration Activity Prompts ── */
 
 export interface CalibrationActivity {
