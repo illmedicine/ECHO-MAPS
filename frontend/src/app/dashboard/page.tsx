@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -62,26 +62,26 @@ interface RoomCard {
 }
 
 const ROOM_ICONS: Record<string, string> = {
-  kitchen: "ðŸ³",
-  living_room: "ðŸ›‹ï¸",
-  bedroom: "ðŸ›ï¸",
-  office: "ðŸ’»",
-  patio: "â˜€ï¸",
-  factory: "ðŸ­",
-  clinic: "ðŸ¥",
-  bathroom: "ðŸš¿",
-  garage: "ðŸš—",
-  home: "ðŸ ",
-  other: "ðŸ“",
+  kitchen: "🍳",
+  living_room: "🛋️",
+  bedroom: "🛏️",
+  office: "💻",
+  patio: "☀️",
+  factory: "🏭",
+  clinic: "🏥",
+  bathroom: "🚿",
+  garage: "🚗",
+  home: "🏠",
+  other: "📍",
 };
 
 const ENV_ICONS: Record<string, string> = {
-  home: "ðŸ ",
-  work: "ðŸ¢",
-  school: "ðŸŽ“",
-  friend: "ðŸ‘‹",
-  business: "ðŸ’¼",
-  other: "ðŸ“",
+  home: "🏠",
+  work: "🏢",
+  school: "🎓",
+  friend: "👋",
+  business: "💼",
+  other: "📍",
 };
 
 type TabView = "spaces" | "cameras" | "automations" | "presence";
@@ -193,10 +193,10 @@ export default function DashboardPage() {
             {echoEnvs.map((env) => (
               <button key={env.id} onClick={() => { setSelectedEnvId(env.id); setActiveTab("spaces"); }}
                 className={`sidebar-item w-full group ${selectedEnvId === env.id && activeTab === "spaces" ? "active" : ""}`}>
-                <span className="text-base">{env.emoji ?? ENV_ICONS[env.category] ?? "ðŸ“"}</span>
+                <span className="text-base">{env.emoji ?? ENV_ICONS[env.category] ?? "📍"}</span>
                 <span className="flex-1 truncate text-left text-xs">{env.name}</span>
                 <button onClick={(e) => { e.stopPropagation(); handleDeleteEnv(env.id); }}
-                  className="w-4 h-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/5" style={{ color: "var(--gh-text-muted)", fontSize: "10px" }}>âœ•</button>
+                  className="w-4 h-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/5" style={{ color: "var(--gh-text-muted)", fontSize: "10px" }}>✕</button>
               </button>
             ))}
             {echoEnvs.length === 0 && <p className="text-[10px] px-2 py-2" style={{ color: "var(--gh-text-muted)" }}>No environments yet</p>}
@@ -207,10 +207,10 @@ export default function DashboardPage() {
 
         <nav className="flex-1 px-3 mt-2 space-y-0.5">
           {([
-            { tab: "spaces" as const, label: "Rooms", icon: "ðŸ " },
-            { tab: "cameras" as const, label: "Cameras", icon: "ðŸ“¹" },
-            { tab: "automations" as const, label: "Automations", icon: "âš¡" },
-            { tab: "presence" as const, label: "Presence", icon: "ðŸ‘¤" },
+            { tab: "spaces" as const, label: "Rooms", icon: "🏠" },
+            { tab: "cameras" as const, label: "Cameras", icon: "📹" },
+            { tab: "automations" as const, label: "Automations", icon: "⚡" },
+            { tab: "presence" as const, label: "Presence", icon: "👤" },
           ]).map(({ tab, label, icon }) => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`sidebar-item w-full ${activeTab === tab ? "active" : ""}`}>
               <span className="text-lg">{icon}</span>{label}
@@ -243,14 +243,14 @@ export default function DashboardPage() {
         <header className="sticky top-0 z-10 px-8 py-4 flex items-center justify-between" style={{ backgroundColor: "var(--gh-bg)", borderBottom: "1px solid var(--gh-border)" }}>
           <div>
             <h1 className="text-xl font-semibold">
-              {activeTab === "spaces" ? (selectedEnv ? `${selectedEnv.emoji ?? ENV_ICONS[selectedEnv.category] ?? "ðŸ“"} ${selectedEnv.name}` : "Select an Environment")
-                : activeTab === "cameras" ? "ðŸ“¹ Cameras"
-                : activeTab === "automations" ? "âš¡ Automations"
-                : "ðŸ‘¤ Presence Detection"}
+              {activeTab === "spaces" ? (selectedEnv ? `${selectedEnv.emoji ?? ENV_ICONS[selectedEnv.category] ?? "📍"} ${selectedEnv.name}` : "Select an Environment")
+                : activeTab === "cameras" ? "📹 Cameras"
+                : activeTab === "automations" ? "⚡ Automations"
+                : "👤 Presence Detection"}
             </h1>
             {activeTab === "spaces" && selectedEnv && (
               <p className="text-xs mt-0.5" style={{ color: "var(--gh-text-muted)" }}>
-                {rooms.length} room{rooms.length !== 1 ? "s" : ""} Â· {rooms.filter((r) => r.isCalibrated).length} calibrated
+                {rooms.length} room{rooms.length !== 1 ? "s" : ""} · {rooms.filter((r) => r.isCalibrated).length} calibrated
               </p>
             )}
           </div>
@@ -273,7 +273,7 @@ export default function DashboardPage() {
         {error && (
           <div className="mx-8 mt-4 p-3 rounded-xl text-sm flex items-center justify-between" style={{ backgroundColor: "rgba(232,104,90,0.1)", color: "var(--gh-red)" }}>
             <span>{error}</span>
-            <button onClick={() => setError(null)} className="hover:opacity-70">âœ•</button>
+            <button onClick={() => setError(null)} className="hover:opacity-70">✕</button>
           </div>
         )}
 
@@ -300,7 +300,7 @@ export default function DashboardPage() {
   );
 }
 
-/* â”€â”€ Rooms View â”€â”€ */
+/* ── Rooms View ── */
 function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onDeleteRoom }: {
   rooms: RoomCard[];
   selectedEnvId: string | null;
@@ -312,7 +312,7 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
   if (!selectedEnvId) {
     return (
       <div className="flex flex-col items-center justify-center py-20" style={{ color: "var(--gh-text-muted)" }}>
-        <div className="text-6xl mb-4 opacity-30">ðŸ </div>
+        <div className="text-6xl mb-4 opacity-30">🏠</div>
         <p className="text-lg mb-2">No environments yet</p>
         <p className="text-sm mb-6">Create your first environment to start mapping rooms</p>
         <button onClick={onAddEnv} className="btn-primary">Create Environment</button>
@@ -322,7 +322,7 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
   if (rooms.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20" style={{ color: "var(--gh-text-muted)" }}>
-        <div className="text-6xl mb-4 opacity-30">ðŸšª</div>
+        <div className="text-6xl mb-4 opacity-30">🚪</div>
         <p className="text-lg mb-2">No rooms in {selectedEnv?.name}</p>
         <p className="text-sm mb-6">Add rooms to map and calibrate each space</p>
         <button onClick={onAddRoom} className="btn-primary">Add Room</button>
@@ -344,10 +344,10 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
               <div key={room.id} className="device-card group relative">
                 <button onClick={(e) => { e.stopPropagation(); onDeleteRoom(room.id); }}
                   className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-white/10"
-                  style={{ color: "var(--gh-text-muted)" }}>âœ•</button>
+                  style={{ color: "var(--gh-text-muted)" }}>✕</button>
                 <Link href={`/dashboard/env?id=${room.id}`} className="block">
                   <div className="flex items-center gap-3">
-                    <span className="text-xl">{ROOM_ICONS[room.type] ?? "ðŸ“"}</span>
+                    <span className="text-xl">{ROOM_ICONS[room.type] ?? "📍"}</span>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-sm truncate">{room.name}</h3>
                       <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{room.isCalibrated ? "Active" : "Setup required"}</p>
@@ -371,7 +371,7 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
   );
 }
 
-/* â”€â”€ Cameras View â”€â”€ */
+/* ── Cameras View ── */
 function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; version?: number }) {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [activeStreams, setActiveStreams] = useState<Record<string, MediaStream>>({});
@@ -392,7 +392,7 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
   }, []);
   // Keep ref in sync for cleanup
   useEffect(() => { activeStreamsRef.current = activeStreams; }, [activeStreams]);
-  // Only clean up streams on actual unmount (navigation away), not on tab switch
+  // Only clean up streams on actual unmount, not on tab switch
   useEffect(() => {
     return () => {
       Object.values(activeStreamsRef.current).forEach((s) => s.getTracks().forEach((t) => t.stop()));
@@ -468,7 +468,7 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
           }
         }
       } catch {
-        // pose estimation error â€” skip frame
+        // pose estimation error — skip frame
       }
 
       poseLoopRefs.current[camId] = requestAnimationFrame(loop);
@@ -526,9 +526,9 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
   if (cameras.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20" style={{ color: "var(--gh-text-muted)" }}>
-        <div className="text-6xl mb-4 opacity-30">ðŸ“¹</div>
+        <div className="text-6xl mb-4 opacity-30">📹</div>
         <p className="text-lg mb-2">No cameras added yet</p>
-        <p className="text-sm mb-4 text-center max-w-md">Add cameras from your device â€” including OBS Virtual Camera, DroidCam, or built-in webcams. Active cameras continuously improve Echo Vue&apos;s presence detection AI.</p>
+        <p className="text-sm mb-4 text-center max-w-md">Add cameras from your device — including OBS Virtual Camera, DroidCam, or built-in webcams. Active cameras continuously improve Echo Vue&apos;s presence detection AI.</p>
         <button onClick={onAddCamera} className="btn-primary">Add Camera</button>
       </div>
     );
@@ -546,7 +546,7 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
         return (
           <div key={roomId} className="mb-8">
             <h2 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: "var(--gh-text-muted)" }}>
-              <span>{ROOM_ICONS[room?.type ?? "other"] ?? "ðŸ“"}</span>{room?.name ?? "Unknown Room"}
+              <span>{ROOM_ICONS[room?.type ?? "other"] ?? "📍"}</span>{room?.name ?? "Unknown Room"}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {cams.map((cam) => {
@@ -569,8 +569,8 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
                       )}
                       {isLive && (
                         <div className="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-[10px]" style={{ backgroundColor: "rgba(0,0,0,0.6)", color: poseStats[cam.id]?.detected ? "var(--gh-green)" : "var(--gh-yellow)" }}>
-                          ðŸ§  {poseStats[cam.id]?.detected
-                            ? `Pose detected Â· ${(poseStats[cam.id].confidence * 100).toFixed(0)}% Â· ${poseStats[cam.id].fps}fps`
+                          🧠 {poseStats[cam.id]?.detected
+                            ? `Pose detected · ${(poseStats[cam.id].confidence * 100).toFixed(0)}% · ${poseStats[cam.id].fps}fps`
                             : isModelLoaded() ? "Scanning for pose..." : "Loading AI model..."}
                         </div>
                       )}
@@ -578,13 +578,13 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
                     <div className="p-3 flex items-center justify-between">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{cam.label}</p>
-                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{isLive ? "Streaming Â· AI tuning" : "Inactive"}</p>
+                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{isLive ? "Streaming · AI tuning" : "Inactive"}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={() => isLive ? stopStream(cam.id) : startStream(cam)}
                           className="px-3 py-1.5 rounded-xl text-xs font-medium transition"
                           style={isLive ? { backgroundColor: "rgba(232,104,90,0.15)", color: "var(--gh-red)" } : { backgroundColor: "rgba(91,156,246,0.15)", color: "var(--gh-blue)" }}>
-                          {isLive ? "â–  Stop" : "â–¶ Start"}
+                          {isLive ? "■ Stop" : "▶ Start"}
                         </button>
                         <button onClick={() => handleRemove(cam.id)} className="p-1.5 rounded-lg hover:bg-white/10 transition" style={{ color: "var(--gh-text-muted)" }}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
@@ -599,8 +599,8 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
         );
       })}
       <div className="mt-6 p-5 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
-        <div className="flex items-center gap-3 mb-3"><span className="text-xl">ðŸ§ </span><h3 className="font-semibold">CSI AI Learning Engine</h3></div>
-        <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>When cameras are active, Echo Vue correlates visual data with WiFi CSI signals to learn presence patterns â€” standing, sitting, walking, sleeping, device use, and more.</p>
+        <div className="flex items-center gap-3 mb-3"><span className="text-xl">🧠</span><h3 className="font-semibold">CSI AI Learning Engine</h3></div>
+        <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>When cameras are active, Echo Vue correlates visual data with WiFi CSI signals to learn presence patterns — standing, sitting, walking, sleeping, device use, and more.</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { label: "Active Cameras", value: `${Object.keys(activeStreams).length}`, color: "var(--gh-green)" },
@@ -619,13 +619,13 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
   );
 }
 
-/* â”€â”€ Add Camera Modal â”€â”€ */
+/* ── Add Camera Modal ── */
 function AddCameraModal({ rooms, selectedEnvId, onClose, onRoomCreated }: { rooms: RoomCard[]; selectedEnvId: string | null; onClose: () => void; onRoomCreated?: () => void }) {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState("");
   const [selectedRoom, setSelectedRoom] = useState("");
   const [customLabel, setCustomLabel] = useState("");
-  const [cameraEmoji, setCameraEmoji] = useState("ðŸ“¹");
+  const [cameraEmoji, setCameraEmoji] = useState("📹");
   const [loading, setLoading] = useState(true);
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
   const previewRef = useRef<HTMLVideoElement>(null);
@@ -685,13 +685,13 @@ function AddCameraModal({ rooms, selectedEnvId, onClose, onRoomCreated }: { room
       <div className="rounded-2xl w-full max-w-lg p-6" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold">Add Camera</h2>
-          <button onClick={cleanup} style={{ color: "var(--gh-text-muted)" }}>âœ•</button>
+          <button onClick={cleanup} style={{ color: "var(--gh-text-muted)" }}>✕</button>
         </div>
         {loading ? (
           <div className="py-12 text-center text-sm" style={{ color: "var(--gh-text-muted)" }}>Scanning for cameras...</div>
         ) : devices.length === 0 ? (
           <div className="py-12 text-center">
-            <p className="text-2xl mb-2">ðŸ“¹</p>
+            <p className="text-2xl mb-2">📹</p>
             <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>No cameras found. Make sure a camera (webcam, DroidCam, or OBS Virtual Camera) is connected.</p>
           </div>
         ) : (
@@ -717,13 +717,13 @@ function AddCameraModal({ rooms, selectedEnvId, onClose, onRoomCreated }: { room
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Assign to Room</label>
               {allRooms.length === 0 ? (
-                <p className="text-xs p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-yellow)" }}>No rooms yet â€” create a room first.</p>
+                <p className="text-xs p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-yellow)" }}>No rooms yet — create a room first.</p>
               ) : (
                 <select value={selectedRoom} onChange={(e) => setSelectedRoom(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none"
                   style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text)" }}>
                   <option value="">Choose a room...</option>
-                  {allRooms.map((r) => <option key={r.id} value={r.id}>{ROOM_ICONS[r.type] ?? "ðŸ“"} {r.name}</option>)}
+                  {allRooms.map((r) => <option key={r.id} value={r.id}>{ROOM_ICONS[r.type] ?? "📍"} {r.name}</option>)}
                 </select>
               )}
             </div>
@@ -735,22 +735,22 @@ function AddCameraModal({ rooms, selectedEnvId, onClose, onRoomCreated }: { room
   );
 }
 
-/* â”€â”€ New Environment Modal â”€â”€ */
+/* ── New Environment Modal ── */
 function NewEnvironmentModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, category: EnvCategory, emoji?: string) => void }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState<EnvCategory>("home");
-  const [emoji, setEmoji] = useState("ðŸ ");
+  const [emoji, setEmoji] = useState("🏠");
   const categories: { key: EnvCategory; label: string; icon: string }[] = [
-    { key: "home", label: "Home", icon: "ðŸ " }, { key: "work", label: "Work", icon: "ðŸ¢" },
-    { key: "school", label: "School", icon: "ðŸŽ“" }, { key: "friend", label: "Friend's Place", icon: "ðŸ‘‹" },
-    { key: "business", label: "Business", icon: "ðŸ’¼" }, { key: "other", label: "Other", icon: "ðŸ“" },
+    { key: "home", label: "Home", icon: "🏠" }, { key: "work", label: "Work", icon: "🏢" },
+    { key: "school", label: "School", icon: "🎓" }, { key: "friend", label: "Friend's Place", icon: "👋" },
+    { key: "business", label: "Business", icon: "💼" }, { key: "other", label: "Other", icon: "📍" },
   ];
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="rounded-2xl w-full max-w-md p-6" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">New Environment</h2>
-          <button onClick={onClose} style={{ color: "var(--gh-text-muted)" }}>âœ•</button>
+          <button onClick={onClose} style={{ color: "var(--gh-text-muted)" }}>✕</button>
         </div>
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) onCreate(name.trim(), category, emoji); }} className="space-y-5">
           <div>
@@ -777,21 +777,21 @@ function NewEnvironmentModal({ onClose, onCreate }: { onClose: () => void; onCre
   );
 }
 
-/* â”€â”€ New Room Modal â”€â”€ */
+/* ── New Room Modal ── */
 function NewRoomModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, type: string, dims: { width: number; length: number; height: number }, emoji?: string) => Promise<void> }) {
   const [name, setName] = useState("");
   const [type, setType] = useState("living_room");
-  const [emoji, setEmoji] = useState("ðŸ›‹ï¸");
+  const [emoji, setEmoji] = useState("🛋️");
   const [width, setWidth] = useState(5);
   const [length, setLength] = useState(4);
   const [height, setHeight] = useState(2.7);
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const types = [
-    { key: "kitchen", label: "Kitchen", icon: "ðŸ³" }, { key: "living_room", label: "Living Room", icon: "ðŸ›‹ï¸" },
-    { key: "bedroom", label: "Bedroom", icon: "ðŸ›ï¸" }, { key: "office", label: "Office", icon: "ðŸ’»" },
-    { key: "bathroom", label: "Bathroom", icon: "ðŸš¿" }, { key: "patio", label: "Patio", icon: "â˜€ï¸" },
-    { key: "garage", label: "Garage", icon: "ðŸš—" }, { key: "other", label: "Other", icon: "ðŸ“" },
+    { key: "kitchen", label: "Kitchen", icon: "🍳" }, { key: "living_room", label: "Living Room", icon: "🛋️" },
+    { key: "bedroom", label: "Bedroom", icon: "🛏️" }, { key: "office", label: "Office", icon: "💻" },
+    { key: "bathroom", label: "Bathroom", icon: "🚿" }, { key: "patio", label: "Patio", icon: "☀️" },
+    { key: "garage", label: "Garage", icon: "🚗" }, { key: "other", label: "Other", icon: "📍" },
   ];
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -811,7 +811,7 @@ function NewRoomModal({ onClose, onCreate }: { onClose: () => void; onCreate: (n
       <div className="rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">Add Room</h2>
-          <button onClick={onClose} style={{ color: "var(--gh-text-muted)" }}>âœ•</button>
+          <button onClick={onClose} style={{ color: "var(--gh-text-muted)" }}>✕</button>
         </div>
         {localError && (
           <div className="mb-4 p-3 rounded-xl text-sm" style={{ backgroundColor: "rgba(232,104,90,0.1)", color: "var(--gh-red)" }}>{localError}</div>
@@ -853,14 +853,14 @@ function NewRoomModal({ onClose, onCreate }: { onClose: () => void; onCreate: (n
     </div>
   );
 }
-/* â”€â”€ Automations View â”€â”€ */
+/* ── Automations View ── */
 function AutomationsView() {
   const automations = [
-    { id: "1", name: "Lights off when room empty", trigger: "No presence for 5 min", action: "Turn off lights", space: "Living Room", enabled: true, icon: "ðŸ’¡" },
-    { id: "2", name: "Lock door at night", trigger: "No activity after 11 PM", action: "Lock front door", space: "Patio", enabled: true, icon: "ðŸ”’" },
-    { id: "3", name: "HVAC eco mode", trigger: "Space unoccupied 15 min", action: "Set thermostat to 68Â°F", space: "Office", enabled: false, icon: "â„ï¸" },
-    { id: "4", name: "Alert: unusual activity", trigger: "Movement detected 2-5 AM", action: "Send notification", space: "All spaces", enabled: true, icon: "ðŸš¨" },
-    { id: "5", name: "Welcome routine", trigger: "Person detected entering", action: "Lights on, play music", space: "Kitchen", enabled: false, icon: "ðŸŽµ" },
+    { id: "1", name: "Lights off when room empty", trigger: "No presence for 5 min", action: "Turn off lights", space: "Living Room", enabled: true, icon: "💡" },
+    { id: "2", name: "Lock door at night", trigger: "No activity after 11 PM", action: "Lock front door", space: "Patio", enabled: true, icon: "🔒" },
+    { id: "3", name: "HVAC eco mode", trigger: "Space unoccupied 15 min", action: "Set thermostat to 68°F", space: "Office", enabled: false, icon: "❄️" },
+    { id: "4", name: "Alert: unusual activity", trigger: "Movement detected 2-5 AM", action: "Send notification", space: "All spaces", enabled: true, icon: "🚨" },
+    { id: "5", name: "Welcome routine", trigger: "Person detected entering", action: "Lights on, play music", space: "Kitchen", enabled: false, icon: "🎵" },
   ];
   return (
     <div>
@@ -878,7 +878,7 @@ function AutomationsView() {
             <div className="flex-1">
               <h3 className="font-medium text-sm">{auto.name}</h3>
               <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>
-                <span style={{ color: "var(--gh-yellow)" }}>When:</span> {auto.trigger} &nbsp;Â·&nbsp;
+                <span style={{ color: "var(--gh-yellow)" }}>When:</span> {auto.trigger} &nbsp;·&nbsp;
                 <span style={{ color: "var(--gh-green)" }}>Then:</span> {auto.action}
               </p>
               <p className="text-[10px] mt-1" style={{ color: "var(--gh-text-muted)" }}>{auto.space}</p>
@@ -893,7 +893,7 @@ function AutomationsView() {
       <div className="mt-8 p-6 rounded-2xl border border-dashed" style={{ borderColor: "var(--gh-border)" }}>
         <h3 className="font-semibold mb-3">Coming Soon: Integrations</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[{ name: "Google Home", icon: "ðŸ " }, { name: "IFTTT", icon: "âš¡" }, { name: "SmartThings", icon: "ðŸ“±" }, { name: "Home Assistant", icon: "ðŸ¤–" }].map((i) => (
+          {[{ name: "Google Home", icon: "🏠" }, { name: "IFTTT", icon: "⚡" }, { name: "SmartThings", icon: "📱" }, { name: "Home Assistant", icon: "🤖" }].map((i) => (
             <div key={i.name} className="p-3 rounded-xl text-center" style={{ backgroundColor: "var(--gh-card)" }}>
               <span className="text-2xl block mb-1">{i.icon}</span>
               <p className="text-xs font-medium">{i.name}</p>
@@ -906,229 +906,372 @@ function AutomationsView() {
   );
 }
 
-/* â”€â”€ Presence Detection View â”€â”€ */
+/* ── Presence Detection View ── */
 function PresenceView() {
   const [entities, setEntities] = useState<TrackedEntity[]>([]);
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
   const [editingProfile, setEditingProfile] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [editEmoji, setEditEmoji] = useState("ðŸ‘¤");
+  const [editEmoji, setEditEmoji] = useState("\ud83d\udc64");
   const [editLocation, setEditLocation] = useState("");
+  const [editType, setEditType] = useState<"person" | "pet">("person");
+  const [editFavoriteRoom, setEditFavoriteRoom] = useState("");
   const [tuningRF, setTuningRF] = useState<string | null>(null);
   const [rfProgress, setRfProgress] = useState(0);
-  const [showAddEntity, setShowAddEntity] = useState(false);
-  const [newEntityName, setNewEntityName] = useState("");
-  const [newEntityType, setNewEntityType] = useState<"person" | "pet">("person");
-  const [newEntityEmoji, setNewEntityEmoji] = useState("ðŸ‘¤");
-  const [liveKeypoints, setLiveKeypoints] = useState<number[][] | null>(null);
-  const [poseLive, setPoseLive] = useState(false);
-  const poseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activityHistory, setActivityHistory] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanTarget, setScanTarget] = useState<"all" | string>("all");
+  const [scanLog, setScanLog] = useState<string[]>([]);
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [hasPose, setHasPose] = useState(false);
+  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load entities from localStorage
   useEffect(() => { setEntities(getEntities()); }, []);
-
-  // Subscribe to poseBus for live skeletal data
+  // Subscribe to pose bus for live detection status
   useEffect(() => {
-    const unsub = subscribePose((frame) => {
-      if (frame.isDetected && frame.keypoints3d.length >= 17) {
-        setLiveKeypoints(frame.keypoints3d);
-        setPoseLive(true);
-        // Reset liveness timeout
-        if (poseTimeoutRef.current) clearTimeout(poseTimeoutRef.current);
-        poseTimeoutRef.current = setTimeout(() => setPoseLive(false), 3000);
-      }
-    });
-    return () => { unsub(); if (poseTimeoutRef.current) clearTimeout(poseTimeoutRef.current); };
+    const unsub = subscribePose(() => setHasPose(hasActivePose()));
+    return unsub;
   }, []);
+
+  const allEnvs = getEchoEnvironments();
+  const allRooms = allEnvs.flatMap((env) => getRoomsForEnvironment(env.id));
 
   const people = entities.filter((e) => e.type === "person");
   const pets = entities.filter((e) => e.type === "pet");
   const selected = entities.find((e) => e.id === selectedEntity);
-  const activeCameras = getCameras().filter((c) => c.active).length;
 
-  const handleAddEntity = () => {
-    if (!newEntityName.trim()) return;
-    createEntity({ name: newEntityName.trim(), type: newEntityType, emoji: newEntityEmoji, roomId: "", location: "Unassigned" });
-    setEntities(getEntities());
-    setNewEntityName("");
-    setNewEntityEmoji(newEntityType === "person" ? "ðŸ‘¤" : "ðŸ¾");
-    setShowAddEntity(false);
+  const roomNames: Record<string, string> = {};
+  const roomEmojis: Record<string, string> = {};
+  allRooms.forEach((r) => { roomNames[r.id] = r.name; roomEmojis[r.id] = r.emoji || ""; });
+
+  // Simulated scan: uses camera/poseBus + RF to detect entities
+  const runScan = () => {
+    setScanning(true);
+    setScanProgress(0);
+    setScanLog(["Initializing presence detection scan..."]);
+    let progress = 0;
+    const detectedIds: string[] = [];
+
+    scanIntervalRef.current = setInterval(() => {
+      progress += Math.random() * 6 + 3;
+      if (progress > 100) progress = 100;
+      setScanProgress(Math.round(progress));
+
+      // Simulate phased scan log messages
+      if (progress > 10 && progress < 15) setScanLog((prev) => prev.length < 3 ? [...prev, "Scanning WiFi CSI channels for RF signatures..."] : prev);
+      if (progress > 25 && progress < 30) setScanLog((prev) => prev.length < 4 ? [...prev, hasPose ? "Camera active \u2014 MoveNet detecting skeletal data..." : "No camera feed \u2014 using RF-only detection..."] : prev);
+      if (progress > 40 && progress < 45) setScanLog((prev) => prev.length < 5 ? [...prev, "Cross-referencing RF fingerprints with known signatures..."] : prev);
+      if (progress > 55 && progress < 60) setScanLog((prev) => prev.length < 6 ? [...prev, "Analyzing breathing micro-motion patterns..."] : prev);
+      if (progress > 75 && progress < 80) setScanLog((prev) => prev.length < 7 ? [...prev, "Classifying entities (person vs. pet vs. object)..."] : prev);
+
+      if (progress >= 100) {
+        if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+        // Generate detected entities based on scan target
+        const targetRooms = scanTarget === "all" ? allRooms : allRooms.filter((r) => r.id === scanTarget);
+        const existing = getEntities();
+        const activities = ["Walking", "Sitting", "Standing", "Resting", "Moving"];
+        const newEntities: TrackedEntity[] = [];
+        const discoveryLog: string[] = [];
+
+        targetRooms.forEach((room) => {
+          // Each room can detect 0-3 entities with some randomness
+          const count = Math.floor(Math.random() * 3);
+          for (let i = 0; i < count; i++) {
+            const isPet = Math.random() < 0.2;
+            const entity = createEntity({
+              name: isPet ? `Pet ${existing.length + newEntities.length + 1}` : `Person ${existing.length + newEntities.length + 1}`,
+              type: isPet ? "pet" : "person",
+              emoji: isPet ? "\ud83d\udc3e" : "\ud83d\udc64",
+              roomId: room.id,
+              location: room.name,
+            });
+            // Update with scan data
+            updateEntityStorage(entity.id, {
+              status: "active",
+              confidence: Math.round((0.7 + Math.random() * 0.28) * 100) / 100,
+              activity: activities[Math.floor(Math.random() * activities.length)],
+              breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
+              heartRate: isPet ? Math.round(80 + Math.random() * 80) : Math.round(60 + Math.random() * 30),
+              lastSeen: "Just now",
+            });
+            detectedIds.push(entity.id);
+            newEntities.push(entity);
+            discoveryLog.push(`\u2713 Detected ${isPet ? "pet" : "person"} in ${room.name} (${entity.rfSignature})`);
+          }
+        });
+
+        if (newEntities.length === 0) {
+          discoveryLog.push("No new entities detected in scanned area.");
+        }
+
+        setScanLog((prev) => [...prev, "Scan complete.", ...discoveryLog, `Total: ${newEntities.length} new entities detected.`]);
+        setEntities(getEntities()); // Reload all from storage
+        setScanning(false);
+      }
+    }, 250);
   };
 
   const handleDeleteEntity = (id: string) => {
-    if (!confirm("Remove this entity?")) return;
     deleteEntity(id);
     setEntities(getEntities());
     if (selectedEntity === id) setSelectedEntity(null);
   };
 
+  const handleSaveProfile = () => {
+    if (!editingProfile) return;
+    updateEntityStorage(editingProfile, {
+      name: editName,
+      location: editLocation,
+      emoji: editEmoji,
+      type: editType,
+      roomId: editFavoriteRoom || undefined,
+    });
+    setEntities(getEntities());
+    setEditingProfile(null);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>Tracked entities across all environments. Tune RF signatures, manage profiles, and view live detection.</p>
-        <button onClick={() => setShowAddEntity(true)} className="btn-primary flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-          Add Entity
+        <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>Scan environments to detect entities via RF signatures and camera data. Edit detected entity profiles below.</p>
+        <button onClick={() => setShowScanModal(true)} className="btn-primary px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2">
+          <span>\ud83d\udce1</span> Run Presence Scan
         </button>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          {/* People */}
-          <div>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span>ðŸ‘¤</span> People <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>{people.length}</span>
-            </h3>
-            {people.length === 0 ? (
-              <p className="text-xs p-4 rounded-xl text-center" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>No people added yet. Click &quot;Add Entity&quot; to register a person.</p>
-            ) : (
+
+      {/* Live Detection Status */}
+      <div className="mb-6 p-4 rounded-2xl flex items-center gap-4" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
+        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: hasPose ? "var(--gh-green)" : "var(--gh-text-muted)", boxShadow: hasPose ? "0 0 8px rgba(94,187,127,0.5)" : "none" }} />
+        <div>
+          <p className="text-sm font-medium">{hasPose ? "Live Detection Active" : "No Live Feed"}</p>
+          <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{hasPose ? "Camera + MoveNet skeletal tracking is running" : "Start a camera stream in the Cameras tab to enable live detection"}</p>
+        </div>
+        <div className="ml-auto text-xs font-mono px-2 py-1 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>
+          {entities.length} entities stored
+        </div>
+      </div>
+
+      {entities.length === 0 ? (
+        <div className="rounded-2xl p-12 text-center" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
+          <div className="text-5xl mb-4 opacity-40">\ud83d\udce1</div>
+          <h3 className="text-lg font-semibold mb-2">No Entities Detected</h3>
+          <p className="text-sm mb-6 max-w-md mx-auto" style={{ color: "var(--gh-text-muted)" }}>
+            Run a presence detection scan to discover people and pets in your environments using WiFi CSI RF signatures and camera-based skeletal tracking.
+          </p>
+          <button onClick={() => setShowScanModal(true)} className="btn-primary px-6 py-2.5 rounded-xl text-sm font-medium inline-flex items-center gap-2">
+            <span>\ud83d\udce1</span> Scan Now
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            {/* 3D Viewer */}
+            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)", height: 260 }}>
+              <EnvironmentViewer />
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <span>\ud83d\udc64</span> People <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>{people.length}</span>
+              </h3>
               <div className="space-y-2">
                 {people.map((p) => (
                   <button key={p.id} onClick={() => setSelectedEntity(p.id)} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-blue)" } : {}}>
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ backgroundColor: p.status === "active" ? "rgba(94,187,127,0.12)" : "rgba(139,143,154,0.12)" }}>
-                      {p.emoji || "ðŸ‘¤"}
+                      {p.emoji || "\ud83d\udc64"}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium text-sm">{p.name}</h4>
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
-                        {p.deviceTetherStatus === "tethered" && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>ðŸ“± BLE</span>}
-                        {p.deviceTetherStatus === "awaiting_new_mac" && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(245,197,66,0.12)", color: "var(--gh-yellow)" }}>ðŸ“± Scanning</span>}
+                        {p.deviceTetherStatus === "connected" && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>BLE</span>}
                       </div>
-                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} Â· {p.activity} Â· {p.lastSeen}</p>
+                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} \u00b7 {p.activity} \u00b7 {p.lastSeen}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-medium" style={{ color: p.confidence > 0.5 ? "var(--gh-green)" : "var(--gh-text-muted)" }}>
-                        {p.confidence > 0 ? `${(p.confidence * 100).toFixed(0)}%` : "â€”"}
-                      </p>
-                      <button onClick={(e) => { e.stopPropagation(); handleDeleteEntity(p.id); }} className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-50 hover:!opacity-100" style={{ color: "var(--gh-text-muted)", fontSize: "10px" }}>âœ•</button>
-                    </div>
+                    <p className="text-xs font-medium" style={{ color: p.confidence > 0.5 ? "var(--gh-green)" : "var(--gh-text-muted)" }}>
+                      {p.confidence > 0 ? `${(p.confidence * 100).toFixed(0)}%` : "\u2014"}
+                    </p>
                   </button>
                 ))}
+                {people.length === 0 && <p className="text-xs py-4 text-center" style={{ color: "var(--gh-text-muted)" }}>No people detected yet. Run a scan to discover.</p>}
               </div>
-            )}
-          </div>
-          {/* Pets */}
-          <div>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span>ðŸ¾</span> Pets <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(245,197,66,0.12)", color: "var(--gh-yellow)" }}>{pets.length}</span>
-            </h3>
-            {pets.length === 0 ? (
-              <p className="text-xs p-4 rounded-xl text-center" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>No pets added yet.</p>
-            ) : (
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <span>\ud83d\udc3e</span> Pets <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(245,197,66,0.12)", color: "var(--gh-yellow)" }}>{pets.length}</span>
+              </h3>
               <div className="space-y-2">
                 {pets.map((p) => (
                   <button key={p.id} onClick={() => setSelectedEntity(p.id)} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-yellow)" } : {}}>
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ backgroundColor: "rgba(245,197,66,0.12)" }}>
-                      {p.emoji || "ðŸ¾"}
+                      {p.emoji || "\ud83d\udc3e"}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium text-sm">{p.name}</h4>
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
-                        {p.deviceTetherStatus === "tethered" && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>ðŸ“± BLE</span>}
                       </div>
-                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} Â· {p.activity} Â· {p.lastSeen}</p>
+                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} \u00b7 {p.activity} \u00b7 {p.lastSeen}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-medium" style={{ color: "var(--gh-yellow)" }}>{p.confidence > 0 ? `${(p.confidence * 100).toFixed(0)}%` : "â€”"}</p>
-                      <button onClick={(e) => { e.stopPropagation(); handleDeleteEntity(p.id); }} className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-50 hover:!opacity-100" style={{ color: "var(--gh-text-muted)", fontSize: "10px" }}>âœ•</button>
-                    </div>
+                    <p className="text-xs font-medium" style={{ color: "var(--gh-yellow)" }}>{(p.confidence * 100).toFixed(0)}%</p>
                   </button>
                 ))}
+                {pets.length === 0 && <p className="text-xs py-4 text-center" style={{ color: "var(--gh-text-muted)" }}>No pets detected yet.</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Entity Detail Panel */}
+          <div>
+            {selected ? (
+              <div className="rounded-2xl p-5 sticky top-20" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
+                <div className="text-center mb-4">
+                  <div className="text-4xl mb-2">{selected.emoji || "\ud83d\udc64"}</div>
+                  <h3 className="font-bold text-lg">{selected.name}</h3>
+                  <p className="text-xs font-mono" style={{ color: "var(--gh-text-muted)" }}>{selected.rfSignature}</p>
+                  <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full" style={{
+                    backgroundColor: selected.status === "active" ? "rgba(94,187,127,0.12)" : "rgba(139,143,154,0.12)",
+                    color: selected.status === "active" ? "var(--gh-green)" : "var(--gh-text-muted)",
+                  }}>{selected.status === "active" ? "\u25cf Active" : "\u25cb Away"}</span>
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Location</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.location}</span></div>
+                  <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Activity</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.activity}</span></div>
+                  <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Last Seen</span><span>{selected.lastSeen}</span></div>
+                  <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Confidence</span><span>{selected.confidence > 0 ? `${(selected.confidence * 100).toFixed(0)}%` : "\u2014"}</span></div>
+                  {selected.deviceTetherStatus !== "none" && (
+                    <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>BLE Tether</span><span className="font-medium" style={{ color: selected.deviceTetherStatus === "connected" ? "var(--gh-green)" : "var(--gh-text-muted)" }}>{selected.deviceTetherStatus} {selected.deviceRssi != null ? `(${selected.deviceRssi} dBm)` : ""}</span></div>
+                  )}
+                  {selected.status === "active" && (
+                    <>
+                      <hr style={{ borderColor: "var(--gh-border)" }} />
+                      <h4 className="font-semibold text-xs" style={{ color: "var(--gh-text-muted)" }}>VITALS</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="p-2 rounded-lg text-center" style={{ backgroundColor: "var(--gh-card)" }}>
+                          <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Breathing</p>
+                          <p className="text-base font-bold" style={{ color: "var(--gh-blue)" }}>{selected.breathingRate?.toFixed(1) ?? "\u2014"}</p>
+                          <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>bpm</p>
+                        </div>
+                        <div className="p-2 rounded-lg text-center" style={{ backgroundColor: "var(--gh-card)" }}>
+                          <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Heart Rate</p>
+                          <p className="text-base font-bold" style={{ color: "var(--gh-red)" }}>{selected.heartRate ?? "\u2014"}</p>
+                          <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>bpm</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <hr style={{ borderColor: "var(--gh-border)" }} />
+                  <div className="space-y-2">
+                    <button onClick={() => {
+                      setEditName(selected.name);
+                      setEditLocation(selected.location);
+                      setEditEmoji(selected.emoji || "\ud83d\udc64");
+                      setEditType(selected.type);
+                      setEditFavoriteRoom(selected.roomId || "");
+                      setEditingProfile(selected.id);
+                    }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Edit Profile</button>
+                    <button onClick={() => { setRfProgress(0); setTuningRF(selected.id); }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Tune RF Signature</button>
+                    <button onClick={() => setActivityHistory(selected.id)} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>View Activity History</button>
+                    <button onClick={() => { if (confirm(`Remove ${selected.name}? This will delete the RF signature.`)) handleDeleteEntity(selected.id); }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "rgba(248,81,73,0.08)", color: "var(--gh-red)" }}>Remove Entity</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
+                <div className="text-4xl mb-3 opacity-30">\ud83d\udc64</div>
+                <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>Select an entity to view details and edit profile</p>
               </div>
             )}
           </div>
         </div>
-        {/* Detail Panel */}
-        <div>
-          {selected ? (
-            <div className="rounded-2xl p-5 sticky top-20 space-y-4" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
-              <div className="text-center mb-4">
-                <div className="text-4xl mb-2">{selected.emoji || "ðŸ‘¤"}</div>
-                <h3 className="font-bold text-lg">{selected.name}</h3>
-                <p className="text-xs font-mono" style={{ color: "var(--gh-text-muted)" }}>{selected.rfSignature}</p>
-                <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full" style={{
-                  backgroundColor: selected.status === "active" ? "rgba(94,187,127,0.12)" : "rgba(139,143,154,0.12)",
-                  color: selected.status === "active" ? "var(--gh-green)" : "var(--gh-text-muted)",
-                }}>{selected.status === "active" ? "â— Active" : "â—‹ Away"}</span>
-              </div>
+      )}
 
-              {/* Live Skeletal Viewer */}
-              {poseLive && liveKeypoints && liveKeypoints.length >= 17 && (
-                <div className="rounded-xl overflow-hidden" style={{ height: 220 }}>
-                  <EnvironmentViewer
-                    skeleton={liveKeypoints}
-                    roomBounds={[5, 4, 2.7]}
-                    sourceType="camera"
-                    isLive={true}
-                  />
-                </div>
-              )}
-              {!poseLive && (
-                <div className="rounded-xl p-4 text-center" style={{ backgroundColor: "var(--gh-card)", height: 100 }}>
-                  <p className="text-2xl mb-1 opacity-30">ðŸ¦´</p>
-                  <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{activeCameras > 0 ? "Waiting for pose detection..." : "Start a camera to see live skeleton"}</p>
-                </div>
-              )}
-
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Location</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.location}</span></div>
-                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Activity</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.activity}</span></div>
-                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Last Seen</span><span>{selected.lastSeen}</span></div>
-                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Confidence</span><span>{selected.confidence > 0 ? `${(selected.confidence * 100).toFixed(0)}%` : "â€”"}</span></div>
-
-                {/* BLE Tether Status */}
-                <hr style={{ borderColor: "var(--gh-border)" }} />
-                <h4 className="font-semibold text-xs" style={{ color: "var(--gh-text-muted)" }}>BLE DEVICE TETHER</h4>
-                <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}>
-                  <span>Status</span>
-                  <span className="font-medium" style={{ color: selected.deviceTetherStatus === "tethered" ? "var(--gh-green)" : selected.deviceTetherStatus === "awaiting_new_mac" ? "var(--gh-yellow)" : "var(--gh-text-muted)" }}>
-                    {selected.deviceTetherStatus === "tethered" ? "ðŸ“± Tethered" : selected.deviceTetherStatus === "awaiting_new_mac" ? "ðŸ” Scanning" : "Not connected"}
-                  </span>
-                </div>
-                {selected.deviceMacSuffix && (
-                  <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>MAC Suffix</span><span className="font-mono text-xs">{selected.deviceMacSuffix}</span></div>
-                )}
-                {selected.deviceRssi != null && (
-                  <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>RSSI</span><span>{selected.deviceRssi} dBm</span></div>
-                )}
-                {selected.deviceDistanceM != null && (
-                  <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Distance</span><span>{selected.deviceDistanceM.toFixed(1)} m</span></div>
-                )}
-
-                {selected.status === "active" && selected.breathingRate != null && (
-                  <>
-                    <hr style={{ borderColor: "var(--gh-border)" }} />
-                    <h4 className="font-semibold text-xs" style={{ color: "var(--gh-text-muted)" }}>VITALS</h4>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="p-2 rounded-lg text-center" style={{ backgroundColor: "var(--gh-card)" }}>
-                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Breathing</p>
-                        <p className="text-base font-bold" style={{ color: "var(--gh-blue)" }}>{selected.breathingRate?.toFixed(1) ?? "â€”"}</p>
-                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>bpm</p>
-                      </div>
-                      <div className="p-2 rounded-lg text-center" style={{ backgroundColor: "var(--gh-card)" }}>
-                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Heart Rate</p>
-                        <p className="text-base font-bold" style={{ color: "var(--gh-red)" }}>{selected.heartRate ?? "â€”"}</p>
-                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>bpm</p>
-                      </div>
-                    </div>
-                  </>
-                )}
-                <hr style={{ borderColor: "var(--gh-border)" }} />
-                <div className="space-y-2">
-                  <button onClick={() => { setEditName(selected.name); setEditLocation(selected.location); setEditEmoji(selected.emoji || "ðŸ‘¤"); setEditingProfile(selected.id); }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Edit Profile</button>
-                  <button onClick={() => { setRfProgress(0); setTuningRF(selected.id); }} className="w-full py-2 rounded-xl text-xs font-medium transition hover:opacity-90" style={{ backgroundColor: "var(--gh-card)" }}>Tune RF Signature</button>
-                </div>
-              </div>
+      {/* AI Detection Engine Stats */}
+      <div className="mt-8 p-5 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
+        <div className="flex items-center gap-3 mb-3"><span className="text-xl">\ud83e\udde0</span><h3 className="font-semibold">AI Detection Engine</h3></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: "Entities Tracked", value: `${entities.filter((e) => e.status === "active").length} active`, color: "var(--gh-green)" },
+            { label: "RF Signatures", value: `${entities.length} stored`, color: "var(--gh-blue)" },
+            { label: "Detection Model", value: "LatentCSI v2", color: "var(--gh-yellow)" },
+            { label: "Avg. Confidence", value: entities.filter((e) => e.confidence > 0).length > 0 ? `${(entities.filter((e) => e.confidence > 0).reduce((a, e) => a + e.confidence, 0) / entities.filter((e) => e.confidence > 0).length * 100).toFixed(0)}%` : "\u2014", color: "var(--gh-text)" },
+          ].map((s) => (
+            <div key={s.label} className="p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)" }}>
+              <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{s.label}</p>
+              <p className="text-sm font-bold mt-0.5" style={{ color: s.color }}>{s.value}</p>
             </div>
-          ) : (
-            <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
-              <div className="text-4xl mb-3 opacity-30">ðŸ‘¤</div>
-              <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>Select an entity to view details</p>
-            </div>
-          )}
+          ))}
         </div>
       </div>
+
+      {/* Run Presence Scan Modal */}
+      {showScanModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { if (!scanning) setShowScanModal(false); }}>
+          <div className="rounded-2xl p-6 w-full max-w-lg max-h-[85vh] flex flex-col" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-1">
+              <span className="text-2xl">\ud83d\udce1</span>
+              <h3 className="text-lg font-semibold">Presence Detection Scan</h3>
+            </div>
+            <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>Scan your environment to auto-detect people and pets using WiFi CSI RF signatures{hasPose ? " and live camera skeletal tracking" : ""}.</p>
+
+            {!scanning && scanProgress === 0 && (
+              <div className="space-y-3 mb-4">
+                <label className="text-xs font-medium block" style={{ color: "var(--gh-text-muted)" }}>Scan Target</label>
+                <select value={scanTarget} onChange={(e) => setScanTarget(e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm bg-transparent border outline-none" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
+                  <option value="all">All Environments & Rooms</option>
+                  {allRooms.map((r) => (
+                    <option key={r.id} value={r.id}>{roomEmojis[r.id]} {r.name}</option>
+                  ))}
+                </select>
+                <div className="p-3 rounded-xl text-xs space-y-1" style={{ backgroundColor: "var(--gh-card)" }}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-green)" }} />
+                    <span>WiFi CSI RF detection <span style={{ color: "var(--gh-text-muted)" }}>\u2014 always active</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: hasPose ? "var(--gh-green)" : "var(--gh-text-muted)" }} />
+                    <span>Camera skeletal tracking <span style={{ color: "var(--gh-text-muted)" }}>\u2014 {hasPose ? "active" : "no feed"}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-blue)" }} />
+                    <span>Breathing micro-motion analysis <span style={{ color: "var(--gh-text-muted)" }}>\u2014 enabled</span></span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(scanning || scanProgress > 0) && (
+              <div className="space-y-3 mb-4">
+                <div className="p-4 rounded-xl" style={{ backgroundColor: "var(--gh-card)" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium">{scanning ? "Scanning..." : "Scan Complete"}</span>
+                    <span className="text-xs font-mono" style={{ color: "var(--gh-text-muted)" }}>{scanProgress}%</span>
+                  </div>
+                  <div className="w-full rounded-full h-2 mb-3" style={{ backgroundColor: "var(--gh-border)" }}>
+                    <div className="h-2 rounded-full transition-all duration-300" style={{ width: `${scanProgress}%`, backgroundColor: scanProgress >= 100 ? "var(--gh-green)" : "var(--gh-accent)" }} />
+                  </div>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {scanLog.map((msg, i) => (
+                      <p key={i} className="text-[11px] font-mono" style={{ color: msg.startsWith("\u2713") ? "var(--gh-green)" : "var(--gh-text-muted)" }}>{msg}</p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 mt-auto">
+              <button onClick={() => { setShowScanModal(false); setScanProgress(0); setScanLog([]); }} className="flex-1 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: "var(--gh-border)" }} disabled={scanning}>{scanProgress >= 100 ? "Done" : "Cancel"}</button>
+              {scanProgress < 100 && (
+                <button onClick={runScan} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary" disabled={scanning}>
+                  {scanning ? "Scanning\u2026" : "Start Scan"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Profile Modal */}
       {editingProfile && (() => {
@@ -1137,7 +1280,7 @@ function PresenceView() {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setEditingProfile(null)}>
             <div className="rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold mb-4">Edit Profile â€” {entity.name}</h3>
+              <h3 className="text-lg font-semibold mb-4">Edit Profile \u2014 {entity.name}</h3>
               <div className="space-y-3">
                 <div className="flex justify-center mb-2">
                   <div className="text-5xl">{editEmoji}</div>
@@ -1148,25 +1291,37 @@ function PresenceView() {
                   <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm bg-transparent border outline-none focus:ring-1" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Assigned Location</label>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Entity Type</label>
+                  <select value={editType} onChange={(e) => setEditType(e.target.value as "person" | "pet")} className="w-full px-3 py-2 rounded-xl text-sm bg-transparent border outline-none" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
+                    <option value="person">Person</option>
+                    <option value="pet">Pet</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Current Location</label>
                   <input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm bg-transparent border outline-none focus:ring-1" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Entity Type</label>
-                  <p className="text-sm capitalize">{entity.type}</p>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Favorite Room</label>
+                  <select value={editFavoriteRoom} onChange={(e) => setEditFavoriteRoom(e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm bg-transparent border outline-none" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
+                    <option value="">No preference</option>
+                    {allRooms.map((r) => (
+                      <option key={r.id} value={r.id}>{roomEmojis[r.id]} {r.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>RF Signature</label>
-                  <p className="text-sm font-mono">{entity.rfSignature}</p>
+                  <p className="text-sm font-mono" style={{ color: "var(--gh-text-muted)" }}>{entity.rfSignature}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--gh-text-muted)" }}>Detected</label>
+                  <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>{new Date(entity.createdAt).toLocaleString()}</p>
                 </div>
               </div>
               <div className="flex gap-2 mt-5">
                 <button onClick={() => setEditingProfile(null)} className="flex-1 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: "var(--gh-border)" }}>Cancel</button>
-                <button onClick={() => {
-                  updateEntityStorage(editingProfile, { name: editName, location: editLocation, emoji: editEmoji });
-                  setEntities(getEntities());
-                  setEditingProfile(null);
-                }} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary">Save Changes</button>
+                <button onClick={handleSaveProfile} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary">Save Changes</button>
               </div>
             </div>
           </div>
@@ -1182,22 +1337,15 @@ function PresenceView() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { if (!isRunning) setTuningRF(null); }}>
             <div className="rounded-2xl p-6 w-full max-w-md" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
               <h3 className="text-lg font-semibold mb-1">Tune RF Signature</h3>
-              <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>{entity.name} â€” {entity.rfSignature}</p>
+              <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>{entity.name} \u2014 {entity.rfSignature}</p>
               <div className="p-4 rounded-xl mb-4" style={{ backgroundColor: "var(--gh-card)" }}>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl" style={{ backgroundColor: "rgba(124,140,248,0.12)" }}>ðŸ“¡</div>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl" style={{ backgroundColor: "rgba(124,140,248,0.12)" }}>\ud83d\udce1</div>
                   <div>
                     <p className="text-sm font-medium">WiFi CSI Signal</p>
-                    <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>
-                      {poseLive ? "Camera active â€” correlating pose with RF" : "Capturing RF patterns for"} {entity.name}
-                    </p>
+                    <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Capturing RF patterns for {entity.name}</p>
                   </div>
                 </div>
-                {poseLive && (
-                  <div className="mb-2 p-2 rounded-lg text-[10px] flex items-center gap-1.5" style={{ backgroundColor: "rgba(94,187,127,0.08)", color: "var(--gh-green)" }}>
-                    âœ“ Camera pose data flowing â€” AI correlating visual + RF signals
-                  </div>
-                )}
                 <div className="w-full rounded-full h-2 mb-1" style={{ backgroundColor: "var(--gh-border)" }}>
                   <div className="h-2 rounded-full transition-all duration-300" style={{ width: `${rfProgress}%`, backgroundColor: rfProgress >= 100 ? "var(--gh-green)" : "var(--gh-accent)" }} />
                 </div>
@@ -1205,7 +1353,7 @@ function PresenceView() {
               </div>
               {rfProgress >= 100 && (
                 <div className="p-3 rounded-xl mb-4 text-sm flex items-center gap-2" style={{ backgroundColor: "rgba(94,187,127,0.1)", color: "var(--gh-green)" }}>
-                  âœ“ RF signature tuned successfully. Confidence improved.
+                  \u2713 RF signature tuned successfully. Confidence improved.
                 </div>
               )}
               <div className="flex gap-2">
@@ -1214,8 +1362,8 @@ function PresenceView() {
                   <button onClick={() => {
                     setRfProgress(1);
                     let p = 0;
-                    const iv = setInterval(() => { p += Math.random() * 8 + 2; if (p >= 100) { p = 100; clearInterval(iv); updateEntityStorage(entity.id, { confidence: Math.min(1, entity.confidence + 0.15) }); setEntities(getEntities()); } setRfProgress(Math.round(p)); }, 200);
-                  }} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary" disabled={isRunning}>{isRunning ? "Tuningâ€¦" : "Start Tuning"}</button>
+                    const iv = setInterval(() => { p += Math.random() * 8 + 2; if (p >= 100) { p = 100; clearInterval(iv); updateEntityStorage(entity.id, { confidence: Math.min(entity.confidence + 0.05, 0.99) }); setEntities(getEntities()); } setRfProgress(Math.round(p)); }, 200);
+                  }} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary" disabled={isRunning}>{isRunning ? "Tuning\u2026" : "Start Tuning"}</button>
                 )}
               </div>
             </div>
@@ -1223,55 +1371,39 @@ function PresenceView() {
         );
       })()}
 
-      {/* Add Entity Modal */}
-      {showAddEntity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowAddEntity(false)}>
-          <div className="rounded-2xl p-6 w-full max-w-md" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold mb-4">Add Entity</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium block mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Entity Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([{ key: "person" as const, label: "Person", icon: "ðŸ‘¤" }, { key: "pet" as const, label: "Pet", icon: "ðŸ¾" }]).map((t) => (
-                    <button key={t.key} type="button" onClick={() => { setNewEntityType(t.key); setNewEntityEmoji(t.icon); }}
-                      className="p-3 rounded-xl text-center text-xs transition"
-                      style={{ backgroundColor: newEntityType === t.key ? "rgba(91,156,246,0.12)" : "var(--gh-card)", border: newEntityType === t.key ? "1px solid var(--gh-blue)" : "1px solid var(--gh-border)", color: newEntityType === t.key ? "var(--gh-blue)" : "var(--gh-text-muted)" }}>
-                      <div className="text-2xl mb-1">{t.icon}</div>{t.label}
-                    </button>
-                  ))}
-                </div>
+      {/* View Activity History Modal */}
+      {activityHistory && (() => {
+        const entity = entities.find((e) => e.id === activityHistory);
+        if (!entity) return null;
+        const mockHistory = [
+          { time: "Just now", activity: entity.activity, location: entity.location, confidence: entity.confidence },
+          { time: "5 min ago", activity: "Standing", location: entity.location, confidence: 0.92 },
+          { time: "12 min ago", activity: "Walking", location: "Hallway", confidence: 0.87 },
+          { time: "25 min ago", activity: "Sitting", location: entity.location, confidence: 0.94 },
+          { time: "1 hour ago", activity: "Walking", location: "Kitchen", confidence: 0.89 },
+          { time: "1.5 hours ago", activity: "Standing", location: "Living Room", confidence: 0.91 },
+        ];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setActivityHistory(null)}>
+            <div className="rounded-2xl p-6 w-full max-w-lg max-h-[80vh] flex flex-col" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold mb-1">Activity History</h3>
+              <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>{entity.name} \u2014 {entity.rfSignature}</p>
+              <div className="flex-1 overflow-y-auto space-y-1">
+                {mockHistory.map((h, i) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: i === 0 ? "rgba(91,156,246,0.06)" : "transparent" }}>
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: i === 0 ? "var(--gh-green)" : "var(--gh-text-muted)" }} />
+                    <span className="text-[10px] w-20 flex-shrink-0" style={{ color: "var(--gh-text-muted)" }}>{h.time}</span>
+                    <span className="text-xs font-medium flex-1">{h.activity}</span>
+                    <span className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{h.location}</span>
+                    <span className="text-[10px] font-mono" style={{ color: "var(--gh-green)" }}>{(h.confidence * 100).toFixed(0)}%</span>
+                  </div>
+                ))}
               </div>
-              <div>
-                <label className="text-xs font-medium block mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Name</label>
-                <input value={newEntityName} onChange={(e) => setNewEntityName(e.target.value)} placeholder={newEntityType === "person" ? "e.g. John" : "e.g. Max"} className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent border outline-none focus:ring-1" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }} maxLength={60} autoFocus />
-              </div>
-              <EmojiPicker selected={newEntityEmoji} onSelect={setNewEntityEmoji} label="Avatar" />
-              <div className="flex gap-2">
-                <button onClick={() => setShowAddEntity(false)} className="flex-1 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: "var(--gh-border)" }}>Cancel</button>
-                <button onClick={handleAddEntity} disabled={!newEntityName.trim()} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary disabled:opacity-50">Add Entity</button>
-              </div>
+              <button onClick={() => setActivityHistory(null)} className="mt-4 w-full py-2 rounded-xl text-sm font-medium border" style={{ borderColor: "var(--gh-border)" }}>Close</button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* AI Detection Engine */}
-      <div className="mt-8 p-5 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
-        <div className="flex items-center gap-3 mb-3"><span className="text-xl">ðŸ§ </span><h3 className="font-semibold">AI Detection Engine</h3></div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: "Entities Tracked", value: entities.length > 0 ? `${entities.filter((e) => e.status === "active").length} active / ${entities.length}` : "0", color: entities.length > 0 ? "var(--gh-green)" : "var(--gh-text-muted)" },
-            { label: "RF Signatures", value: `${entities.length} stored`, color: "var(--gh-blue)" },
-            { label: "Camera Feeds", value: activeCameras > 0 ? `${activeCameras} active` : "None", color: activeCameras > 0 ? "var(--gh-green)" : "var(--gh-text-muted)" },
-            { label: "Pose Stream", value: poseLive ? "Live" : "Inactive", color: poseLive ? "var(--gh-green)" : "var(--gh-text-muted)" },
-          ].map((s) => (
-            <div key={s.label} className="p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)" }}>
-              <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{s.label}</p>
-              <p className="text-sm font-bold mt-0.5" style={{ color: s.color }}>{s.value}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+        );
+      })()}
     </div>
   );
 }
