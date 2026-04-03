@@ -1,11 +1,21 @@
 "use client";
 
+import { scopedKey, scheduleSyncPush, type NetworkFingerprint } from "./cloudSync";
+
+// Scoped localStorage wrappers — keys auto-scope to current user, writes trigger cloud sync
+function _get(key: string): string | null { return localStorage.getItem(scopedKey(key)); }
+function _set(key: string, value: string): void { localStorage.setItem(scopedKey(key), value); scheduleSyncPush(); }
+function _remove(key: string): void { localStorage.removeItem(scopedKey(key)); scheduleSyncPush(); }
+
 /**
  * Environment & Room CRUD backed by localStorage.
  *
  * Hierarchy:
  *   EchoEnvironment (Home, Work, School, Friend's House)
  *     └── Environment (Room: Kitchen, Bedroom, Office — each calibrated separately)
+ *
+ * All storage keys are scoped to the logged-in user's Google ID.
+ * When a backend is configured, changes are auto-synced to the cloud.
  */
 
 /* ── Top-level environment (container) ── */
@@ -18,19 +28,31 @@ export interface EchoEnvironment {
   category: EnvCategory;
   emoji?: string;
   address?: string;
+  networkFingerprint?: NetworkFingerprint;
   createdAt: string;
 }
+
+export type { NetworkFingerprint };
 
 const ENV_STORAGE_KEY = "echo_vue_environments";
 
 export function getEchoEnvironments(): EchoEnvironment[] {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(ENV_STORAGE_KEY);
+  const raw = _get(ENV_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
 export function getEchoEnvironment(id: string): EchoEnvironment | null {
   return getEchoEnvironments().find((e) => e.id === id) ?? null;
+}
+
+export function updateEchoEnvironment(id: string, updates: Partial<Omit<EchoEnvironment, "id" | "createdAt">>): EchoEnvironment | null {
+  const envs = getEchoEnvironments();
+  const idx = envs.findIndex((e) => e.id === id);
+  if (idx === -1) return null;
+  envs[idx] = { ...envs[idx], ...updates };
+  _set(ENV_STORAGE_KEY, JSON.stringify(envs));
+  return envs[idx];
 }
 
 export function createEchoEnvironment(data: Pick<EchoEnvironment, "name" | "category" | "address" | "emoji">): EchoEnvironment {
@@ -44,7 +66,7 @@ export function createEchoEnvironment(data: Pick<EchoEnvironment, "name" | "cate
     createdAt: new Date().toISOString(),
   };
   envs.push(env);
-  localStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(envs));
+  _set(ENV_STORAGE_KEY, JSON.stringify(envs));
   return env;
 }
 
@@ -52,7 +74,7 @@ export function deleteEchoEnvironment(id: string): boolean {
   const envs = getEchoEnvironments();
   const filtered = envs.filter((e) => e.id !== id);
   if (filtered.length === envs.length) return false;
-  localStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(filtered));
+  _set(ENV_STORAGE_KEY, JSON.stringify(filtered));
   // Also delete all rooms in this environment
   const rooms = getEnvironments().filter((r) => r.environmentId === id);
   rooms.forEach((r) => deleteEnvironment(r.id));
@@ -92,7 +114,7 @@ const DEFAULT_DIMS = { width: 5, length: 4, height: 2.7 };
 
 export function getEnvironments(): Environment[] {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = _get(STORAGE_KEY);
   const envs: Environment[] = raw ? JSON.parse(raw) : [];
   return envs.map((e) => ({ ...e, dimensions: e.dimensions ?? DEFAULT_DIMS }));
 }
@@ -122,7 +144,7 @@ export function createEnvironment(
     bridgeId: null,
   };
   envs.push(env);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(envs));
+  _set(STORAGE_KEY, JSON.stringify(envs));
   return env;
 }
 
@@ -134,7 +156,7 @@ export function updateEnvironment(
   const idx = envs.findIndex((e) => e.id === id);
   if (idx === -1) return null;
   envs[idx] = { ...envs[idx], ...updates, updatedAt: new Date().toISOString() };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(envs));
+  _set(STORAGE_KEY, JSON.stringify(envs));
   return envs[idx];
 }
 
@@ -142,8 +164,8 @@ export function deleteEnvironment(id: string): boolean {
   const envs = getEnvironments();
   const filtered = envs.filter((e) => e.id !== id);
   if (filtered.length === envs.length) return false;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-  localStorage.removeItem(ACTIVITY_KEY_PREFIX + id);
+  _set(STORAGE_KEY, JSON.stringify(filtered));
+  _remove(ACTIVITY_KEY_PREFIX + id);
   return true;
 }
 
@@ -155,7 +177,7 @@ export function getRoomsForEnvironment(envId: string): Environment[] {
 
 export function getActivityLog(envId: string): ActivityLogEntry[] {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(ACTIVITY_KEY_PREFIX + envId);
+  const raw = _get(ACTIVITY_KEY_PREFIX + envId);
   return raw ? JSON.parse(raw) : [];
 }
 
@@ -164,7 +186,7 @@ export function appendActivityLog(envId: string, entry: ActivityLogEntry): void 
   log.push(entry);
   // Keep last 500 entries
   const trimmed = log.slice(-500);
-  localStorage.setItem(ACTIVITY_KEY_PREFIX + envId, JSON.stringify(trimmed));
+  _set(ACTIVITY_KEY_PREFIX + envId, JSON.stringify(trimmed));
 }
 
 // ── Simulated Data Generation ──
@@ -358,7 +380,7 @@ const CAMERA_STORAGE_KEY = "echo_vue_cameras";
 
 export function getCameras(): Camera[] {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(CAMERA_STORAGE_KEY);
+  const raw = _get(CAMERA_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
@@ -374,7 +396,7 @@ export function addCamera(data: Omit<Camera, "id" | "createdAt">): Camera {
   const cams = getCameras();
   const cam: Camera = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
   cams.push(cam);
-  localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify(cams));
+  _set(CAMERA_STORAGE_KEY, JSON.stringify(cams));
   return cam;
 }
 
@@ -383,7 +405,7 @@ export function updateCamera(id: string, updates: Partial<Omit<Camera, "id" | "c
   const idx = cams.findIndex((c) => c.id === id);
   if (idx === -1) return null;
   cams[idx] = { ...cams[idx], ...updates };
-  localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify(cams));
+  _set(CAMERA_STORAGE_KEY, JSON.stringify(cams));
   return cams[idx];
 }
 
@@ -391,7 +413,7 @@ export function removeCamera(id: string): boolean {
   const cams = getCameras();
   const filtered = cams.filter((c) => c.id !== id);
   if (filtered.length === cams.length) return false;
-  localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify(filtered));
+  _set(CAMERA_STORAGE_KEY, JSON.stringify(filtered));
   return true;
 }
 
@@ -430,7 +452,7 @@ const ENTITY_STORAGE_KEY = "echo_vue_entities";
 
 export function getEntities(): TrackedEntity[] {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(ENTITY_STORAGE_KEY);
+  const raw = _get(ENTITY_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
@@ -468,7 +490,7 @@ export function createEntity(data: Pick<TrackedEntity, "name" | "type" | "emoji"
     updatedAt: new Date().toISOString(),
   };
   entities.push(entity);
-  localStorage.setItem(ENTITY_STORAGE_KEY, JSON.stringify(entities));
+  _set(ENTITY_STORAGE_KEY, JSON.stringify(entities));
   return entity;
 }
 
@@ -477,7 +499,7 @@ export function updateEntity(id: string, updates: Partial<Omit<TrackedEntity, "i
   const idx = entities.findIndex((e) => e.id === id);
   if (idx === -1) return null;
   entities[idx] = { ...entities[idx], ...updates, updatedAt: new Date().toISOString() };
-  localStorage.setItem(ENTITY_STORAGE_KEY, JSON.stringify(entities));
+  _set(ENTITY_STORAGE_KEY, JSON.stringify(entities));
   return entities[idx];
 }
 
@@ -485,7 +507,7 @@ export function deleteEntity(id: string): boolean {
   const entities = getEntities();
   const filtered = entities.filter((e) => e.id !== id);
   if (filtered.length === entities.length) return false;
-  localStorage.setItem(ENTITY_STORAGE_KEY, JSON.stringify(filtered));
+  _set(ENTITY_STORAGE_KEY, JSON.stringify(filtered));
   return true;
 }
 

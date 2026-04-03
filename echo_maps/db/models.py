@@ -6,8 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Self
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, select, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, select, func
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -108,6 +108,19 @@ class RFSignatureRecord(Base):
     environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id"), index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     user_tag: Mapped[str] = mapped_column(String(50))  # "User_A", "User_B", etc.
+
+
+class UserSettings(Base):
+    """Stores the entire frontend settings blob per user for cross-device sync."""
+    __tablename__ = "user_settings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # matches User.google_id or JWT sub
+    settings_json: Mapped[dict] = mapped_column(JSONB, default=dict)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     signature_vector: Mapped[bytes] = mapped_column()   # 512 × float32 = 2048 bytes
     gait_embedding: Mapped[bytes] = mapped_column()     # 64 × float32 = 256 bytes
     breathing_embedding: Mapped[bytes] = mapped_column() # 32 × float32 = 128 bytes

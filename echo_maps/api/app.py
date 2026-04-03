@@ -8,7 +8,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from echo_maps.api.routes import auth, calibration, environments, health, live
+from echo_maps.api.routes import auth, calibration, environments, health, live, settings
 from echo_maps.config import get_settings
 from echo_maps.db.session import init_db, close_db, create_tables
 
@@ -59,5 +59,6 @@ def create_app() -> FastAPI:
     app.include_router(environments.router, prefix="/api/environments", tags=["environments"])
     app.include_router(calibration.router, prefix="/api/calibration", tags=["calibration"])
     app.include_router(live.router, prefix="/api/live", tags=["live"])
+    app.include_router(settings.router, prefix="/api", tags=["settings"])
 
     return app

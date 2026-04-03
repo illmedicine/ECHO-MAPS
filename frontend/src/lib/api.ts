@@ -144,3 +144,22 @@ export async function healthCheck(): Promise<{ status: string; service: string }
 export function isBackendConfigured(): boolean {
   return !!API_BASE;
 }
+
+// ── User Settings (cloud sync) ──
+
+export interface UserSettingsPayload {
+  settings: Record<string, unknown>;
+  version: number;
+  updatedAt: string;
+}
+
+export async function getUserSettings(): Promise<UserSettingsPayload> {
+  return request<UserSettingsPayload>("/api/settings");
+}
+
+export async function saveUserSettings(payload: UserSettingsPayload): Promise<UserSettingsPayload> {
+  return request<UserSettingsPayload>("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}

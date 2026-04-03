@@ -39,6 +39,14 @@ import {
 } from "@/lib/environments";
 import EmojiPicker from "@/components/EmojiPicker";
 import { subscribePose, hasActivePose, getLatestPose } from "@/lib/poseBus";
+import {
+  migrateToUserScope,
+  syncPullFromCloud,
+  downloadSettingsAsFile,
+  importSettingsFromFile,
+  detectNetworkFingerprint,
+} from "@/lib/cloudSync";
+import { updateEchoEnvironment } from "@/lib/environments";
 import dynamic from "next/dynamic";
 
 const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer"), { ssr: false });
@@ -101,19 +109,31 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabView>("spaces");
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("echo_maps_user");
     if (!stored) { router.push("/auth/signin"); return; }
-    setUser(JSON.parse(stored));
+    const parsed = JSON.parse(stored);
+    setUser(parsed);
+    // Migrate unscoped localStorage data to user-scoped keys
+    if (parsed.id) migrateToUserScope(parsed.id);
   }, [router]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    let online = false;
     if (isBackendConfigured()) {
-      try { await healthCheck(); setBackendOnline(true); } catch { setBackendOnline(false); }
+      try { await healthCheck(); setBackendOnline(true); online = true; } catch { setBackendOnline(false); }
     } else { setBackendOnline(false); }
+    // Pull settings from cloud on load (if backend available)
+    if (online) {
+      setSyncStatus("syncing");
+      const ok = await syncPullFromCloud();
+      setSyncStatus(ok ? "synced" : "error");
+    }
     const envs = getEchoEnvironments();
     setEchoEnvs(envs);
     if (!selectedEnvId && envs.length > 0) setSelectedEnvId(envs[0].id);
@@ -134,8 +154,15 @@ export default function DashboardPage() {
 
   const handleSignOut = () => { localStorage.removeItem("echo_maps_user"); router.push("/"); };
 
-  const handleCreateEnv = (name: string, category: EnvCategory, emoji?: string) => {
+  const handleCreateEnv = async (name: string, category: EnvCategory, emoji?: string) => {
     const env = createEchoEnvironment({ name, category, emoji });
+    // Auto-detect network fingerprint for new environment
+    detectNetworkFingerprint().then((fp) => {
+      if (fp) {
+        updateEchoEnvironment(env.id, { networkFingerprint: fp });
+        setEchoEnvs(getEchoEnvironments());
+      }
+    }).catch(() => {});
     setEchoEnvs(getEchoEnvironments());
     setSelectedEnvId(env.id);
     setShowNewEnvModal(false);
@@ -169,6 +196,19 @@ export default function DashboardPage() {
     } catch (e: unknown) { setError(e instanceof Error ? e.message : "Failed to delete"); }
   };
 
+  const handleImportSettings = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ok = await importSettingsFromFile(file);
+    if (ok) {
+      setEchoEnvs(getEchoEnvironments());
+      reloadRooms();
+    } else {
+      setError("Failed to import settings file");
+    }
+    e.target.value = "";
+  };
+
   if (!user) return <main className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-[var(--gh-blue)] border-t-transparent rounded-full animate-spin" /></main>;
 
   const selectedEnv = echoEnvs.find((e) => e.id === selectedEnvId);
@@ -194,7 +234,12 @@ export default function DashboardPage() {
               <button key={env.id} onClick={() => { setSelectedEnvId(env.id); setActiveTab("spaces"); }}
                 className={`sidebar-item w-full group ${selectedEnvId === env.id && activeTab === "spaces" ? "active" : ""}`}>
                 <span className="text-base">{env.emoji ?? ENV_ICONS[env.category] ?? "📍"}</span>
-                <span className="flex-1 truncate text-left text-xs">{env.name}</span>
+                <div className="flex-1 min-w-0">
+                  <span className="block truncate text-left text-xs">{env.name}</span>
+                  {env.networkFingerprint && (
+                    <span className="block truncate text-left text-[9px]" style={{ color: "var(--gh-text-muted)" }}>📡 {env.networkFingerprint.networkLabel}</span>
+                  )}
+                </div>
                 <button onClick={(e) => { e.stopPropagation(); handleDeleteEnv(env.id); }}
                   className="w-4 h-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/5" style={{ color: "var(--gh-text-muted)", fontSize: "10px" }}>✕</button>
               </button>
@@ -234,6 +279,19 @@ export default function DashboardPage() {
             <button onClick={handleSignOut} className="text-xs px-2 py-1 rounded-xl hover:bg-black/5 transition" style={{ color: "var(--gh-text-muted)" }} title="Sign out">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
             </button>
+          </div>
+          {/* Cloud sync status + settings export/import */}
+          <div className="flex items-center gap-1 mt-2">
+            <span className="text-[9px] flex-1" style={{ color: "var(--gh-text-muted)" }}>
+              {syncStatus === "syncing" ? "☁️ Syncing..." : syncStatus === "synced" ? "☁️ Synced" : syncStatus === "error" ? "⚠️ Offline" : "💾 Local"}
+            </span>
+            <button onClick={downloadSettingsAsFile} className="text-[9px] px-1.5 py-0.5 rounded hover:bg-black/5" style={{ color: "var(--gh-text-muted)" }} title="Export settings">
+              📤
+            </button>
+            <button onClick={() => fileInputRef.current?.click()} className="text-[9px] px-1.5 py-0.5 rounded hover:bg-black/5" style={{ color: "var(--gh-text-muted)" }} title="Import settings">
+              📥
+            </button>
+            <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportSettings} />
           </div>
         </div>
       </aside>
