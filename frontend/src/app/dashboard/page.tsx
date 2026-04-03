@@ -987,21 +987,58 @@ function PresenceView() {
   const [hasPose, setHasPose] = useState(false);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Skeleton animation state for live 3D rendering
-  const [skeleton, setSkeleton] = useState<number[][]>([]);
+  // Per-entity skeleton animation for live 3D rendering
   const [pointCloud, setPointCloud] = useState<number[][]>([]);
+  const [animatedPersons, setAnimatedPersons] = useState<Array<{
+    track_id: string; user_tag: string; position: number[];
+    velocity: number[]; speed: number; confidence: number;
+    is_registered: boolean; is_ghosted: boolean; last_activity: string;
+    skeleton: number[][]; device_tether_status: string;
+  }>>([]);
   const skelTimeRef = useRef(0);
+  const prevPosRef = useRef<Record<string, number[]>>({});
 
-  // Animate simulated skeleton in the 3D viewer
+  // Animate each active entity with its own skeleton and derive position from it
   useEffect(() => {
     const dims = { width: 5, length: 4, height: 2.7 };
     setPointCloud(generateSimulatedPointCloud(dims, 200));
     const iv = setInterval(() => {
       skelTimeRef.current += 0.1;
-      setSkeleton(generateSimulatedSkeleton(dims, skelTimeRef.current));
+      const active = entities.filter((e) => e.status === "active");
+      if (active.length === 0) {
+        setAnimatedPersons([]);
+        return;
+      }
+      const dt = 0.1;
+      const newPersons = active.map((e, i) => {
+        // Each entity gets a unique time offset for distinct walking paths
+        const phaseOffset = i * 4.2;
+        const speedMult = 0.8 + (i % 3) * 0.15; // vary walk speed per entity
+        const skel = generateSimulatedSkeleton(
+          { width: dims.width, length: dims.length, height: dims.height },
+          skelTimeRef.current * speedMult + phaseOffset
+        );
+        // Derive precise position from hip midpoint (keypoints 23=left hip, 24=right hip)
+        const hipL = skel[23] || [2.5, 0.9, 2];
+        const hipR = skel[24] || [2.5, 0.9, 2];
+        const pos = [(hipL[0] + hipR[0]) / 2, (hipL[1] + hipR[1]) / 2, (hipL[2] + hipR[2]) / 2];
+        // Compute velocity from previous position
+        const prev = prevPosRef.current[e.id] || pos;
+        const vel = [(pos[0] - prev[0]) / dt, (pos[1] - prev[1]) / dt, (pos[2] - prev[2]) / dt];
+        const spd = Math.sqrt(vel[0] ** 2 + vel[1] ** 2 + vel[2] ** 2);
+        prevPosRef.current[e.id] = pos;
+        return {
+          track_id: e.id, user_tag: e.name, position: pos,
+          velocity: vel, speed: spd, confidence: e.confidence,
+          is_registered: true, is_ghosted: false,
+          last_activity: e.activity, skeleton: skel,
+          device_tether_status: e.deviceTetherStatus ?? "none",
+        };
+      });
+      setAnimatedPersons(newPersons);
     }, 100); // ~10fps
     return () => clearInterval(iv);
-  }, []);
+  }, [entities]);
 
   // Load entities from localStorage
   useEffect(() => { setEntities(getEntities()); }, []);
@@ -1316,22 +1353,10 @@ function PresenceView() {
             {/* 3D Viewer — shows tracked entities as dots */}
             <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)", height: 260 }}>
               <EnvironmentViewer
-                skeleton={skeleton}
                 pointCloud={pointCloud}
-                trackedPersons={entities.filter((e) => e.type === "person" && e.status === "active").map((e, i) => ({
-                  track_id: e.id,
-                  user_tag: e.name,
-                  position: [2 + i * 2.5, 0.9, 2 + (i % 2) * 2],
-                  velocity: [0, 0, 0],
-                  speed: 0,
-                  confidence: e.confidence,
-                  is_registered: true,
-                  is_ghosted: false,
-                  last_activity: e.activity,
-                  device_tether_status: e.deviceTetherStatus ?? "none",
-                }))}
-                sourceType={entities.some((e) => e.status === "active") ? "csi" : "simulated"}
-                isLive={entities.some((e) => e.status === "active")}
+                trackedPersons={animatedPersons}
+                sourceType={animatedPersons.length > 0 ? "csi" : "simulated"}
+                isLive={animatedPersons.length > 0}
               />
             </div>
 
