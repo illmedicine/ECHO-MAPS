@@ -5,6 +5,7 @@ import { isBackendConfigured } from "./api";
 import { generateSimulatedSkeleton, generateSimulatedVitals, getCamerasForRoom, type Environment } from "./environments";
 import { estimatePose, preloadModel } from "./poseEstimator";
 import { storeFrame, type CollectedFrame } from "./collectedData";
+import { subscribePose, getLatestPose, hasActivePose, type PoseBusFrame } from "./poseBus";
 
 export type StreamSource = "csi" | "camera" | "simulated" | "disconnected";
 
@@ -182,6 +183,27 @@ export function useSkeletalStream({
     let wsAttempted = false;
     let disposed = false;
 
+    // Subscribe to the global pose bus (data from Cameras tab)
+    const unsubBus = subscribePose((busFrame: PoseBusFrame) => {
+      if (disposed) return;
+      // Accept pose data from any camera assigned to this room, or any camera if no room match
+      if (busFrame.roomId === envId || !busFrame.roomId) {
+        if (busFrame.isDetected && busFrame.keypoints3d.length >= 33) {
+          setSource("camera");
+          setFrame({
+            keypoints: busFrame.keypoints3d,
+            activity: activityLabel,
+            breathingRate: null,
+            heartRate: null,
+            confidence: busFrame.confidence,
+            source: "camera",
+            timestamp: busFrame.timestamp,
+            isDetected: true,
+          });
+        }
+      }
+    });
+
     const animate = async (now: number) => {
       if (disposed) return;
 
@@ -206,7 +228,12 @@ export function useSkeletalStream({
           prev ? { ...prev, keypoints: interpolated, timestamp: now } : prev
         );
       }
-      // Priority 2: Use live camera feed for real pose estimation
+      // Priority 2: Check if pose bus has recent data from Cameras tab
+      else if (hasActivePose(envId)) {
+        // Data is being pushed via subscribePose callback above — just keep the loop alive
+        // Don't override with simulation
+      }
+      // Priority 3: Use live camera feed for real pose estimation (local video element)
       else {
         const video = cameraVideoRef.current ?? findActiveCameraVideo(envId);
 
@@ -262,7 +289,7 @@ export function useSkeletalStream({
             }
           }
         }
-        // Priority 3: Simulation fallback only when no real data source exists
+        // Priority 4: Simulation fallback only when no real data source exists
         else {
           setSource("simulated");
           const keypoints = generateSimulatedSkeleton(dims, elapsed);
@@ -290,6 +317,7 @@ export function useSkeletalStream({
 
     return () => {
       disposed = true;
+      unsubBus();
       cancelAnimationFrame(rafRef.current);
       if (wsRef.current) {
         wsRef.current.close();

@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 
-const webpack = require("webpack");
+const path = require("path");
 
 // When deployed to GitHub Pages, assets need the repo prefix.
 // When deployed to GoDaddy (custom domain), no prefix needed.
@@ -23,6 +23,17 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   webpack: (config, { isServer }) => {
+    // Provide stub modules for optional TF.js dependencies we don't use.
+    // @mediapipe/pose is only needed for BlazePose (we use MoveNet).
+    // @tensorflow/tfjs-backend-webgpu requires WebGPU (we use WebGL).
+    // Must apply to both server and client builds since Next.js resolves
+    // all imports during static analysis.
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@mediapipe/pose": path.resolve(__dirname, "src/stubs/mediapipe-pose.js"),
+      "@tensorflow/tfjs-backend-webgpu": path.resolve(__dirname, "src/stubs/tfjs-backend-webgpu.js"),
+    };
+
     // TF.js uses dynamic imports and needs Node.js polyfill fallbacks
     if (!isServer) {
       config.resolve.fallback = {
@@ -35,11 +46,6 @@ const nextConfig = {
         buffer: false,
       };
     }
-    // TF.js pose-detection statically imports optional backends we don't use
-    config.plugins.push(
-      new webpack.IgnorePlugin({ resourceRegExp: /^@mediapipe\/pose$/ }),
-      new webpack.IgnorePlugin({ resourceRegExp: /^@tensorflow\/tfjs-backend-webgpu$/ }),
-    );
     return config;
   },
 };

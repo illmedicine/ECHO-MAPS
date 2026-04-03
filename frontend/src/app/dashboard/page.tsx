@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { estimatePose, preloadModel, isModelLoaded } from "@/lib/poseEstimator";
 import { storeFrame, getCollectionStats, type CollectedFrame } from "@/lib/collectedData";
+import { publishPose, clearPose } from "@/lib/poseBus";
 import {
   getEnvironments,
   createEnvironment as createLocalRoom,
@@ -417,6 +418,13 @@ function CamerasView({ onAddCamera }: { onAddCamera: () => void }) {
             lastSecond = nowMs;
           }
 
+          // Publish to the global pose bus so the 3D view can use it
+          publishPose({
+            ...result,
+            cameraId: camId,
+            roomId,
+          });
+
           // Store every 10th frame for the learning engine
           storeCounter++;
           if (result.isDetected && storeCounter % 10 === 0) {
@@ -452,6 +460,7 @@ function CamerasView({ onAddCamera }: { onAddCamera: () => void }) {
       cancelAnimationFrame(poseLoopRefs.current[camId]);
       delete poseLoopRefs.current[camId];
     }
+    clearPose(camId);
     setPoseStats((prev) => { const copy = { ...prev }; delete copy[camId]; return copy; });
   }, []);
 

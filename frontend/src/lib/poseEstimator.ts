@@ -20,6 +20,8 @@ let pdLib: typeof import("@tensorflow-models/pose-detection") | null = null;
 let detector: poseDetection.PoseDetector | null = null;
 let loading = false;
 let loadPromise: Promise<void> | null = null;
+let loadAttempts = 0;
+const MAX_LOAD_ATTEMPTS = 3;
 
 /**
  * 17 MoveNet keypoints:
@@ -47,6 +49,17 @@ async function ensureLoaded(): Promise<void> {
     await import("@tensorflow/tfjs-backend-webgl");
     await tf.setBackend("webgl");
     await tf.ready();
+
+    // Reduce WebGL memory pressure so TF.js and Three.js can coexist
+    try {
+      const gl = (tf.backend() as { getGPGPUContext?: () => { gl: WebGLRenderingContext } })
+        .getGPGPUContext?.()?.gl;
+      if (gl) {
+        const ext = gl.getExtension("WEBGL_lose_context");
+        // Just validating context — don't lose it
+        void ext;
+      }
+    } catch { /* ignore */ }
 
     pdLib = await import("@tensorflow-models/pose-detection");
     detector = await pdLib.createDetector(pdLib.SupportedModels.MoveNet, {
@@ -160,7 +173,16 @@ export async function estimatePose(
   try {
     await ensureLoaded();
   } catch (err) {
-    console.warn("Pose estimator failed to load:", err);
+    // Only log the first few failures to avoid spamming the console
+    loadAttempts++;
+    if (loadAttempts <= MAX_LOAD_ATTEMPTS) {
+      console.warn(`Pose estimator failed to load (attempt ${loadAttempts}/${MAX_LOAD_ATTEMPTS}):`, err);
+    }
+    // Reset so next call can retry
+    if (loadAttempts < MAX_LOAD_ATTEMPTS) {
+      loadPromise = null;
+      loading = false;
+    }
     return {
       keypoints3d: [],
       keypoints2d: [],

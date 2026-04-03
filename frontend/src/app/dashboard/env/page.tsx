@@ -162,6 +162,16 @@ function EnvironmentViewContent() {
     setHeatmapData(generateHeatmapData(env.dims));
   }, [env]);
 
+  // Auto-start camera when entering live mode (direct pose on this page)
+  useEffect(() => {
+    if (live && env?.isCalibrated && !cameraActive) {
+      startCamera().catch(() => {});
+    }
+    if (!live && cameraActive && calStep === "idle") {
+      stopCamera();
+    }
+  }, [live, env?.isCalibrated, cameraActive, calStep, startCamera, stopCamera]);
+
   /* Cleanup camera on unmount */
   useEffect(() => {
     return () => { stopCamera(); };
