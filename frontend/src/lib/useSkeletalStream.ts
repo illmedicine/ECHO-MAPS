@@ -204,9 +204,22 @@ export function useSkeletalStream({
       }
     });
 
-    const animate = async (now: number) => {
+    // Use setTimeout-based loop instead of requestAnimationFrame to avoid
+    // competing with the Three.js render loop for GPU time.
+    // Skeletal data only needs ~10fps updates; Three.js needs 60fps for smooth 3D.
+    let loopTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleNext = () => {
+      if (!disposed) {
+        // 100ms = 10fps for skeleton updates — plenty smooth
+        loopTimer = setTimeout(animate, 100);
+      }
+    };
+
+    const animate = async () => {
       if (disposed) return;
 
+      const now = performance.now();
       const elapsed = (now - startTimeRef.current) / 1000;
 
       // Priority 1: Try WebSocket CSI stream
@@ -230,63 +243,57 @@ export function useSkeletalStream({
       }
       // Priority 2: Check if pose bus has recent data from Cameras tab
       else if (hasActivePose(envId)) {
-        // Data is being pushed via subscribePose callback above — just keep the loop alive
+        // Data is being pushed via subscribePose callback above
         // Don't override with simulation
       }
-      // Priority 3: Use live camera feed for real pose estimation (local video element)
+      // Priority 3: Use live camera feed (only during calibration with local videoElement)
       else {
-        const video = cameraVideoRef.current ?? findActiveCameraVideo(envId);
+        const video = cameraVideoRef.current;
 
         if (video && video.readyState >= 2 && !video.paused) {
-          // Throttle pose estimation to ~15fps (every 66ms) — it's compute-heavy
-          if (now - lastPoseTimeRef.current > 66) {
-            lastPoseTimeRef.current = now;
+          const poseResult = await estimatePose(video, dims);
 
-            const poseResult = await estimatePose(video, dims);
+          if (poseResult.isDetected && poseResult.keypoints3d.length >= 33) {
+            setSource("camera");
+            setFrame({
+              keypoints: poseResult.keypoints3d,
+              activity: activityLabel,
+              breathingRate: null,
+              heartRate: null,
+              confidence: poseResult.confidence,
+              source: "camera",
+              timestamp: now,
+              isDetected: true,
+            });
 
-            if (poseResult.isDetected && poseResult.keypoints3d.length >= 33) {
-              setSource("camera");
-              setFrame({
-                keypoints: poseResult.keypoints3d,
-                activity: activityLabel,
-                breathingRate: null,
-                heartRate: null,
+            // Store collected frame for the correlation engine
+            frameCountRef.current++;
+            if (frameCountRef.current % 5 === 0) {
+              const collectedFrame: CollectedFrame = {
+                id: `${envId}-${Date.now()}-${frameCountRef.current}`,
+                envId: envId,
+                roomId: envId,
+                timestamp: Date.now(),
+                keypoints3d: poseResult.keypoints3d,
+                keypoints2d: poseResult.keypoints2d,
                 confidence: poseResult.confidence,
+                activity: activityLabel,
                 source: "camera",
-                timestamp: now,
-                isDetected: true,
-              });
-
-              // Store collected frame for the correlation engine
-              frameCountRef.current++;
-              if (frameCountRef.current % 5 === 0) { // Store every 5th frame
-                const collectedFrame: CollectedFrame = {
-                  id: `${envId}-${Date.now()}-${frameCountRef.current}`,
-                  envId: envId,
-                  roomId: envId,
-                  timestamp: Date.now(),
-                  keypoints3d: poseResult.keypoints3d,
-                  keypoints2d: poseResult.keypoints2d,
-                  confidence: poseResult.confidence,
-                  activity: activityLabel,
-                  source: "camera",
-                };
-                storeFrame(collectedFrame).catch(() => {});
-              }
-            } else if (source !== "camera") {
-              // Camera is on but no person detected — show empty
-              setSource("camera");
-              setFrame({
-                keypoints: [],
-                activity: "scanning",
-                breathingRate: null,
-                heartRate: null,
-                confidence: 0,
-                source: "camera",
-                timestamp: now,
-                isDetected: false,
-              });
+              };
+              storeFrame(collectedFrame).catch(() => {});
             }
+          } else if (source !== "camera") {
+            setSource("camera");
+            setFrame({
+              keypoints: [],
+              activity: "scanning",
+              breathingRate: null,
+              heartRate: null,
+              confidence: 0,
+              source: "camera",
+              timestamp: now,
+              isDetected: false,
+            });
           }
         }
         // Priority 4: Simulation fallback only when no real data source exists
@@ -308,17 +315,15 @@ export function useSkeletalStream({
         }
       }
 
-      if (!disposed) {
-        rafRef.current = requestAnimationFrame(animate);
-      }
+      scheduleNext();
     };
 
-    rafRef.current = requestAnimationFrame(animate);
+    scheduleNext();
 
     return () => {
       disposed = true;
       unsubBus();
-      cancelAnimationFrame(rafRef.current);
+      if (loopTimer) clearTimeout(loopTimer);
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;

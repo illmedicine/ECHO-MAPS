@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useCallback, useRef } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -9,9 +9,20 @@ import * as THREE from "three";
  * 3D Environment Viewer — renders the CSI-derived point cloud,
  * skeletal pose overlay, and multi-person tracking with ghost states.
  *
- * Phase 4–5: Shows tracked persons as solid avatars (full confidence)
- * or translucent ghosted avatars (confidence < 70%).
+ * Uses frameloop="demand" to avoid competing with TF.js for GPU contexts.
+ * An Invalidator component triggers re-renders at a throttled rate.
  */
+
+/** Triggers re-renders at ~20fps when live, stops when static */
+function Invalidator({ isLive }: { isLive: boolean }) {
+  const { invalidate: inv } = useThree();
+  useEffect(() => {
+    if (!isLive) return;
+    const id = setInterval(() => inv(), 50); // ~20fps
+    return () => clearInterval(id);
+  }, [isLive, inv]);
+  return null;
+}
 
 interface PointCloudProps {
   points: number[][]; // [[x, y, z], ...]
@@ -370,7 +381,8 @@ export default function EnvironmentViewer({
 
   return (
     <div className="w-full h-[600px] bg-[var(--illy-dark)] rounded-xl overflow-hidden border border-gray-800">
-      <Canvas key={canvasKey} camera={{ position: [8, 6, 8], fov: 50 }} onCreated={handleCreated} gl={{ powerPreference: "high-performance", antialias: true, failIfMajorPerformanceCaveat: false }}>
+      <Canvas key={canvasKey} camera={{ position: [8, 6, 8], fov: 50 }} onCreated={handleCreated} frameloop="demand" gl={{ powerPreference: "default", antialias: false, alpha: false, stencil: false, depth: true, failIfMajorPerformanceCaveat: false }}>
+        <Invalidator isLive={isLive} />
         <ambientLight intensity={0.3} />
         <directionalLight position={[10, 10, 5]} intensity={0.5} />
 
@@ -429,7 +441,7 @@ export default function EnvironmentViewer({
           </group>
         ))}
 
-        <OrbitControls enableDamping dampingFactor={0.05} />
+        <OrbitControls enableDamping dampingFactor={0.05} makeDefault />
 
         {/* Live indicator light */}
         {isLive && (
