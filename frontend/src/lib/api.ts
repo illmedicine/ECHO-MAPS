@@ -135,14 +135,35 @@ export async function getLiveStatus(envId: string): Promise<LiveStatus> {
 
 // ── Health ──
 
+let _healthFailCount = 0;
+let _lastHealthFail = 0;
+const HEALTH_BACKOFF_MS = 60_000; // Wait 60s after a health check failure before retrying
+
 export async function healthCheck(): Promise<{ status: string; service: string }> {
-  return request<{ status: string; service: string }>("/health");
+  // Circuit breaker: if health check failed recently, don't retry yet
+  if (_healthFailCount > 0 && Date.now() - _lastHealthFail < HEALTH_BACKOFF_MS * Math.min(_healthFailCount, 5)) {
+    throw new ApiError(503, "Backend unavailable (skipped — backoff active)");
+  }
+  try {
+    const result = await request<{ status: string; service: string }>("/health");
+    _healthFailCount = 0; // Reset on success
+    return result;
+  } catch (err) {
+    _healthFailCount++;
+    _lastHealthFail = Date.now();
+    throw err;
+  }
 }
 
 // ── Backend connectivity check ──
 
 export function isBackendConfigured(): boolean {
   return !!API_BASE;
+}
+
+/** Check if the backend has been confirmed unreachable this session */
+export function isBackendUnreachable(): boolean {
+  return _healthFailCount > 0 && Date.now() - _lastHealthFail < HEALTH_BACKOFF_MS * Math.min(_healthFailCount, 5);
 }
 
 // ── User Settings (cloud sync) ──

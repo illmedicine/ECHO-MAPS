@@ -351,12 +351,21 @@ export default function EnvironmentViewer({
 }: EnvironmentViewerProps) {
   const [contextLost, setContextLost] = useState(false);
   const [canvasKey, setCanvasKey] = useState(0);
+  const contextLossCountRef = useRef(0);
 
   const handleCreated = useCallback(({ gl }: { gl: THREE.WebGLRenderer }) => {
     const canvas = gl.domElement;
     const onLost = (e: Event) => {
       e.preventDefault();
       setContextLost(true);
+      contextLossCountRef.current++;
+      // Auto-recover after 2s, but only up to 3 times to avoid infinite loop
+      if (contextLossCountRef.current <= 3) {
+        setTimeout(() => {
+          setContextLost(false);
+          setCanvasKey((k) => k + 1);
+        }, 2000);
+      }
     };
     const onRestored = () => {
       setContextLost(false);
@@ -441,7 +450,6 @@ export default function EnvironmentViewer({
               confidence={person.confidence}
               isGhosted={person.is_ghosted}
               isRegistered={person.is_registered}
-              deviceTetherStatus={person.device_tether_status}
             />
           </group>
         ))}

@@ -183,10 +183,17 @@ export async function syncPullFromCloud(): Promise<boolean> {
     const settings = payload.settings;
 
     // Write each key to user-scoped localStorage
+    // Safety: never overwrite non-empty local data with empty cloud data
     for (const baseKey of SYNCABLE_KEYS) {
-      const data = settings[baseKey];
-      if (data !== undefined) {
-        localStorage.setItem(`${baseKey}::${uid}`, JSON.stringify(data));
+      const cloudData = settings[baseKey];
+      if (cloudData !== undefined) {
+        const localRaw = localStorage.getItem(`${baseKey}::${uid}`);
+        const localData = localRaw ? JSON.parse(localRaw) : null;
+        const cloudIsEmpty = Array.isArray(cloudData) ? cloudData.length === 0 : !cloudData;
+        const localHasData = Array.isArray(localData) ? localData.length > 0 : !!localData;
+        // Don't overwrite local data with empty cloud data
+        if (cloudIsEmpty && localHasData) continue;
+        localStorage.setItem(`${baseKey}::${uid}`, JSON.stringify(cloudData));
       }
     }
 

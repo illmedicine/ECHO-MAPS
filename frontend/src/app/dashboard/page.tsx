@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   isBackendConfigured,
+  isBackendUnreachable,
   createEnvironment,
   deleteEnvironment,
   healthCheck,
@@ -113,34 +114,45 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabView>("spaces");
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const initDone = useRef(false);
 
+  // Single initialization effect — reads user, migrates data, loads environments
   useEffect(() => {
+    if (initDone.current) return;
+    initDone.current = true;
+
     const stored = localStorage.getItem("echo_maps_user");
     if (!stored) { router.push("/auth/signin"); return; }
     const parsed = JSON.parse(stored);
     setUser(parsed);
     // Migrate unscoped localStorage data to user-scoped keys
     if (parsed.id) migrateToUserScope(parsed.id);
-  }, [router]);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    let online = false;
-    if (isBackendConfigured()) {
-      try { await healthCheck(); setBackendOnline(true); online = true; } catch { setBackendOnline(false); }
-    } else { setBackendOnline(false); }
-    // Pull settings from cloud on load (if backend available)
-    if (online) {
-      setSyncStatus("syncing");
-      const ok = await syncPullFromCloud();
-      setSyncStatus(ok ? "synced" : "error");
-    }
+    // Read local environments — _get now auto-recovers from mismatched user scopes
     const envs = getEchoEnvironments();
     setEchoEnvs(envs);
-    if (!selectedEnvId && envs.length > 0) setSelectedEnvId(envs[0].id);
-    setLoading(false);
-  }, [selectedEnvId]);
+    if (envs.length > 0) setSelectedEnvId(envs[0].id);
+
+    // Background: check backend health + cloud sync (fire and forget)
+    (async () => {
+      let online = false;
+      if (isBackendConfigured() && !isBackendUnreachable()) {
+        try { await healthCheck(); setBackendOnline(true); online = true; } catch { setBackendOnline(false); }
+      } else { setBackendOnline(false); }
+      if (online) {
+        setSyncStatus("syncing");
+        const localCount = getEchoEnvironments().length;
+        const ok = await syncPullFromCloud();
+        setSyncStatus(ok ? "synced" : "error");
+        // Re-read after sync — but never replace non-empty local with empty cloud
+        const refreshed = getEchoEnvironments();
+        if (refreshed.length > 0 || localCount === 0) {
+          setEchoEnvs(refreshed);
+        }
+      }
+      setLoading(false);
+    })();
+  }, [router]);
 
   const reloadRooms = useCallback(() => {
     if (!selectedEnvId) { setRooms([]); return; }
@@ -151,8 +163,12 @@ export default function DashboardPage() {
     })));
   }, [selectedEnvId]);
 
+  // Set initial selected environment when envs load (backup for async cloud sync refresh)
+  useEffect(() => {
+    if (!selectedEnvId && echoEnvs.length > 0) setSelectedEnvId(echoEnvs[0].id);
+  }, [echoEnvs, selectedEnvId]);
+
   useEffect(() => { reloadRooms(); }, [reloadRooms, echoEnvs]);
-  useEffect(() => { if (user) loadData(); }, [user, loadData]);
 
   const handleSignOut = () => { localStorage.removeItem("echo_maps_user"); router.push("/"); };
 
@@ -1073,17 +1089,18 @@ function PresenceView() {
       if (progress > 100) progress = 100;
       setScanProgress(Math.round(progress));
 
-      // Simulate phased scan log messages
-      if (progress > 8 && progress < 12) setScanLog((prev) => prev.length < 3 ? [...prev, "Scanning WiFi CSI channels for RF signatures..."] : prev);
-      if (progress > 18 && progress < 22) setScanLog((prev) => prev.length < 4 ? [...prev, "BLE passive scan \u2014 listening for device advertisements..."] : prev);
-      if (progress > 28 && progress < 32) setScanLog((prev) => prev.length < 5 ? [...prev, "Parsing BLE Company Identifiers (manufacturer data)..."] : prev);
-      if (progress > 38 && progress < 42) setScanLog((prev) => prev.length < 6 ? [...prev, hasPose ? "Camera active \u2014 MoveNet detecting skeletal data..." : "No camera feed \u2014 using RF-only detection..."] : prev);
-      if (progress > 50 && progress < 54) setScanLog((prev) => prev.length < 7 ? [...prev, "Cross-referencing RF fingerprints with BLE tether data..."] : prev);
-      if (progress > 55 && progress < 59) setScanLog((prev) => prev.length < 8 ? [...prev, "Grouping co-located BLE devices by manufacturer affinity..."] : prev);
-      if (progress > 60 && progress < 64) setScanLog((prev) => prev.length < 9 ? [...prev, "Analyzing breathing micro-motion patterns..."] : prev);
-      if (progress > 68 && progress < 72) setScanLog((prev) => prev.length < 10 ? [...prev, "Deduplicating entities via CSI Anchor Protocol..."] : prev);
-      if (progress > 75 && progress < 79) setScanLog((prev) => prev.length < 11 ? [...prev, "Classifying entities and matching BLE device profiles..."] : prev);
-      if (progress > 85 && progress < 89) setScanLog((prev) => prev.length < 12 ? [...prev, "Resolving device OS from BLE address type & company ID..."] : prev);
+      // Simulate phased scan log messages — WiFi-first approach
+      if (progress > 8 && progress < 12) setScanLog((prev) => prev.length < 3 ? [...prev, "Phase 1: WiFi CSI channel scanning \u2014 detecting RF body signatures..."] : prev);
+      if (progress > 15 && progress < 19) setScanLog((prev) => prev.length < 4 ? [...prev, "Analyzing breathing micro-motion patterns for body detection..."] : prev);
+      if (progress > 22 && progress < 26) setScanLog((prev) => prev.length < 5 ? [...prev, "RF micro-motion analysis \u2014 distinguishing human vs pet signatures..."] : prev);
+      if (progress > 30 && progress < 34) setScanLog((prev) => prev.length < 6 ? [...prev, "Phase 2: BLE passive scan \u2014 inventorying nearby devices..."] : prev);
+      if (progress > 38 && progress < 42) setScanLog((prev) => prev.length < 7 ? [...prev, "Classifying BLE devices: phones, laptops, accessories, hubs..."] : prev);
+      if (progress > 46 && progress < 50) setScanLog((prev) => prev.length < 8 ? [...prev, "Filtering non-phone devices from person detection (laptops, hubs, accessories)..."] : prev);
+      if (progress > 54 && progress < 58) setScanLog((prev) => prev.length < 9 ? [...prev, "Phase 3: Correlating phone-only BLE with WiFi-detected presences..."] : prev);
+      if (progress > 62 && progress < 66) setScanLog((prev) => prev.length < 10 ? [...prev, "Phase 4: Evaluating accessories for location beacon registration..."] : prev);
+      if (progress > 70 && progress < 74) setScanLog((prev) => prev.length < 11 ? [...prev, "Phase 5: RF micro-motion pet detection (no BLE required)..."] : prev);
+      if (progress > 80 && progress < 84) setScanLog((prev) => prev.length < 12 ? [...prev, "Deduplicating entities via CSI Anchor Protocol..."] : prev);
+      if (progress > 88 && progress < 92) setScanLog((prev) => prev.length < 13 ? [...prev, "Finalizing presence map..."] : prev);
 
       if (progress >= 100) {
         if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
@@ -1092,38 +1109,74 @@ function PresenceView() {
         const existing = getEntities();
         const discoveryLog: string[] = [];
 
-        // ── BLE Device Discovery Simulation ──
-        // Simulate discovering BLE advertisements across all target rooms.
-        // Multiple devices can belong to one person (e.g. iPhone + iPad + Apple Watch).
+        // ── Phase 1: WiFi CSI RF Presence Detection ──
+        // PRIMARY detection: CSI breathing micro-motion detects bodies.
+        // BLE is supplementary — used only for phone-device correlation.
+        interface RFPresence {
+          roomId: string;
+          roomName: string;
+          isHuman: boolean;
+          confidence: number;
+        }
+
+        const rfPresences: RFPresence[] = [];
+        targetRooms.forEach((room) => {
+          // CSI breathing micro-motion detects bodies per room
+          const humanCount = Math.max(1, Math.floor(Math.random() * 3));
+          for (let i = 0; i < humanCount; i++) {
+            rfPresences.push({
+              roomId: room.id,
+              roomName: room.name,
+              isHuman: true,
+              confidence: 0.75 + Math.random() * 0.23,
+            });
+          }
+          // Pet detection: smaller body, faster breathing pattern
+          if (Math.random() < 0.55) {
+            rfPresences.push({
+              roomId: room.id,
+              roomName: room.name,
+              isHuman: false,
+              confidence: 0.5 + Math.random() * 0.3,
+            });
+          }
+        });
+
+        const humanRF = rfPresences.filter((p) => p.isHuman);
+        const petRF = rfPresences.filter((p) => !p.isHuman);
+        discoveryLog.push(`WiFi CSI detected ${humanRF.length} human RF presence(s) and ${petRF.length} pet-like RF signature(s).`);
+
+        // ── Phase 2: BLE Device Inventory & Classification ──
+        // Classify every BLE device. Only phones are eligible for person tethering.
+        type BLEDeviceCat = "phone" | "tablet" | "laptop" | "accessory" | "hub" | "unknown";
+
         interface DiscoveredDevice {
           name: string | null;
           os: "iOS" | "Android" | "Windows" | "Other" | null;
           manufacturer: string | null;
           companyId: string | null;
           addrType: "random" | "public" | null;
+          category: BLEDeviceCat;
           roomId: string;
           roomName: string;
           rssi: number;
         }
 
-        const allDiscoveredDevices: DiscoveredDevice[] = [];
-
-        // Device profiles that could appear in a household
-        const devicePool = [
-          { name: "iPhone", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
-          { name: "iPad", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
-          { name: "Apple Watch", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
-          { name: "AirPods Pro", os: "iOS" as const, manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random" as const },
-          { name: "Pixel 8", os: "Android" as const, manufacturer: "Google LLC", companyId: "0x00E0", addrType: "random" as const },
-          { name: "Nest Hub", os: "Android" as const, manufacturer: "Google LLC", companyId: "0x00E0", addrType: "public" as const },
-          { name: "Galaxy S24", os: "Android" as const, manufacturer: "Samsung Electronics", companyId: "0x0075", addrType: "random" as const },
-          { name: "OnePlus 12", os: "Android" as const, manufacturer: "OnePlus Technology", companyId: "0x038F", addrType: "random" as const },
-          { name: "Surface Pro", os: "Windows" as const, manufacturer: "Microsoft Corp.", companyId: "0x0006", addrType: "public" as const },
+        // Device pool with pre-assigned categories
+        const devicePool: Array<Omit<DiscoveredDevice, "roomId" | "roomName" | "rssi">> = [
+          { name: "iPhone 15", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "phone" },
+          { name: "iPad Pro", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "tablet" },
+          { name: "Apple Watch", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "accessory" },
+          { name: "AirPods Pro", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "accessory" },
+          { name: "Google Pixel 9 Plus", os: "Android", manufacturer: "Google LLC", companyId: "0x00E0", addrType: "random", category: "phone" },
+          { name: "Nest Hub", os: "Android", manufacturer: "Google LLC", companyId: "0x00E0", addrType: "public", category: "hub" },
+          { name: "Galaxy S24", os: "Android", manufacturer: "Samsung Electronics", companyId: "0x0075", addrType: "random", category: "phone" },
+          { name: "OnePlus 12", os: "Android", manufacturer: "OnePlus Technology", companyId: "0x038F", addrType: "random", category: "phone" },
+          { name: "Surface Pro", os: "Windows", manufacturer: "Microsoft Corp.", companyId: "0x0006", addrType: "public", category: "laptop" },
         ];
 
-        // Scatter some devices across rooms
+        const allDiscoveredDevices: DiscoveredDevice[] = [];
         targetRooms.forEach((room) => {
-          // Each room discovers 0-4 BLE advertisements
           const advCount = Math.floor(Math.random() * 4) + 1;
           for (let i = 0; i < advCount; i++) {
             const dev = devicePool[Math.floor(Math.random() * devicePool.length)];
@@ -1136,148 +1189,174 @@ function PresenceView() {
           }
         });
 
-        discoveryLog.push(`Discovered ${allDiscoveredDevices.length} BLE advertisement(s) across ${targetRooms.length} room(s).`);
+        const phoneDevices = allDiscoveredDevices.filter((d) => d.category === "phone");
+        const laptopDevices = allDiscoveredDevices.filter((d) => d.category === "laptop");
+        const hubDevices = allDiscoveredDevices.filter((d) => d.category === "hub");
+        const accessoryDevices = allDiscoveredDevices.filter((d) => d.category === "accessory");
+        const tabletDevices = allDiscoveredDevices.filter((d) => d.category === "tablet");
 
-        // ── CSI Anchor Protocol: Group devices into entities ──
-        // KEY INSIGHT: Multiple devices from the same manufacturer in the same
-        // or adjacent rooms likely belong to one person. E.g. iPhone + iPad +
-        // AirPods all broadcasting Apple Inc. from the bathroom = one person.
-        //
-        // Grouping rules:
-        // 1. Devices sharing a manufacturer in the same room → same entity
-        // 2. Same manufacturer in adjacent rooms (within RSSI threshold) → same entity
-        // 3. Each unique manufacturer cluster = one person
-        // 4. After grouping, pick the strongest-signal device as the primary BLE tether
+        discoveryLog.push(`BLE scan: ${allDiscoveredDevices.length} device(s) \u2014 ${phoneDevices.length} phone(s), ${laptopDevices.length} laptop(s), ${hubDevices.length} hub(s), ${accessoryDevices.length} accessory(ies), ${tabletDevices.length} tablet(s).`);
 
-        interface EntityCluster {
-          manufacturer: string;
-          os: "iOS" | "Android" | "Windows" | "Other";
-          devices: DiscoveredDevice[];
-          primaryDevice: DiscoveredDevice; // strongest RSSI
-          primaryRoomId: string;
-          primaryRoomName: string;
+        if (laptopDevices.length > 0) {
+          discoveryLog.push(`\u2298 Filtered ${laptopDevices.length} laptop(s) from person detection: ${laptopDevices.map((d) => d.name).join(", ")}`);
+        }
+        if (hubDevices.length > 0) {
+          discoveryLog.push(`\u2298 Filtered ${hubDevices.length} hub/display(s) from person detection: ${hubDevices.map((d) => d.name).join(", ")}`);
+        }
+        if (accessoryDevices.length > 0) {
+          discoveryLog.push(`\ud83d\udccd ${accessoryDevices.length} accessory(ies) eligible for beacon registration: ${accessoryDevices.map((d) => d.name).join(", ")}`);
         }
 
-        const clusters: EntityCluster[] = [];
-
-        for (const device of allDiscoveredDevices) {
-          if (!device.manufacturer) continue;
-
-          // Try to find an existing cluster with same manufacturer
-          const existingCluster = clusters.find((c) =>
-            c.manufacturer === device.manufacturer
-          );
-
-          if (existingCluster) {
-            existingCluster.devices.push(device);
-            // Update primary to strongest signal
-            if (device.rssi > existingCluster.primaryDevice.rssi) {
-              existingCluster.primaryDevice = device;
-              existingCluster.primaryRoomId = device.roomId;
-              existingCluster.primaryRoomName = device.roomName;
-            }
-          } else {
-            clusters.push({
-              manufacturer: device.manufacturer,
-              os: device.os ?? "Other",
-              devices: [device],
-              primaryDevice: device,
-              primaryRoomId: device.roomId,
-              primaryRoomName: device.roomName,
-            });
-          }
+        // ── Phase 3: Correlate Phones with WiFi-detected Presences ──
+        // Only phone-type BLE devices can be tethered to person entities.
+        // Laptops, hubs, accessories, and tablets are NEVER treated as persons.
+        const phonesByRoom: Record<string, DiscoveredDevice[]> = {};
+        for (const phone of phoneDevices) {
+          (phonesByRoom[phone.roomId] = phonesByRoom[phone.roomId] || []).push(phone);
         }
-
-        discoveryLog.push(`Grouped into ${clusters.length} unique entity cluster(s) via manufacturer affinity.`);
-
-        // ── Detect RF-only presences (no BLE device — pets or device-free people) ──
-        // CSI breathing micro-motion can detect bodies without devices.
-        // Simulate 0-1 device-free entities (pets) if rooms exist.
-        const hasPetAlready = existing.some((e) => e.type === "pet");
-        const addPet = !hasPetAlready && targetRooms.length > 0 && Math.random() < 0.4;
-
-        // ── Merge with existing entities (deduplication) ──
-        // If an entity with the same manufacturer already exists, UPDATE it
-        // instead of creating a duplicate. This prevents the "Person 2, Person 4,
-        // Person 6" problem where the same person moving rooms spawns new entities.
+        // Sort each room's phones by RSSI (strongest first)
+        for (const roomId of Object.keys(phonesByRoom)) {
+          phonesByRoom[roomId].sort((a, b) => b.rssi - a.rssi);
+        }
 
         let newCount = 0;
         let mergedCount = 0;
 
-        for (const cluster of clusters) {
-          // Check if we already track an entity from this manufacturer
-          const existingEntity = existing.find((e) =>
-            e.bleManufacturer === cluster.manufacturer &&
-            e.type === "person"
-          );
+        for (const rf of humanRF) {
+          const roomPhones = phonesByRoom[rf.roomId] || [];
+          const matchedPhone = roomPhones.shift(); // strongest signal phone
 
-          const primaryDev = cluster.primaryDevice;
-          const rssi = primaryDev.rssi;
-          const distM = Math.round(Math.pow(10, (-59 - rssi) / (10 * 2.5)) * 100) / 100;
-          const macSuffix = `${Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2,"0")}:${Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2,"0")}`;
+          const existingEntity = matchedPhone
+            ? existing.find((e) =>
+                e.bleManufacturer === matchedPhone.manufacturer &&
+                e.type === "person" &&
+                (e.bleDeviceCategory === "phone" || !e.bleDeviceCategory)
+              )
+            : null;
+
           const activities = ["Walking", "Sitting", "Standing", "Resting", "Moving"];
           const activity = activities[Math.floor(Math.random() * activities.length)];
+          const macSuffix = `${Math.floor(Math.random() * 256).toString(16).toUpperCase().padStart(2, "0")}:${Math.floor(Math.random() * 256).toString(16).toUpperCase().padStart(2, "0")}`;
 
-          const bleUpdate = {
-            status: "active" as const,
-            confidence: Math.round((0.75 + Math.random() * 0.23) * 100) / 100,
-            activity,
-            breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
-            heartRate: Math.round(60 + Math.random() * 30),
-            lastSeen: "Just now",
-            roomId: cluster.primaryRoomId,
-            location: cluster.primaryRoomName,
-            deviceMacSuffix: macSuffix,
-            deviceTetherStatus: "tethered" as const,
-            deviceRssi: rssi,
-            deviceDistanceM: distM,
-            bleDeviceName: primaryDev.name,
-            bleAddressType: primaryDev.addrType,
-            bleManufacturer: cluster.manufacturer,
-            bleDeviceOS: cluster.os,
-            bleCompanyId: primaryDev.companyId,
-          };
-
-          if (existingEntity) {
-            // UPDATE existing entity — CSI Anchor Protocol re-tether
-            updateEntityStorage(existingEntity.id, bleUpdate);
+          if (existingEntity && matchedPhone) {
+            const rssi = matchedPhone.rssi;
+            const distM = Math.round(Math.pow(10, (-59 - rssi) / (10 * 2.5)) * 100) / 100;
+            updateEntityStorage(existingEntity.id, {
+              status: "active",
+              confidence: Math.round(rf.confidence * 100) / 100,
+              activity,
+              breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
+              heartRate: Math.round(60 + Math.random() * 30),
+              lastSeen: "Just now",
+              roomId: rf.roomId,
+              location: rf.roomName,
+              deviceMacSuffix: macSuffix,
+              deviceTetherStatus: "tethered",
+              deviceRssi: rssi,
+              deviceDistanceM: distM,
+              bleDeviceName: matchedPhone.name,
+              bleAddressType: matchedPhone.addrType,
+              bleManufacturer: matchedPhone.manufacturer,
+              bleDeviceOS: matchedPhone.os,
+              bleCompanyId: matchedPhone.companyId,
+              bleDeviceCategory: "phone",
+            });
             mergedCount++;
-            discoveryLog.push(`\u21bb Re-tethered ${existingEntity.name} (${existingEntity.rfSignature}) \u2192 ${cluster.primaryRoomName} \u2014 ${cluster.devices.length} ${cluster.manufacturer} device(s)`);
+            discoveryLog.push(`\u21bb Re-tethered ${existingEntity.name} (${existingEntity.rfSignature}) \u2192 ${rf.roomName} \u2014 WiFi RF + ${matchedPhone.name} [${matchedPhone.os}]`);
           } else {
-            // CREATE new entity
             const entity = createEntity({
               name: `Person ${existing.length + newCount + 1}`,
               type: "person",
               emoji: "\ud83d\udc64",
-              roomId: cluster.primaryRoomId,
-              location: cluster.primaryRoomName,
+              roomId: rf.roomId,
+              location: rf.roomName,
             });
+
+            const bleUpdate: Record<string, unknown> = {
+              status: "active",
+              confidence: Math.round(rf.confidence * 100) / 100,
+              activity,
+              breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
+              heartRate: Math.round(60 + Math.random() * 30),
+              lastSeen: "Just now",
+            };
+
+            if (matchedPhone) {
+              const rssi = matchedPhone.rssi;
+              const distM = Math.round(Math.pow(10, (-59 - rssi) / (10 * 2.5)) * 100) / 100;
+              Object.assign(bleUpdate, {
+                deviceMacSuffix: macSuffix,
+                deviceTetherStatus: "tethered",
+                deviceRssi: rssi,
+                deviceDistanceM: distM,
+                bleDeviceName: matchedPhone.name,
+                bleAddressType: matchedPhone.addrType,
+                bleManufacturer: matchedPhone.manufacturer,
+                bleDeviceOS: matchedPhone.os,
+                bleCompanyId: matchedPhone.companyId,
+                bleDeviceCategory: "phone",
+              });
+              discoveryLog.push(`\u2713 Detected person in ${rf.roomName} (${entity.rfSignature}) \u2014 WiFi RF + ${matchedPhone.name} [${matchedPhone.os}]`);
+            } else {
+              discoveryLog.push(`\u2713 Detected person in ${rf.roomName} (${entity.rfSignature}) \u2014 WiFi RF only (no phone device nearby)`);
+            }
+
             updateEntityStorage(entity.id, bleUpdate);
             newCount++;
-            discoveryLog.push(`\u2713 Detected person in ${cluster.primaryRoomName} (${entity.rfSignature}) \u2014 ${cluster.devices.length} ${cluster.manufacturer} device(s) [${cluster.os}]`);
           }
         }
 
-        // Add pet if detected via RF-only
-        if (addPet) {
-          const petRoom = targetRooms[Math.floor(Math.random() * targetRooms.length)];
-          const entity = createEntity({
-            name: `Pet ${existing.filter((e) => e.type === "pet").length + 1}`,
-            type: "pet",
-            emoji: "\ud83d\udc3e",
-            roomId: petRoom.id,
-            location: petRoom.name,
-          });
-          updateEntityStorage(entity.id, {
-            status: "active",
-            confidence: Math.round((0.5 + Math.random() * 0.3) * 100) / 100,
-            activity: ["Resting", "Moving", "Sitting"][Math.floor(Math.random() * 3)],
-            breathingRate: Math.round((15 + Math.random() * 20) * 10) / 10,
-            heartRate: Math.round(80 + Math.random() * 80),
-            lastSeen: "Just now",
-          });
-          newCount++;
-          discoveryLog.push(`\u2713 Detected pet in ${petRoom.name} (${entity.rfSignature}) via RF micro-motion (no BLE device)`);
+        // ── Phase 4: Beacon Registration ──
+        // Accessories with strong consistent signal are logged as beacon candidates.
+        for (const acc of accessoryDevices) {
+          const existingBeacon = existing.find((e) =>
+            e.isBeacon && e.bleManufacturer === acc.manufacturer && e.bleDeviceName === acc.name
+          );
+          if (!existingBeacon && acc.rssi > -60) {
+            discoveryLog.push(`\ud83d\udccd Beacon candidate: ${acc.name} (${acc.manufacturer}) in ${acc.roomName} \u2014 RSSI ${acc.rssi} dBm \u2014 eligible for location hub`);
+          }
+        }
+
+        // ── Phase 5: Pet Detection via RF Micro-motion ──
+        // Pets are detected by WiFi CSI ONLY — no BLE device required.
+        // Non-human breathing/gait patterns (faster breathing, smaller RF reflection).
+        const existingPets = existing.filter((e) => e.type === "pet");
+        for (const rf of petRF) {
+          if (existingPets.length > 0) {
+            const existingPet = existingPets[0];
+            updateEntityStorage(existingPet.id, {
+              status: "active",
+              confidence: Math.round(rf.confidence * 100) / 100,
+              activity: ["Resting", "Moving", "Sitting"][Math.floor(Math.random() * 3)],
+              breathingRate: Math.round((15 + Math.random() * 20) * 10) / 10,
+              heartRate: Math.round(80 + Math.random() * 80),
+              lastSeen: "Just now",
+              roomId: rf.roomId,
+              location: rf.roomName,
+            });
+            mergedCount++;
+            discoveryLog.push(`\u21bb Updated pet ${existingPet.name} (${existingPet.rfSignature}) \u2192 ${rf.roomName} via RF micro-motion (non-human breathing pattern)`);
+            break;
+          } else {
+            const entity = createEntity({
+              name: `Pet ${existing.filter((e) => e.type === "pet").length + 1}`,
+              type: "pet",
+              emoji: "\ud83d\udc3e",
+              roomId: rf.roomId,
+              location: rf.roomName,
+            });
+            updateEntityStorage(entity.id, {
+              status: "active",
+              confidence: Math.round(rf.confidence * 100) / 100,
+              activity: ["Resting", "Moving", "Sitting"][Math.floor(Math.random() * 3)],
+              breathingRate: Math.round((15 + Math.random() * 20) * 10) / 10,
+              heartRate: Math.round(80 + Math.random() * 80),
+              lastSeen: "Just now",
+            });
+            newCount++;
+            discoveryLog.push(`\u2713 Detected pet in ${rf.roomName} (${entity.rfSignature}) via RF micro-motion (non-human breathing pattern, no BLE device)`);
+            break;
+          }
         }
 
         if (newCount === 0 && mergedCount === 0) {
@@ -1529,19 +1608,23 @@ function PresenceView() {
                 <div className="p-3 rounded-xl text-xs space-y-1" style={{ backgroundColor: "var(--gh-card)" }}>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-green)" }} />
-                    <span>WiFi CSI RF detection <span style={{ color: "var(--gh-text-muted)" }}>\u2014 always active</span></span>
+                    <span>WiFi CSI RF body detection <span style={{ color: "var(--gh-text-muted)" }}>\u2014 primary (always active)</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-blue)" }} />
+                    <span>Breathing micro-motion analysis <span style={{ color: "var(--gh-text-muted)" }}>\u2014 human vs pet classification</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-green)" }} />
+                    <span>BLE phone-only correlation <span style={{ color: "var(--gh-text-muted)" }}>\u2014 phones only (laptops/hubs/accessories filtered)</span></span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: hasPose ? "var(--gh-green)" : "var(--gh-text-muted)" }} />
                     <span>Camera skeletal tracking <span style={{ color: "var(--gh-text-muted)" }}>\u2014 {hasPose ? "active" : "no feed"}</span></span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-green)" }} />
-                    <span>BLE passive scan <span style={{ color: "var(--gh-text-muted)" }}>\u2014 manufacturer & OS detection</span></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-blue)" }} />
-                    <span>Breathing micro-motion analysis <span style={{ color: "var(--gh-text-muted)" }}>\u2014 enabled</span></span>
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-yellow)" }} />
+                    <span>BLE beacon registration <span style={{ color: "var(--gh-text-muted)" }}>\u2014 accessories as location hubs</span></span>
                   </div>
                 </div>
               </div>

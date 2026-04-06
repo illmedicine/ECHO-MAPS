@@ -51,6 +51,8 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["*"],
+        max_age=86400,  # Cache preflight for 24h — avoids repeated OPTIONS requests
     )
 
     # Routes

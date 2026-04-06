@@ -45,6 +45,90 @@ class TetherStatus(str, Enum):
     TRAJECTORY_LOCK = "trajectory_lock"  # co-movement confirmation in progress
 
 
+class BLEDeviceCategory(str, Enum):
+    """Classification of BLE device type for tether eligibility."""
+    PHONE = "phone"
+    TABLET = "tablet"
+    LAPTOP = "laptop"
+    ACCESSORY = "accessory"
+    BEACON = "beacon"
+    HUB = "hub"
+    UNKNOWN = "unknown"
+
+
+# Device-name patterns for classification heuristics
+_PHONE_PATTERNS = frozenset({
+    "iphone", "pixel", "galaxy s", "oneplus", "samsung sm-",
+    "huawei", "xiaomi", "oppo", "vivo", "moto g", "moto e",
+    "nothing phone", "asus zenfone",
+})
+_LAPTOP_PATTERNS = frozenset({
+    "surface", "macbook", "thinkpad", "laptop", "dell xps",
+    "chromebook", "lenovo", "hp envy", "spectre", "zenbook",
+})
+_ACCESSORY_PATTERNS = frozenset({
+    "airpods", "buds", "earbuds", "watch", "band", "fitbit",
+    "jabra", "bose", "sony wf-", "sony wh-", "beats",
+})
+_HUB_PATTERNS = frozenset({
+    "nest hub", "echo show", "echo dot", "homepod", "portal",
+    "smart display", "nest mini", "google home",
+})
+_TABLET_PATTERNS = frozenset({
+    "ipad", "galaxy tab", "fire hd", "surface go", "tab s",
+})
+
+
+def classify_ble_device(
+    device_name: str = "",
+    device_os: str = "",
+    address_type: str = "random",
+    company_id: str = "",
+) -> BLEDeviceCategory:
+    """Classify a BLE device into a category based on its advertisement data.
+
+    Priority: exact match on name patterns > OS heuristics > address type.
+    Used to determine whether a device is eligible for person tethering
+    (only phones qualify).
+    """
+    name_lower = device_name.lower() if device_name else ""
+
+    for pattern in _HUB_PATTERNS:
+        if pattern in name_lower:
+            return BLEDeviceCategory.HUB
+
+    for pattern in _ACCESSORY_PATTERNS:
+        if pattern in name_lower:
+            return BLEDeviceCategory.ACCESSORY
+
+    for pattern in _LAPTOP_PATTERNS:
+        if pattern in name_lower:
+            return BLEDeviceCategory.LAPTOP
+
+    for pattern in _TABLET_PATTERNS:
+        if pattern in name_lower:
+            return BLEDeviceCategory.TABLET
+
+    for pattern in _PHONE_PATTERNS:
+        if pattern in name_lower:
+            return BLEDeviceCategory.PHONE
+
+    # OS heuristics
+    os_lower = device_os.lower() if device_os else ""
+    if os_lower == "windows":
+        return BLEDeviceCategory.LAPTOP
+
+    # Random-address iOS/Android without specific name → likely phone
+    if address_type == "random" and os_lower in ("ios", "android"):
+        return BLEDeviceCategory.PHONE
+
+    # Public-address Android → likely hub/smart device
+    if address_type == "public" and os_lower == "android":
+        return BLEDeviceCategory.HUB
+
+    return BLEDeviceCategory.UNKNOWN
+
+
 @dataclass
 class BLEScan:
     """A single BLE advertisement seen by the bridge."""
@@ -87,6 +171,33 @@ class UnassignedMAC:
     first_seen: float = field(default_factory=time.time)
     last_seen: float = field(default_factory=time.time)
     position_history: list[np.ndarray] = field(default_factory=list)
+    device_name: str = ""
+    is_random: bool = True
+    device_category: Optional[str] = None  # cached BLEDeviceCategory value
+
+
+@dataclass
+class BLEBeacon:
+    """A BLE device configured as a stationary location beacon.
+
+    Beacons are accessories (e.g. AirPods plugged in under a counter) that
+    are intentionally left in a fixed position to anchor room detection.
+    The engine uses their consistent RSSI to confirm room boundaries.
+    """
+    mac: str
+    device_name: str
+    manufacturer: str
+    location_name: str            # e.g. "Kitchen"
+    room_id: str                  # linked room id
+    rssi_baseline: float          # expected RSSI when stationary
+    first_seen: float = field(default_factory=time.time)
+    last_seen: float = field(default_factory=time.time)
+    rssi_history: list[int] = field(default_factory=list)
+
+    @property
+    def is_present(self) -> bool:
+        """Check if beacon was seen recently (within 30s)."""
+        return time.time() - self.last_seen < 30.0
 
 
 def rssi_to_distance(rssi_dbm: int) -> float:
@@ -121,6 +232,10 @@ class BLETetherEngine:
         self._bridge_pos = bridge_position if bridge_position is not None else np.zeros(3)
         # History of all BLE scans for trajectory analysis
         self._scan_history: list[BLEScan] = []
+        # Beacons: mac → BLEBeacon (stationary location anchors)
+        self._beacons: dict[str, BLEBeacon] = {}
+        # Device category cache: mac → BLEDeviceCategory
+        self._device_categories: dict[str, BLEDeviceCategory] = {}
 
     @property
     def tethers(self) -> dict[str, DeviceTether]:
@@ -129,6 +244,75 @@ class BLETetherEngine:
     @property
     def awaiting_tracks(self) -> set[str]:
         return set(self._awaiting.keys())
+
+    @property
+    def beacons(self) -> dict[str, BLEBeacon]:
+        """All registered location beacons."""
+        return self._beacons
+
+    # ──────────────────────────────────────────────────────────
+    # Beacon Management
+    # ──────────────────────────────────────────────────────────
+
+    def register_beacon(
+        self,
+        mac: str,
+        device_name: str,
+        manufacturer: str,
+        location_name: str,
+        room_id: str,
+        rssi_baseline: float = -50.0,
+    ) -> BLEBeacon:
+        """Register a BLE accessory as a stationary location beacon.
+
+        Once registered, this MAC is excluded from person tethering and
+        instead used to confirm room boundaries and physical locations.
+        """
+        beacon = BLEBeacon(
+            mac=mac,
+            device_name=device_name,
+            manufacturer=manufacturer,
+            location_name=location_name,
+            room_id=room_id,
+            rssi_baseline=rssi_baseline,
+        )
+        self._beacons[mac] = beacon
+        # Remove from unassigned/tether pools if present
+        self._unassigned.pop(mac, None)
+        if mac in self._mac_to_track:
+            track_id = self._mac_to_track.pop(mac)
+            self._tethers.pop(track_id, None)
+        self._device_categories[mac] = BLEDeviceCategory.BEACON
+        logger.info(
+            "beacon_registered",
+            mac=mac[-8:],
+            location=location_name,
+            device=device_name,
+        )
+        return beacon
+
+    def unregister_beacon(self, mac: str) -> bool:
+        """Remove a beacon registration."""
+        if mac in self._beacons:
+            del self._beacons[mac]
+            self._device_categories.pop(mac, None)
+            return True
+        return False
+
+    def _classify_device(self, scan: BLEScan) -> BLEDeviceCategory:
+        """Classify a BLE scan's device and cache the result."""
+        if scan.mac in self._device_categories:
+            return self._device_categories[scan.mac]
+        category = classify_ble_device(
+            device_name=scan.device_name,
+            address_type="random" if scan.is_random else "public",
+        )
+        self._device_categories[scan.mac] = category
+        return category
+
+    def is_phone_device(self, scan: BLEScan) -> bool:
+        """Check if a BLE scan is from a phone (eligible for tethering)."""
+        return self._classify_device(scan) == BLEDeviceCategory.PHONE
 
     # ──────────────────────────────────────────────────────────
     # Step 1: Ingest BLE scan data from bridge
@@ -157,6 +341,29 @@ class BLETetherEngine:
             seen_macs.add(scan.mac)
             self._scan_history.append(scan)
 
+            # Skip beacons — stationary location markers, not person devices
+            if scan.mac in self._beacons:
+                beacon = self._beacons[scan.mac]
+                beacon.last_seen = now
+                beacon.rssi_history.append(scan.rssi)
+                if len(beacon.rssi_history) > 50:
+                    beacon.rssi_history = beacon.rssi_history[-25:]
+                continue
+
+            # Classify the device
+            category = self._classify_device(scan)
+
+            # Only phone devices are eligible for person tethering.
+            # Laptops, hubs, accessories, tablets are inventoried but not tethered.
+            if category not in (BLEDeviceCategory.PHONE, BLEDeviceCategory.UNKNOWN):
+                logger.debug(
+                    "ble_non_phone_skipped",
+                    mac=scan.mac[-8:],
+                    category=category.value,
+                    device_name=scan.device_name,
+                )
+                continue
+
             # Is this MAC already tethered?
             if scan.mac in self._mac_to_track:
                 track_id = self._mac_to_track[scan.mac]
@@ -182,6 +389,9 @@ class BLETetherEngine:
                 self._unassigned[scan.mac] = UnassignedMAC(
                     mac=scan.mac,
                     first_seen=now,
+                    device_name=scan.device_name,
+                    is_random=scan.is_random,
+                    device_category=category.value,
                 )
                 events.append({
                     "event": "mac_spawned",
@@ -402,6 +612,9 @@ class BLETetherEngine:
 
             for mac, entry in self._unassigned.items():
                 if mac in self._mac_to_track:
+                    continue
+                # Only phone devices are eligible for person tethering
+                if entry.device_category and entry.device_category != BLEDeviceCategory.PHONE.value:
                     continue
                 if len(entry.rssi_history) < 3:
                     continue

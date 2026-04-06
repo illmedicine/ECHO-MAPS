@@ -41,11 +41,21 @@ function parseJwt(token: string): Record<string, string> {
 export default function SignInPage() {
   const router = useRouter();
 
+  // If already authenticated, redirect to dashboard immediately
+  useEffect(() => {
+    const stored = localStorage.getItem("echo_maps_user");
+    if (stored) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
+
   const handleCredentialResponse = useCallback(
     async (response: GoogleCredentialResponse) => {
       const payload = parseJwt(response.credential);
 
       // Build user object from Google's ID token
+      // ALWAYS use Google sub as id — keeps localStorage scoping stable
+      // regardless of whether backend is available during login
       const user: Record<string, string> = {
         id: payload.sub,
         email: payload.email,
@@ -59,14 +69,14 @@ export default function SignInPage() {
         try {
           const authResponse = await verifyGoogleToken(response.credential);
           user.apiToken = authResponse.access_token;
-          user.id = authResponse.user_id;
+          user.backendUserId = authResponse.user_id;
         } catch (err) {
           console.error("Backend auth failed, proceeding in demo mode:", err);
         }
       }
 
       localStorage.setItem("echo_maps_user", JSON.stringify(user));
-      router.push("/dashboard");
+      router.replace("/dashboard");
     },
     [router]
   );

@@ -24,6 +24,8 @@ from echo_maps.tracking.ble_tether import (
     BLETetherEngine,
     BLEScan,
     TetherStatus,
+    BLEDeviceCategory,
+    classify_ble_device,
 )
 
 logger = structlog.get_logger()
@@ -69,6 +71,8 @@ class TrackedPerson:
     heart_rate: Optional[float] = None
     skeleton_keypoints: Optional[np.ndarray] = None  # (33, 3) during visual phase
     frames_since_update: int = 0
+    wifi_validated: bool = False                      # confirmed via WiFi CSI (not BLE-only)
+    device_category: str = "unknown"                  # phone/laptop/accessory/hub/etc.
     _csi_history_walking: list = field(default_factory=list)
     _csi_history_stationary: list = field(default_factory=list)
 
@@ -172,6 +176,7 @@ class MultiPersonTracker:
             velocity=np.zeros(3, dtype=np.float32),
             confidence=1.0,
             skeleton_keypoints=skeleton_keypoints.copy(),
+            wifi_validated=True,  # registered via visual handshake → WiFi-confirmed
         )
 
         self._tracks[track_id] = person
@@ -627,9 +632,42 @@ class MultiPersonTracker:
                 "last_activity": person.last_activity,
                 "breathing_rate": person.breathing_rate,
                 "heart_rate": person.heart_rate,
+                "wifi_validated": person.wifi_validated,
+                "device_category": person.device_category,
                 "device_mac_suffix": person.device_mac_suffix,
                 "device_tether_status": person.device_tether_status,
                 "device_rssi": round(tether_info.avg_rssi, 1) if tether_info else None,
                 "device_distance_m": round(tether_info.estimated_distance_m, 2) if tether_info else None,
             })
         return snapshot
+
+    def validate_wifi_presence(self, track_id: str) -> bool:
+        """Verify that a tracked person has WiFi CSI validation (not BLE-only).
+
+        A person is WiFi-validated if they have been matched to RF blob
+        measurements. This prevents BLE-only ghost entities (e.g., a
+        laptop sitting on a desk should not count as a person).
+        """
+        person = self._tracks.get(track_id)
+        if person is None:
+            return False
+        has_rf_data = person.frames_since_update < MAX_FRAMES_NO_UPDATE
+        has_confidence = person.confidence > 0.3
+        if has_rf_data and has_confidence:
+            person.wifi_validated = True
+        return person.wifi_validated
+
+    def get_beacons(self) -> list[dict]:
+        """Get all registered location beacons."""
+        return [
+            {
+                "mac": b.mac,
+                "device_name": b.device_name,
+                "manufacturer": b.manufacturer,
+                "location_name": b.location_name,
+                "room_id": b.room_id,
+                "is_present": b.is_present,
+                "rssi_baseline": b.rssi_baseline,
+            }
+            for b in self.ble_tether.beacons.values()
+        ]

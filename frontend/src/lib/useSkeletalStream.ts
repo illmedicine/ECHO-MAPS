@@ -6,6 +6,7 @@ import { generateSimulatedSkeleton, generateSimulatedVitals, getCamerasForRoom, 
 import { estimatePose, preloadModel } from "./poseEstimator";
 import { storeFrame, type CollectedFrame } from "./collectedData";
 import { subscribePose, getLatestPose, hasActivePose, type PoseBusFrame } from "./poseBus";
+import { inferPose as inferLearnedPose, hasLearnedData, trainFromCollectedData } from "./correlationEngine";
 
 export type StreamSource = "csi" | "camera" | "simulated" | "disconnected";
 
@@ -105,6 +106,12 @@ export function useSkeletalStream({
   const lastPoseTimeRef = useRef<number>(0);
   const frameCountRef = useRef<number>(0);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  // Use a ref to track source inside the animation loop to avoid re-triggering the effect
+  const sourceRef = useRef<StreamSource>("disconnected");
+  // WebSocket reconnection backoff
+  const wsRetryCountRef = useRef(0);
+  const wsMaxRetries = 3;
+  const wsBackoffMs = useRef(2000); // starts at 2s, doubles each failure
 
   // Start preloading the pose model early
   useEffect(() => {
@@ -118,9 +125,11 @@ export function useSkeletalStream({
     cameraVideoRef.current = videoElement ?? null;
   }, [videoElement]);
 
-  // Attempt WebSocket connection to live CSI stream
+  // Attempt WebSocket connection to live CSI stream (with backoff)
   const connectWs = useCallback(() => {
     if (!envId || !WS_BASE || !isCalibrated) return null;
+    // Respect max retry limit
+    if (wsRetryCountRef.current >= wsMaxRetries) return null;
 
     const protocol = WS_BASE.startsWith("https") ? "wss" : "ws";
     const base = WS_BASE.replace(/^https?/, protocol);
@@ -129,7 +138,10 @@ export function useSkeletalStream({
     try {
       const ws = new WebSocket(url);
       ws.onopen = () => {
+        sourceRef.current = "csi";
         setSource("csi");
+        wsRetryCountRef.current = 0; // reset on successful connection
+        wsBackoffMs.current = 2000;
         const stored = localStorage.getItem("echo_maps_user");
         const token = stored ? JSON.parse(stored).apiToken : "";
         ws.send(JSON.stringify({ token }));
@@ -164,14 +176,19 @@ export function useSkeletalStream({
       };
 
       ws.onclose = () => {
-        setSource((prev) => (prev === "csi" ? "disconnected" : prev));
+        if (sourceRef.current === "csi") {
+          sourceRef.current = "disconnected";
+          setSource("disconnected");
+        }
         wsRef.current = null;
+        wsRetryCountRef.current++;
       };
 
       ws.onerror = () => { ws.close(); };
 
       return ws;
     } catch {
+      wsRetryCountRef.current++;
       return null;
     }
   }, [envId, isCalibrated]);
@@ -179,6 +196,7 @@ export function useSkeletalStream({
   // Main animation loop — prioritizes real data sources
   useEffect(() => {
     if (!live || !envId) {
+      sourceRef.current = "disconnected";
       setSource("disconnected");
       return;
     }
@@ -186,6 +204,9 @@ export function useSkeletalStream({
     startTimeRef.current = performance.now();
     let wsAttempted = false;
     let disposed = false;
+    // Reset WS retry state when the effect starts fresh
+    wsRetryCountRef.current = 0;
+    wsBackoffMs.current = 2000;
 
     // Subscribe to the global pose bus (data from Cameras tab)
     const unsubBus = subscribePose((busFrame: PoseBusFrame) => {
@@ -193,6 +214,7 @@ export function useSkeletalStream({
       // Accept pose data from any camera assigned to this room, or any camera if no room match
       if (busFrame.roomId === envId || !busFrame.roomId) {
         if (busFrame.isDetected && busFrame.keypoints3d.length >= 33) {
+          sourceRef.current = "camera";
           setSource("camera");
           setFrame({
             keypoints: busFrame.keypoints3d,
@@ -226,14 +248,16 @@ export function useSkeletalStream({
       const now = performance.now();
       const elapsed = (now - startTimeRef.current) / 1000;
 
-      // Priority 1: Try WebSocket CSI stream
+      // Priority 1: Try WebSocket CSI stream (with backoff, max 3 attempts)
       if (!wsAttempted && isBackendConfigured() && isCalibrated) {
         wsAttempted = true;
         wsRef.current = connectWs();
       }
 
+      const currentSource = sourceRef.current;
+
       // If CSI WebSocket is active, interpolate between server frames
-      if (source === "csi" && prevKeypointsRef.current.length > 0) {
+      if (currentSource === "csi" && prevKeypointsRef.current.length > 0) {
         const timeSinceFrame = now - lastServerFrameRef.current;
         const t = Math.min(timeSinceFrame / 100, 1);
         const interpolated = lerpKeypoints(
@@ -250,14 +274,16 @@ export function useSkeletalStream({
         // Data is being pushed via subscribePose callback above
         // Don't override with simulation
       }
-      // Priority 3: Use live camera feed (only during calibration with local videoElement)
+      // Priority 3: Use live camera feed (calibration OR live mode with local camera)
       else {
-        const video = cameraVideoRef.current;
+        // During live mode, also try to find an active camera in the DOM
+        const video = cameraVideoRef.current ?? (live ? findActiveCameraVideo(envId) : null);
 
         if (video && video.readyState >= 2 && !video.paused) {
           const poseResult = await estimatePose(video, dims);
 
           if (poseResult.isDetected && poseResult.keypoints3d.length >= 33) {
+            sourceRef.current = "camera";
             setSource("camera");
             setFrame({
               keypoints: poseResult.keypoints3d,
@@ -286,7 +312,8 @@ export function useSkeletalStream({
               };
               storeFrame(collectedFrame).catch(() => {});
             }
-          } else if (source !== "camera") {
+          } else if (currentSource !== "camera") {
+            sourceRef.current = "camera";
             setSource("camera");
             setFrame({
               keypoints: [],
@@ -300,22 +327,42 @@ export function useSkeletalStream({
             });
           }
         }
-        // Priority 4: Simulation fallback only when no real data source exists
+        // Priority 4: Use locally-learned correlation engine (real data from calibration)
         else {
-          setSource("simulated");
-          const keypoints = generateSimulatedSkeleton(dims, elapsed);
-          const vitals = generateSimulatedVitals();
+          // Try trained correlation engine first — uses REAL collected poses
+          const learnedPose = isCalibrated ? inferLearnedPose(envId, elapsed) : null;
 
-          setFrame({
-            keypoints,
-            activity: vitals.activity,
-            breathingRate: vitals.breathingRate,
-            heartRate: vitals.heartRate,
-            confidence: isCalibrated ? 0.95 : 0.5,
-            source: "simulated",
-            timestamp: now,
-            isDetected: true,
-          });
+          if (learnedPose && learnedPose.keypoints.length >= 33) {
+            sourceRef.current = "simulated";
+            setSource("simulated");
+            setFrame({
+              keypoints: learnedPose.keypoints,
+              activity: learnedPose.activity,
+              breathingRate: 15.5 + Math.sin(elapsed * 0.5) * 1.5,
+              heartRate: 72 + Math.sin(elapsed * 0.3) * 4,
+              confidence: learnedPose.confidence,
+              source: "simulated",
+              timestamp: now,
+              isDetected: true,
+            });
+          } else {
+            // Fallback: pure simulation (only when no learned data exists)
+            sourceRef.current = "simulated";
+            setSource("simulated");
+            const keypoints = generateSimulatedSkeleton(dims, elapsed);
+            const vitals = generateSimulatedVitals();
+
+            setFrame({
+              keypoints,
+              activity: vitals.activity,
+              breathingRate: vitals.breathingRate,
+              heartRate: vitals.heartRate,
+              confidence: isCalibrated ? 0.95 : 0.5,
+              source: "simulated",
+              timestamp: now,
+              isDetected: true,
+            });
+          }
         }
       }
 
@@ -333,7 +380,10 @@ export function useSkeletalStream({
         wsRef.current = null;
       }
     };
-  }, [live, envId, dims, isCalibrated, connectWs, source, activityLabel]);
+  // IMPORTANT: `source` is NOT in deps — we use sourceRef to read it inside the loop.
+  // Including `source` here caused infinite WebSocket reconnection loops.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, envId, dims, isCalibrated, connectWs, activityLabel]);
 
   return { frame, tracks, source };
 }

@@ -8,6 +8,7 @@ import {
   isBackendConfigured,
   startCalibration as apiStartCalibration,
 } from "@/lib/api";
+import { trainFromCollectedData } from "@/lib/correlationEngine";
 import {
   getEnvironment as getLocalEnv,
   updateEnvironment,
@@ -268,6 +269,9 @@ function EnvironmentViewContent() {
     setCalProgress(100);
     setCalMessage(`Space calibrated! ${completedCount}/${totalActivities} activities completed — ${(confidence * 100).toFixed(0)}% confidence.`);
     updateEnvironment(env.id, { isCalibrated: true, calibrationConfidence: confidence });
+
+    // Train the local AI correlation engine from collected camera data
+    trainFromCollectedData(env.id).catch(() => {});
     setEnv({ ...env, isCalibrated: true, confidence: 0.98 });
 
     await tick(1500);
@@ -316,9 +320,27 @@ function EnvironmentViewContent() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          {env.isCalibrated && live && (
+            <button
+              onClick={() => {
+                if (cameraActive) { stopCamera(); } else { startCamera(); }
+              }}
+              className="px-4 py-1.5 rounded-full text-sm font-medium transition"
+              style={cameraActive
+                ? { backgroundColor: "rgba(255,204,0,0.2)", color: "#ffcc00" }
+                : { backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }
+              }
+            >
+              {cameraActive ? "📷 Camera On" : "📷 Start Camera"}
+            </button>
+          )}
           {env.isCalibrated && (
             <button
-              onClick={() => setLive(!live)}
+              onClick={() => {
+                const next = !live;
+                setLive(next);
+                if (!next && cameraActive) stopCamera();
+              }}
               className="px-4 py-1.5 rounded-full text-sm font-medium transition"
               style={live ? { backgroundColor: "var(--gh-green)", color: "#000" } : { backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}
             >
@@ -511,6 +533,16 @@ function EnvironmentViewContent() {
                         backgroundColor: streamSource === "csi" ? "#00ff88" : streamSource === "camera" ? "#ffcc00" : "#88aaff",
                       }} />
                       {streamSource === "csi" ? "CSI Live" : streamSource === "camera" ? "Camera" : "AI Detection"}
+                    </div>
+                  )}
+                  {/* Camera PiP overlay — shown when camera is active during live mode */}
+                  {live && cameraActive && (
+                    <div className="absolute bottom-3 left-3 rounded-xl overflow-hidden border shadow-lg" style={{ borderColor: "rgba(255,204,0,0.4)", width: "200px" }}>
+                      <video ref={videoRef} autoPlay playsInline muted className="w-full h-[130px] object-cover" style={{ backgroundColor: "#000" }} />
+                      <div className="flex items-center gap-1.5 px-2 py-1" style={{ backgroundColor: "rgba(0,0,0,0.8)" }}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                        <span className="text-[10px] text-white font-medium">Camera Feed</span>
+                      </div>
                     </div>
                   )}
                 </div>

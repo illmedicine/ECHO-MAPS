@@ -2,8 +2,39 @@
 
 import { scopedKey, scheduleSyncPush, type NetworkFingerprint } from "./cloudSync";
 
+// Track which keys have already been through recovery so we don't scan repeatedly
+const _recoveredKeys = new Set<string>();
+
 // Scoped localStorage wrappers — keys auto-scope to current user, writes trigger cloud sync
-function _get(key: string): string | null { return localStorage.getItem(scopedKey(key)); }
+function _get(key: string): string | null {
+  const raw = localStorage.getItem(scopedKey(key));
+  if (raw) return raw;
+
+  // Scoped key is empty — try recovery (once per key per session)
+  if (_recoveredKeys.has(key)) return null;
+  _recoveredKeys.add(key);
+
+  const currentKey = scopedKey(key);
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k) continue;
+    // Match both unscoped (exact) and any user-scoped variant
+    if (k !== key && !k.startsWith(`${key}::`)) continue;
+    if (k === currentKey) continue; // already tried
+    const value = localStorage.getItem(k);
+    if (!value) continue;
+    try {
+      const parsed = JSON.parse(value);
+      const hasData = Array.isArray(parsed) ? parsed.length > 0 : (typeof parsed === "object" && parsed !== null && Object.keys(parsed).length > 0);
+      if (hasData) {
+        // Adopt data into the current user's scope
+        localStorage.setItem(currentKey, value);
+        return value;
+      }
+    } catch { /* skip corrupt */ }
+  }
+  return null;
+}
 function _set(key: string, value: string): void { localStorage.setItem(scopedKey(key), value); scheduleSyncPush(); }
 function _remove(key: string): void { localStorage.removeItem(scopedKey(key)); scheduleSyncPush(); }
 
@@ -444,6 +475,9 @@ export interface TrackedEntity {
   bleManufacturer: string | null;
   bleDeviceOS: "iOS" | "Android" | "Windows" | "Other" | null;
   bleCompanyId: string | null;
+  bleDeviceCategory: "phone" | "tablet" | "laptop" | "accessory" | "beacon" | "hub" | "unknown" | null;
+  isBeacon: boolean;
+  beaconLocationName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -486,6 +520,9 @@ export function createEntity(data: Pick<TrackedEntity, "name" | "type" | "emoji"
     bleManufacturer: null,
     bleDeviceOS: null,
     bleCompanyId: null,
+    bleDeviceCategory: null,
+    isBeacon: false,
+    beaconLocationName: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
