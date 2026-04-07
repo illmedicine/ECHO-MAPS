@@ -1,32 +1,63 @@
 ---
-date: 2026-04-03
-commit: 2f182c8
+date: 2026-04-07
+commit: a33691f
 branch: main
 ---
 
-# ECHO-MAPS (Echo Vue) — Full Release Notes
+# ECHO-MAPS (Echo Vue) — Release Summary
 
-**Illy Robotics** | March 31 – April 3, 2026 | 40 commits | `da16b8d` → `2f182c8`
-
----
-
-## v1.0 — Initial Release (Mar 31)
-
-`da16b8d` — Initial Echo Maps codebase: WiFi CSI sensing platform with Next.js frontend, FastAPI backend, ESP32 firmware, AI models (WaveFormer, CalibrationGAN, spatial attention), multi-person Kalman tracking, federated learning stubs, and PostgreSQL/pgvector DB layer.
+**Illy Robotics** | April 7, 2026 | Commit `a33691f`
 
 ---
 
-## Infrastructure & CI/CD
+## Expanded 3D Skeletal Viewer
 
-| Commit | Fix |
-|--------|-----|
-| `db2f4d3` | GitHub Actions workflow for Next.js static deployment to GitHub Pages |
-| `cd0969f` | CI trigger for GitHub Pages |
-| `eaa7316` | Remove npm cache dependency on missing lock file |
-| `17f7ea6` | Remove duplicate workflow, fix TS build errors |
-| `21ec655` | Add `.npmrc` with `legacy-peer-deps` for TF.js CI compatibility |
-| `fc240d5` | Webpack IgnorePlugin for TF.js optional deps (`@mediapipe/pose`, `webgpu`) |
-| `6033e62` | Re-trigger deploy with IgnorePlugin fix |
+- 3D viewer now fills most of the viewport (`calc(100vh - 10rem)`, min 500px) instead of a fixed 600px box
+- Applies to both the main environment view and the context-lost recovery state
+- Loading placeholder also scales to match
+
+## Floor Plan Editor (New Feature)
+
+**Visual room layout tool** built into the dashboard for defining home/office floor plans:
+
+- **Draw mode** — Click and drag on a metre-scale grid to draw room rectangles (snaps to 0.5m)
+- **Select mode** — Click rooms to select, drag to reposition, corner handles to resize
+- **Room types** — Kitchen, Living Room, Bedroom, Bathroom, Office, Garage, Patio, Other — each color-coded
+- **Name prompt** — After drawing, prompted for room name and type before confirming
+- **Live dimensions** — Shows room size in metres while drawing and on each room card
+- **Room list** — All rooms displayed as selectable chips below the canvas
+- **Configurable footprint** — Set overall floor plan width/height in metres
+
+## Floor Plan → Room Override Logic
+
+- Saving a floor plan **automatically deletes all existing manually-added rooms** for that environment
+- Rooms are recreated from the floor plan's spatial layout (name, type, dimensions)
+- This ensures the floor plan is the single source of truth when active
+- Manual room adding still works independently if no floor plan exists
+
+## Dashboard Integration
+
+- **"Floor Plan" button** in the header alongside "Add Room" (shows green when a plan exists)
+- **Floor plan editor** opens inline, replacing the room grid
+- **Active floor plan banner** appears above rooms showing footprint size and room count
+- **Empty state** now offers both "Create Floor Plan" and "Add Room" as entry points
+
+## Backend Model
+
+- New `FloorPlan` SQLAlchemy model: `floor_plans` table with JSONB `rooms_json`, `width`/`height` floats, one-per-environment unique constraint
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `frontend/src/components/EnvironmentViewer.tsx` | Expanded viewer height to viewport-relative |
+| `frontend/src/components/FloorPlanEditor.tsx` | **New** — Canvas-based floor plan editor |
+| `frontend/src/lib/environments.ts` | Added FloorPlan types, CRUD, room override logic |
+| `frontend/src/app/dashboard/page.tsx` | Integrated floor plan editor, button, banner |
+| `frontend/src/app/dashboard/env/page.tsx` | Updated 3D viewer loading placeholder size |
+| `echo_maps/db/models.py` | Added FloorPlan SQLAlchemy model |
 
 ## Backend & Deployment
 

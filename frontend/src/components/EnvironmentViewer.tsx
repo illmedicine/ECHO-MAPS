@@ -14,13 +14,14 @@ import * as THREE from "three";
  */
 
 /** Triggers re-renders at ~20fps when live, stops when static */
-function Invalidator({ isLive }: { isLive: boolean }) {
+function Invalidator({ isLive, compact = false }: { isLive: boolean; compact?: boolean }) {
   const { invalidate: inv } = useThree();
   useEffect(() => {
     if (!isLive) return;
-    const id = setInterval(() => inv(), 50); // ~20fps
+    const interval = compact ? 125 : 50; // ~8fps during calibration, ~20fps normal
+    const id = setInterval(() => inv(), interval);
     return () => clearInterval(id);
-  }, [isLive, inv]);
+  }, [isLive, inv, compact]);
   return null;
 }
 
@@ -338,6 +339,8 @@ interface EnvironmentViewerProps {
   roomBounds?: [number, number, number];
   sourceType?: "csi" | "camera" | "simulated" | "disconnected";
   isLive?: boolean;
+  /** Compact mode: smaller canvas & lower GPU usage (used during calibration) */
+  compact?: boolean;
 }
 
 export default function EnvironmentViewer({
@@ -348,6 +351,7 @@ export default function EnvironmentViewer({
   roomBounds = [10, 10, 3.5],
   sourceType = "simulated",
   isLive = false,
+  compact = false,
 }: EnvironmentViewerProps) {
   const [contextLost, setContextLost] = useState(false);
   const [canvasKey, setCanvasKey] = useState(0);
@@ -359,12 +363,12 @@ export default function EnvironmentViewer({
       e.preventDefault();
       setContextLost(true);
       contextLossCountRef.current++;
-      // Auto-recover after 2s, but only up to 3 times to avoid infinite loop
-      if (contextLossCountRef.current <= 3) {
+      // Auto-recover after a delay, up to 6 times to handle calibration GPU contention
+      if (contextLossCountRef.current <= 6) {
         setTimeout(() => {
           setContextLost(false);
           setCanvasKey((k) => k + 1);
-        }, 2000);
+        }, compact ? 3000 : 2000);
       }
     };
     const onRestored = () => {
@@ -374,28 +378,33 @@ export default function EnvironmentViewer({
     canvas.addEventListener("webglcontextrestored", onRestored);
   }, []);
 
+  const viewerHeight = compact ? "350px" : "calc(100vh - 10rem)";
+  const viewerMinHeight = compact ? "250px" : "500px";
+
   if (contextLost) {
     return (
-      <div className="w-full bg-[var(--illy-dark)] rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center" style={{ height: "calc(100vh - 10rem)", minHeight: "500px" }}>
+      <div className="w-full bg-[var(--illy-dark)] rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center" style={{ height: viewerHeight, minHeight: viewerMinHeight }}>
         <div className="text-center">
           <p className="text-2xl mb-2">🔄</p>
-          <p className="text-sm font-medium" style={{ color: "var(--gh-text-muted)" }}>3D context lost</p>
-          <button
-            onClick={() => { setContextLost(false); setCanvasKey((k) => k + 1); }}
-            className="mt-3 px-4 py-2 rounded-lg text-sm font-medium"
-            style={{ backgroundColor: "var(--gh-blue)" }}
-          >
-            Reload Viewer
-          </button>
+          <p className="text-sm font-medium" style={{ color: "var(--gh-text-muted)" }}>{compact ? "Recovering 3D view..." : "3D context lost"}</p>
+          {!compact && (
+            <button
+              onClick={() => { setContextLost(false); setCanvasKey((k) => k + 1); }}
+              className="mt-3 px-4 py-2 rounded-lg text-sm font-medium"
+              style={{ backgroundColor: "var(--gh-blue)" }}
+            >
+              Reload Viewer
+            </button>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full bg-[var(--illy-dark)] rounded-xl overflow-hidden border border-gray-800" style={{ height: "calc(100vh - 10rem)", minHeight: "500px" }}>
-      <Canvas key={canvasKey} camera={{ position: [8, 6, 8], fov: 50 }} onCreated={handleCreated} frameloop="demand" gl={{ powerPreference: "default", antialias: false, alpha: false, stencil: false, depth: true, failIfMajorPerformanceCaveat: false }}>
-        <Invalidator isLive={isLive} />
+    <div className="w-full bg-[var(--illy-dark)] rounded-xl overflow-hidden border border-gray-800" style={{ height: viewerHeight, minHeight: viewerMinHeight }}>
+      <Canvas key={canvasKey} camera={{ position: compact ? [6, 4.5, 6] : [8, 6, 8], fov: 50 }} onCreated={handleCreated} frameloop="demand" gl={{ powerPreference: compact ? "low-power" : "default", antialias: false, alpha: false, stencil: false, depth: true, failIfMajorPerformanceCaveat: false }}>
+        <Invalidator isLive={isLive} compact={compact} />
         <ambientLight intensity={0.3} />
         <directionalLight position={[10, 10, 5]} intensity={0.5} />
 

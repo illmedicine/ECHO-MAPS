@@ -145,7 +145,10 @@ export async function healthCheck(): Promise<{ status: string; service: string }
     throw new ApiError(503, "Backend unavailable (skipped — backoff active)");
   }
   try {
-    const result = await request<{ status: string; service: string }>("/health");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const result = await request<{ status: string; service: string }>("/health", { signal: controller.signal });
+    clearTimeout(timeout);
     _healthFailCount = 0; // Reset on success
     return result;
   } catch (err) {

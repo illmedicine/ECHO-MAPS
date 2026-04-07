@@ -510,6 +510,7 @@ function EnvironmentViewContent() {
                     roomBounds={[env.dims.width, env.dims.length, env.dims.height]}
                     sourceType={streamSource === "simulated" ? "csi" : streamSource}
                     isLive={live}
+                    compact={isCalibrating}
                     trackedPersons={liveTracks.length > 0 ? liveTracks : getEntities().filter((e) => e.status === "active" && e.roomId === envId).map((e, i) => ({
                       track_id: e.id,
                       user_tag: e.name,
