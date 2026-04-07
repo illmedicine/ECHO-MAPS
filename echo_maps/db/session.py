@@ -20,9 +20,11 @@ async def init_db(database_url: str) -> None:
     global _engine, _session_factory  # noqa: PLW0603
     _engine = create_async_engine(
         database_url,
-        pool_size=20,
-        max_overflow=10,
+        pool_size=5,
+        max_overflow=5,
         pool_pre_ping=True,
+        pool_timeout=10,
+        connect_args={"timeout": 10},
     )
     _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
 

@@ -18,7 +18,7 @@ class AppEnv(str, Enum):
 class Settings(BaseSettings):
     # ── Application ──
     app_env: AppEnv = AppEnv.DEVELOPMENT
-    app_secret_key: str = Field(..., min_length=16)
+    app_secret_key: str = Field(default="dev-insecure-key-change-me", min_length=16)
     app_host: str = "0.0.0.0"
     app_port: int = 8000
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -15,18 +16,30 @@ from echo_maps.db.session import init_db, close_db, create_tables
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    import structlog
+    log = structlog.get_logger()
     settings = get_settings()
     try:
-        await init_db(settings.async_database_url)
-        await create_tables()
-    except Exception:
-        import structlog
-        structlog.get_logger().warning("db_init_failed", msg="Database not available — running in demo mode")
+        await asyncio.wait_for(
+            _init_database(settings.async_database_url),
+            timeout=15,
+        )
+        log.info("db_ready", msg="Database connected")
+    except asyncio.TimeoutError:
+        log.warning("db_init_timeout", msg="Database connection timed out — running in demo mode")
+    except Exception as exc:
+        log.warning("db_init_failed", msg=f"Database not available — running in demo mode: {exc}")
     yield
     try:
         await close_db()
     except Exception:
         pass
+
+
+async def _init_database(database_url: str) -> None:
+    """Initialize DB with a hard timeout so the app starts regardless."""
+    await init_db(database_url)
+    await create_tables()
 
 
 def create_app() -> FastAPI:
