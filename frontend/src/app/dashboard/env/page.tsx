@@ -193,6 +193,7 @@ function EnvironmentViewContent() {
   /* Step-by-step calibration with activity prompts */
   const runCalibration = async () => {
     if (!env) return;
+    try {
 
     // Only call backend if we have a real API token
     const stored = typeof window !== "undefined" ? localStorage.getItem("echo_maps_user") : null;
@@ -320,6 +321,23 @@ function EnvironmentViewContent() {
     await tick(1500);
     setCalStep("idle");
     setLive(true);
+    } catch (err) {
+      console.error("Calibration failed:", err);
+      setCalMessage(`Calibration failed: ${err instanceof Error ? err.message : "Unknown error"}. Please try again.`);
+      setCalStep("idle");
+      setCalProgress(0);
+      try { stopCamera(); } catch { /* ignore */ }
+    }
+  };
+
+  const handleRecalibrate = () => {
+    if (!env) return;
+    setEnv({ ...env, isCalibrated: false, confidence: 0 });
+    updateEnvironment(env.id, { isCalibrated: false, calibrationConfidence: 0 });
+    setCalStep("idle");
+    setCalProgress(0);
+    setCalMessage("");
+    setLive(false);
   };
 
   if (!envId) {
@@ -654,6 +672,15 @@ function EnvironmentViewContent() {
                   backgroundColor: env.isCalibrated ? "var(--gh-green)" : "var(--gh-blue)",
                 }} />
               </div>
+              {env.isCalibrated && !isCalibrating && (
+                <button
+                  onClick={handleRecalibrate}
+                  className="w-full mt-3 py-2 rounded-xl text-xs font-medium transition hover:opacity-90"
+                  style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}
+                >
+                  🔄 Recalibrate Space
+                </button>
+              )}
             </div>
           </div>
 

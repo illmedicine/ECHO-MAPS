@@ -151,6 +151,27 @@ export function simulateBLEDevices(roomIds: { id: string; name: string }[]): Dis
     }
   }
 
+  // Always discover infrastructure devices (hubs, accessories) from the device pool
+  // These are fixed devices in the home that act as spatial anchors
+  const infraDevices = DEVICE_POOL.filter((d) => d.category === "hub" || d.category === "accessory");
+  const existingBeaconNames = new Set(existing.filter((e) => e.isBeacon).map((e) => e.bleDeviceName));
+  const tetheredDeviceNames = new Set(devices.map((d) => d.name));
+  for (const dev of infraDevices) {
+    if (tetheredDeviceNames.has(dev.name)) continue; // Already surfaced
+    // Assign to a room — use matching beacon's room if already registered, else distribute
+    const existingBeacon = existing.find((e) => e.isBeacon && e.bleDeviceName === dev.name);
+    const room = existingBeacon && roomIds.find((r) => r.id === existingBeacon.roomId)
+      ? roomIds.find((r) => r.id === existingBeacon.roomId)!
+      : roomIds[Math.floor(Math.random() * roomIds.length)];
+    if (!room) continue;
+    devices.push({
+      ...dev,
+      roomId: room.id,
+      roomName: room.name,
+      rssi: -(25 + Math.floor(Math.random() * 15)),
+    });
+  }
+
   // Always include existing registered beacons so they stay active
   const beacons = existing.filter((e) => e.isBeacon && e.bleDeviceName);
   for (const beacon of beacons) {
@@ -232,12 +253,26 @@ export function resolvePresences(
     if (rfIdx !== -1) {
       usedRFIndices.add(rfIdx);
       const rf = humanRF[rfIdx];
-      // Determine activity based on current state — keep consistent unless scan detects change
+      // Determine activity based on current state — heavy stationary bias for household members
+      // CSI can detect micro-motion but without room transition evidence, assume stationary
       const currentActivity = member.activity || "Unknown";
       const stableActivities = ["Resting", "Sitting", "Standing"];
-      const activity = stableActivities.includes(currentActivity) && Math.random() < 0.7
-        ? currentActivity  // Likely still doing the same thing
-        : ["Resting", "Sitting", "Standing", "Walking", "Moving"][Math.floor(Math.random() * 5)];
+      const sameRoom = member.roomId === rf.roomId;
+      let activity: string;
+      if (stableActivities.includes(currentActivity) && sameRoom) {
+        // Already in a stationary state AND same room — 90% stay, 10% shift to another stationary
+        activity = Math.random() < 0.9
+          ? currentActivity
+          : stableActivities[Math.floor(Math.random() * stableActivities.length)];
+      } else if (!sameRoom) {
+        // Room changed — they must have walked, briefly show Walking then settle
+        activity = "Walking";
+      } else {
+        // Unknown or first scan — default to stationary (80% stationary, 20% walking)
+        activity = Math.random() < 0.8
+          ? stableActivities[Math.floor(Math.random() * stableActivities.length)]
+          : "Walking";
+      }
 
       const knownPhone = knownPhones.find((p) =>
         p.name && p.manufacturer && member.bleDeviceName === p.name && member.bleManufacturer === p.manufacturer
