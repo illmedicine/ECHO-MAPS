@@ -110,6 +110,23 @@ class RFSignatureRecord(Base):
     user_tag: Mapped[str] = mapped_column(String(50))  # "User_A", "User_B", etc.
 
 
+class FloorPlan(Base):
+    """A master floor plan for an environment defining all rooms spatially."""
+    __tablename__ = "floor_plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id"), unique=True, index=True)
+    width: Mapped[float] = mapped_column(Float)
+    height: Mapped[float] = mapped_column(Float)
+    rooms_json: Mapped[dict] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
 class UserSettings(Base):
     """Stores the entire frontend settings blob per user for cross-device sync."""
     __tablename__ = "user_settings"

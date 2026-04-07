@@ -568,3 +568,87 @@ export const CALIBRATION_ACTIVITIES: CalibrationActivity[] = [
   { id: "use_device",      label: "Use phone / computer",   instruction: "Sit and interact with a device to capture subtle movement.",            durationSec: 15, icon: "💻" },
   { id: "pet_interact",    label: "Interact with a pet",    instruction: "If a pet is nearby, interact with it so Echo Vue can distinguish.",    durationSec: 10, icon: "🐕" },
 ];
+
+/* ══════════════════════════════════════════════
+   Floor Plan Management
+   ══════════════════════════════════════════════ */
+
+export interface FloorPlanRoom {
+  id: string;
+  label: string;
+  type: Environment["type"];
+  /** Rectangle: x, y are top-left in metres from origin; w, h are width/height in metres */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface FloorPlan {
+  id: string;
+  environmentId: string;
+  /** Overall footprint in metres */
+  width: number;
+  height: number;
+  rooms: FloorPlanRoom[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+const FLOOR_PLAN_KEY = "echo_vue_floor_plans";
+
+export function getFloorPlans(): FloorPlan[] {
+  if (typeof window === "undefined") return [];
+  const raw = _get(FLOOR_PLAN_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function getFloorPlan(environmentId: string): FloorPlan | null {
+  return getFloorPlans().find((fp) => fp.environmentId === environmentId) ?? null;
+}
+
+export function saveFloorPlan(environmentId: string, width: number, height: number, rooms: FloorPlanRoom[]): FloorPlan {
+  const plans = getFloorPlans();
+  const now = new Date().toISOString();
+  const idx = plans.findIndex((fp) => fp.environmentId === environmentId);
+
+  const plan: FloorPlan = {
+    id: idx >= 0 ? plans[idx].id : crypto.randomUUID(),
+    environmentId,
+    width,
+    height,
+    rooms,
+    createdAt: idx >= 0 ? plans[idx].createdAt : now,
+    updatedAt: now,
+  };
+
+  if (idx >= 0) {
+    plans[idx] = plan;
+  } else {
+    plans.push(plan);
+  }
+  _set(FLOOR_PLAN_KEY, JSON.stringify(plans));
+
+  // Override existing rooms: delete old rooms for this environment, create from floor plan
+  const existingRooms = getEnvironments().filter((r) => r.environmentId === environmentId);
+  existingRooms.forEach((r) => deleteEnvironment(r.id));
+
+  for (const fpRoom of rooms) {
+    createEnvironment({
+      name: fpRoom.label,
+      type: fpRoom.type,
+      dimensions: { width: fpRoom.w, length: fpRoom.h, height: 2.7 },
+      environmentId,
+    });
+  }
+
+  return plan;
+}
+
+export function deleteFloorPlan(environmentId: string): boolean {
+  const plans = getFloorPlans();
+  const filtered = plans.filter((fp) => fp.environmentId !== environmentId);
+  if (filtered.length === plans.length) return false;
+  _set(FLOOR_PLAN_KEY, JSON.stringify(filtered));
+  return true;
+}

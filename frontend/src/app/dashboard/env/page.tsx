@@ -25,7 +25,7 @@ import { useSkeletalStream, type StreamSource } from "@/lib/useSkeletalStream";
 const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-[500px] rounded-2xl flex items-center justify-center" style={{ backgroundColor: "var(--gh-surface)", color: "var(--gh-text-muted)" }}>
+    <div className="w-full rounded-2xl flex items-center justify-center" style={{ backgroundColor: "var(--gh-surface)", color: "var(--gh-text-muted)", height: "calc(100vh - 14rem)", minHeight: "400px" }}>
       Loading 3D viewer...
     </div>
   ),

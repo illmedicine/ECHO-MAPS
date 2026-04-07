@@ -39,6 +39,11 @@ import {
   TrackedEntity,
   generateSimulatedSkeleton,
   generateSimulatedPointCloud,
+  getFloorPlan,
+  saveFloorPlan,
+  deleteFloorPlan,
+  type FloorPlanRoom,
+  type FloorPlan,
 } from "@/lib/environments";
 import EmojiPicker from "@/components/EmojiPicker";
 import { subscribePose, hasActivePose, getLatestPose } from "@/lib/poseBus";
@@ -53,6 +58,7 @@ import { updateEchoEnvironment } from "@/lib/environments";
 import dynamic from "next/dynamic";
 
 const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer"), { ssr: false });
+const FloorPlanEditor = dynamic(() => import("@/components/FloorPlanEditor"), { ssr: false });
 
 interface UserData {
   id: string;
@@ -115,6 +121,8 @@ export default function DashboardPage() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initDone = useRef(false);
+  const [showFloorPlan, setShowFloorPlan] = useState(false);
+  const [currentFloorPlan, setCurrentFloorPlan] = useState<FloorPlan | null>(null);
 
   // Single initialization effect — reads user, migrates data, loads environments
   useEffect(() => {
@@ -169,6 +177,24 @@ export default function DashboardPage() {
   }, [echoEnvs, selectedEnvId]);
 
   useEffect(() => { reloadRooms(); }, [reloadRooms, echoEnvs]);
+
+  // Load floor plan when selected environment changes
+  useEffect(() => {
+    if (selectedEnvId) {
+      setCurrentFloorPlan(getFloorPlan(selectedEnvId));
+    } else {
+      setCurrentFloorPlan(null);
+    }
+    setShowFloorPlan(false);
+  }, [selectedEnvId]);
+
+  const handleSaveFloorPlan = (width: number, height: number, fpRooms: FloorPlanRoom[]) => {
+    if (!selectedEnvId) return;
+    const plan = saveFloorPlan(selectedEnvId, width, height, fpRooms);
+    setCurrentFloorPlan(plan);
+    setShowFloorPlan(false);
+    reloadRooms();
+  };
 
   const handleSignOut = () => { localStorage.removeItem("echo_maps_user"); router.push("/"); };
 
@@ -332,10 +358,16 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-3">
             {activeTab === "spaces" && selectedEnvId && (
-              <button onClick={() => setShowNewRoomModal(true)} className="btn-primary flex items-center gap-2">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                Add Room
-              </button>
+              <>
+                <button onClick={() => { setShowFloorPlan(true); }} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition"
+                  style={{ backgroundColor: currentFloorPlan ? "rgba(52,168,83,0.15)" : "var(--gh-card)", color: currentFloorPlan ? "var(--gh-green)" : "var(--gh-text-muted)", border: "1px solid var(--gh-border)" }}>
+                  🏗️ {currentFloorPlan ? "Edit Floor Plan" : "Floor Plan"}
+                </button>
+                <button onClick={() => setShowNewRoomModal(true)} className="btn-primary flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                  Add Room
+                </button>
+              </>
             )}
             {activeTab === "cameras" && (
               <button onClick={() => setShowAddCameraModal(true)} className="btn-primary flex items-center gap-2">
@@ -354,8 +386,23 @@ export default function DashboardPage() {
         )}
 
         <div className="p-8">
-          {activeTab === "spaces" && (
-            <RoomsView rooms={rooms} selectedEnvId={selectedEnvId} selectedEnv={selectedEnv ?? null} onAddEnv={() => setShowNewEnvModal(true)} onAddRoom={() => setShowNewRoomModal(true)} onDeleteRoom={handleDeleteRoom} />
+          {activeTab === "spaces" && !showFloorPlan && (
+            <RoomsView rooms={rooms} selectedEnvId={selectedEnvId} selectedEnv={selectedEnv ?? null} onAddEnv={() => setShowNewEnvModal(true)} onAddRoom={() => setShowNewRoomModal(true)} onDeleteRoom={handleDeleteRoom} currentFloorPlan={currentFloorPlan} onEditFloorPlan={() => setShowFloorPlan(true)} />
+          )}
+          {activeTab === "spaces" && showFloorPlan && selectedEnvId && (
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <button onClick={() => setShowFloorPlan(false)} className="text-sm transition hover:opacity-80" style={{ color: "var(--gh-text-muted)" }}>← Back to Rooms</button>
+                <h2 className="text-lg font-semibold">Floor Plan — {selectedEnv?.name}</h2>
+              </div>
+              <FloorPlanEditor
+                initialWidth={currentFloorPlan?.width ?? 15}
+                initialHeight={currentFloorPlan?.height ?? 12}
+                initialRooms={currentFloorPlan?.rooms ?? []}
+                onSave={handleSaveFloorPlan}
+                onCancel={() => setShowFloorPlan(false)}
+              />
+            </div>
           )}
           <div style={{ display: activeTab === "cameras" ? "block" : "none" }}>
             <CamerasView version={cameraVersion} onAddCamera={() => setShowAddCameraModal(true)} />
@@ -377,13 +424,15 @@ export default function DashboardPage() {
 }
 
 /* ── Rooms View ── */
-function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onDeleteRoom }: {
+function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onDeleteRoom, currentFloorPlan, onEditFloorPlan }: {
   rooms: RoomCard[];
   selectedEnvId: string | null;
   selectedEnv: EchoEnvironment | null;
   onAddEnv: () => void;
   onAddRoom: () => void;
   onDeleteRoom: (id: string) => void;
+  currentFloorPlan: FloorPlan | null;
+  onEditFloorPlan: () => void;
 }) {
   if (!selectedEnvId) {
     return (
@@ -400,8 +449,13 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
       <div className="flex flex-col items-center justify-center py-20" style={{ color: "var(--gh-text-muted)" }}>
         <div className="text-6xl mb-4 opacity-30">🚪</div>
         <p className="text-lg mb-2">No rooms in {selectedEnv?.name}</p>
-        <p className="text-sm mb-6">Add rooms to map and calibrate each space</p>
-        <button onClick={onAddRoom} className="btn-primary">Add Room</button>
+        <p className="text-sm mb-6">Add rooms individually or create a floor plan to define all rooms at once</p>
+        <div className="flex gap-3">
+          <button onClick={onEditFloorPlan} className="px-5 py-2.5 rounded-xl text-sm font-medium transition" style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text-muted)" }}>
+            🏗️ Create Floor Plan
+          </button>
+          <button onClick={onAddRoom} className="btn-primary">Add Room</button>
+        </div>
       </div>
     );
   }
@@ -412,6 +466,20 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
   }, {});
   return (
     <>
+      {currentFloorPlan && (
+        <div className="mb-6 p-4 rounded-xl flex items-center justify-between" style={{ backgroundColor: "rgba(52,168,83,0.08)", border: "1px solid rgba(52,168,83,0.2)" }}>
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🏗️</span>
+            <div>
+              <p className="text-sm font-medium" style={{ color: "var(--gh-green)" }}>Floor Plan Active</p>
+              <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{currentFloorPlan.width}×{currentFloorPlan.height}m · {currentFloorPlan.rooms.length} rooms defined</p>
+            </div>
+          </div>
+          <button onClick={onEditFloorPlan} className="px-3 py-1.5 rounded-lg text-xs font-medium transition" style={{ backgroundColor: "rgba(52,168,83,0.15)", color: "var(--gh-green)" }}>
+            Edit Floor Plan
+          </button>
+        </div>
+      )}
       {Object.entries(grouped).map(([type, items]) => (
         <div key={type} className="mb-8">
           <h2 className="text-sm font-medium mb-3 capitalize" style={{ color: "var(--gh-text-muted)" }}>{type.replace("_", " ")}</h2>

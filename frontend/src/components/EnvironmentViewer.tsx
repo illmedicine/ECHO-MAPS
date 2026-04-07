@@ -376,7 +376,7 @@ export default function EnvironmentViewer({
 
   if (contextLost) {
     return (
-      <div className="w-full h-[600px] bg-[var(--illy-dark)] rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center">
+      <div className="w-full bg-[var(--illy-dark)] rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center" style={{ height: "calc(100vh - 10rem)", minHeight: "500px" }}>
         <div className="text-center">
           <p className="text-2xl mb-2">🔄</p>
           <p className="text-sm font-medium" style={{ color: "var(--gh-text-muted)" }}>3D context lost</p>
@@ -393,7 +393,7 @@ export default function EnvironmentViewer({
   }
 
   return (
-    <div className="w-full h-[600px] bg-[var(--illy-dark)] rounded-xl overflow-hidden border border-gray-800">
+    <div className="w-full bg-[var(--illy-dark)] rounded-xl overflow-hidden border border-gray-800" style={{ height: "calc(100vh - 10rem)", minHeight: "500px" }}>
       <Canvas key={canvasKey} camera={{ position: [8, 6, 8], fov: 50 }} onCreated={handleCreated} frameloop="demand" gl={{ powerPreference: "default", antialias: false, alpha: false, stencil: false, depth: true, failIfMajorPerformanceCaveat: false }}>
         <Invalidator isLive={isLive} />
         <ambientLight intensity={0.3} />
