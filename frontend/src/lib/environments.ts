@@ -249,6 +249,79 @@ export function generateSimulatedPointCloud(
   return points;
 }
 
+/**
+ * Generate a point cloud from real skeleton keypoints — scatters points around
+ * detected body positions to simulate the CSI signal reflection pattern that
+ * a real WiFi CSI sensor array would produce for this body configuration.
+ */
+export function generatePointCloudFromSkeleton(
+  skeleton: number[][],
+  dims: Environment["dimensions"],
+  density: number = 180
+): number[][] {
+  const points: number[][] = [];
+  if (!skeleton || skeleton.length < 33) return generateSimulatedPointCloud(dims, density);
+
+  // Wall structure points (always visible — these represent room boundaries)
+  for (let i = 0; i < 40; i++) {
+    const t = i / 40;
+    points.push([t * dims.width, Math.random() * dims.height, 0]);
+    points.push([t * dims.width, Math.random() * dims.height, dims.length]);
+    points.push([0, Math.random() * dims.height, t * dims.length]);
+    points.push([dims.width, Math.random() * dims.height, t * dims.length]);
+  }
+
+  // Body reflection points — scattered around each keypoint
+  // Denser near torso (larger signal reflection), sparser at extremities
+  const torsoIndices = [0, 11, 12, 23, 24]; // head, shoulders, hips
+  const limbIndices = [13, 14, 15, 16, 25, 26, 27, 28]; // elbows, wrists, knees, ankles
+  const extremityIndices = [7, 8, 17, 18, 19, 20, 21, 22, 29, 30, 31, 32]; // ears, fingers, toes
+
+  const scatter = (kp: number[], radius: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+      const r = Math.random() * radius;
+      points.push([
+        kp[0] + r * Math.sin(phi) * Math.cos(theta),
+        Math.max(0, kp[1] + r * Math.sin(phi) * Math.sin(theta)),
+        kp[2] + r * Math.cos(phi),
+      ]);
+    }
+  };
+
+  // Dense scatter around torso (strong signal reflection)
+  for (const idx of torsoIndices) {
+    if (skeleton[idx]) scatter(skeleton[idx], 0.25, 8);
+  }
+  // Medium scatter around limbs
+  for (const idx of limbIndices) {
+    if (skeleton[idx]) scatter(skeleton[idx], 0.15, 4);
+  }
+  // Light scatter around extremities
+  for (const idx of extremityIndices) {
+    if (skeleton[idx]) scatter(skeleton[idx], 0.1, 2);
+  }
+
+  // Floor reflection points beneath the person (signal multipath)
+  const hipCenter = [
+    (skeleton[23][0] + skeleton[24][0]) / 2,
+    0,
+    (skeleton[23][2] + skeleton[24][2]) / 2,
+  ];
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * 0.8;
+    points.push([
+      hipCenter[0] + Math.cos(angle) * dist,
+      Math.random() * 0.05,
+      hipCenter[2] + Math.sin(angle) * dist,
+    ]);
+  }
+
+  return points;
+}
+
 export function generateSimulatedSkeleton(
   dims: Environment["dimensions"],
   time: number = 0

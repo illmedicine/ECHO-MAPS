@@ -20,6 +20,8 @@ export interface CollectedFrame {
   confidence: number;         // pose detection confidence
   activity: string;           // activity label during collection
   source: "camera" | "csi";   // which sensor provided this frame
+  /** Synthesized signal fingerprint — encodes pose as a signal vector for cross-modal training */
+  signalFingerprint?: number[];
 }
 
 const DB_NAME = "echo_maps_calibration";
