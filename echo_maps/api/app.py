@@ -18,17 +18,17 @@ from echo_maps.db.session import init_db, close_db, create_tables
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     import structlog
     log = structlog.get_logger()
+    log.info("app_starting", msg="Echo Maps API starting up...")
     settings = get_settings()
     try:
         await asyncio.wait_for(
             _init_database(settings.async_database_url),
-            timeout=15,
+            timeout=10,
         )
         log.info("db_ready", msg="Database connected")
-    except asyncio.TimeoutError:
-        log.warning("db_init_timeout", msg="Database connection timed out — running in demo mode")
     except Exception as exc:
-        log.warning("db_init_failed", msg=f"Database not available — running in demo mode: {exc}")
+        log.warning("db_init_skipped", error=str(exc), msg="Database not available — running in demo mode")
+    log.info("app_ready", msg="Echo Maps API ready to serve requests")
     yield
     try:
         await close_db()

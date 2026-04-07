@@ -18,7 +18,9 @@ services:
       - key: APP_HOST
         value: "0.0.0.0"
       - key: APP_PORT
-        value: "8000"
+        value: "10000"
+      - key: PORT
+        value: "10000"
       - key: GOOGLE_CLIENT_ID
         sync: false  # Set manually after deploy
       - key: GOOGLE_CLIENT_SECRET
