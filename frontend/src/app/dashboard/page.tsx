@@ -1186,8 +1186,9 @@ function PresenceView() {
   const allEnvs = getEchoEnvironments();
   const allRooms = allEnvs.flatMap((env) => getRoomsForEnvironment(env.id));
 
-  const people = entities.filter((e) => e.type === "person");
-  const pets = entities.filter((e) => e.type === "pet");
+  const people = entities.filter((e) => e.type === "person" && !e.isBeacon);
+  const pets = entities.filter((e) => e.type === "pet" && !e.isBeacon);
+  const beacons = entities.filter((e) => e.isBeacon);
   const selected = entities.find((e) => e.id === selectedEntity);
 
   const roomNames: Record<string, string> = {};
@@ -1384,40 +1385,36 @@ function PresenceView() {
                     </button>
                   </div>
                 ))}
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                <span>\ud83d\udc3e</span> Pets <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(245,197,66,0.12)", color: "var(--gh-yellow)" }}>{pets.length}</span>
-              </h3>
-              <div className="space-y-2">
-                {pets.map((p) => (
-                  <div key={p.id} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-yellow)" } : {}}>
-                    <button onClick={() => setSelectedEntity(p.id)} className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0" style={{ backgroundColor: "rgba(245,197,66,0.12)" }}>
-                        {p.emoji || "\ud83d\udc3e"}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-medium text-sm">{p.name}</h4>
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
-                          {householdIds.has(p.id) && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(124,140,248,0.12)", color: "var(--gh-accent)" }}>🏠 Household</span>}
-                        </div>
-                        <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} &middot; {p.activity} &middot; {p.lastSeen}</p>
-                      </div>
-                      <p className="text-xs font-medium flex-shrink-0" style={{ color: "var(--gh-yellow)" }}>{(p.confidence * 100).toFixed(0)}%</p>
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); handleToggleHousehold(p.id); }}
-                      className="flex-shrink-0 text-[10px] px-2 py-1 rounded-lg transition hover:opacity-80"
-                      style={{ backgroundColor: householdIds.has(p.id) ? "rgba(124,140,248,0.15)" : "var(--gh-card)", color: householdIds.has(p.id) ? "var(--gh-accent)" : "var(--gh-text-muted)" }}
-                      title={householdIds.has(p.id) ? "Remove from household" : "Add to household"}>
-                      {householdIds.has(p.id) ? "🏠" : "＋🏠"}
-                    </button>
-                  </div>
-                ))}
                 {pets.length === 0 && <p className="text-xs py-4 text-center" style={{ color: "var(--gh-text-muted)" }}>No pets detected yet.</p>}
               </div>
             </div>
+
+            {/* Spatial Beacons */}
+            {beacons.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <span>📡</span> Spatial Beacons <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(6,182,212,0.12)", color: "#06b6d4" }}>{beacons.length}</span>
+                </h3>
+                <div className="space-y-2">
+                  {beacons.map((b) => (
+                    <div key={b.id} className="device-card flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0" style={{ backgroundColor: "rgba(6,182,212,0.12)" }}>
+                        {b.emoji || "📡"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-xs">{b.name}</h4>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(6,182,212,0.12)", color: "#06b6d4" }}>Anchor</span>
+                        </div>
+                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>
+                          {b.bleManufacturer}{b.location ? ` · ${b.location}` : ""}{b.deviceRssi ? ` · ${b.deviceRssi} dBm` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Visitor History */}
             {visitors.length > 0 && (

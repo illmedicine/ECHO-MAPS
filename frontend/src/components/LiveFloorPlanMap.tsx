@@ -85,7 +85,7 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
   // Assign entity positions within their rooms
   useEffect(() => {
     const posMap = avatarPosRef.current;
-    const activeEntities = entities.filter((e) => e.status === "active");
+    const activeEntities = entities.filter((e) => e.status === "active" && !e.isBeacon);
 
     // Remove stale
     for (const key of posMap.keys()) {
@@ -105,11 +105,31 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
       if (!env) continue;
       const roomEntities = byRoom[env.id] || [];
       roomEntities.forEach((entity, idx) => {
-        // Compute a target position within the room
+        // Compute a target position within the room based on activity
         const slots = roomEntities.length;
-        const angle = (idx / Math.max(slots, 1)) * Math.PI * 2 + Date.now() * 0.0003;
-        const rx = fpRoom.w * 0.3 * Math.cos(angle);
-        const ry = fpRoom.h * 0.3 * Math.sin(angle);
+        const baseAngle = (idx / Math.max(slots, 1)) * Math.PI * 2;
+
+        // Activity-aware movement: stationary activities stay still
+        const activity = (entity.activity || "").toLowerCase();
+        const isStationary = activity === "resting" || activity === "sitting" || activity === "standing" || activity === "unknown";
+        const isMoving = activity === "walking" || activity === "moving" || activity === "arrived";
+
+        let rx: number, ry: number;
+        if (isStationary) {
+          // Fixed position within room — distribute evenly, no orbiting
+          rx = fpRoom.w * 0.2 * Math.cos(baseAngle);
+          ry = fpRoom.h * 0.2 * Math.sin(baseAngle);
+        } else if (isMoving) {
+          // Slow orbiting within room to indicate actual movement
+          const moveAngle = baseAngle + Date.now() * 0.0004;
+          rx = fpRoom.w * 0.28 * Math.cos(moveAngle);
+          ry = fpRoom.h * 0.28 * Math.sin(moveAngle);
+        } else {
+          // Default: slight drift
+          rx = fpRoom.w * 0.15 * Math.cos(baseAngle + Date.now() * 0.0001);
+          ry = fpRoom.h * 0.15 * Math.sin(baseAngle + Date.now() * 0.0001);
+        }
+
         const tx = fpRoom.x + fpRoom.w / 2 + rx;
         const ty = fpRoom.y + fpRoom.h / 2 + ry;
 
@@ -309,6 +329,50 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
         ctx.fillStyle = "rgba(255,255,255,0.7)";
         ctx.font = "9px -apple-system, sans-serif";
         ctx.fillText(entity.name, px, py + dotRadius + 10);
+
+        // Activity label under name
+        if (entity.activity && entity.activity !== "Unknown") {
+          ctx.fillStyle = "rgba(255,255,255,0.35)";
+          ctx.font = "8px -apple-system, sans-serif";
+          ctx.fillText(entity.activity, px, py + dotRadius + 20);
+        }
+      }
+
+      // Render BLE beacons as fixed anchor icons
+      const beacons = entities.filter((e) => e.isBeacon);
+      for (const beacon of beacons) {
+        // Find which room this beacon is in
+        const fpRoom = floorPlan.rooms.find((r) => {
+          const env = fpRoomToEnv(r);
+          return env?.id === beacon.roomId;
+        });
+        if (!fpRoom) continue;
+        // Place beacon in a fixed corner of the room
+        const bx = fpRoom.x + fpRoom.w * 0.85;
+        const by = fpRoom.y + fpRoom.h * 0.15;
+        const [bpx, bpy] = toPixel(bx, by);
+
+        // Pulsing ring
+        const pulse = 0.5 + Math.sin(Date.now() * 0.003) * 0.3;
+        ctx.beginPath();
+        ctx.arc(bpx, bpy, 12 * pulse + 8, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(6,182,212,0.3)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Beacon icon
+        ctx.beginPath();
+        ctx.arc(bpx, bpy, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "#06b6d4";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(6,182,212,0.8)";
+        ctx.font = "8px -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(beacon.beaconLocationName || beacon.name, bpx, bpy + 14);
       }
 
       animFrameRef.current = requestAnimationFrame(draw);
@@ -342,6 +406,7 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#8b8f9a" }} /> Pending</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: ENTITY_COLORS.person }} /> Person</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: ENTITY_COLORS.pet }} /> Pet</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#06b6d4" }} /> Beacon</span>
         </div>
       </div>
 

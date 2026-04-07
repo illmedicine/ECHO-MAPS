@@ -63,46 +63,112 @@ const DEVICE_POOL: Array<Omit<DiscoveredDevice, "roomId" | "roomName" | "rssi">>
   { name: "Galaxy S24", os: "Android", manufacturer: "Samsung Electronics", companyId: "0x0075", addrType: "random", category: "phone" },
   { name: "OnePlus 12", os: "Android", manufacturer: "OnePlus Technology", companyId: "0x038F", addrType: "random", category: "phone" },
   { name: "Surface Pro", os: "Windows", manufacturer: "Microsoft Corp.", companyId: "0x0006", addrType: "public", category: "laptop" },
+  // User's spatial anchor devices
+  { name: "Blink Cam Hub", os: "Other", manufacturer: "Amazon/Blink", companyId: "0x0171", addrType: "public", category: "hub" },
+  { name: "iPod Case Beacon", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "accessory" },
 ];
 
 /* ─── Simulated RF scan ─── */
 
+/**
+ * RF scan for known household members only.
+ * Instead of generating N presences per room, we generate exactly ONE presence
+ * per known household entity (matched to a random room from the list).
+ * Extra RF ghost signals are only generated if there are more rooms than
+ * household members, and are flagged as "unmatched".
+ */
 export function simulateRFPresences(roomIds: { id: string; name: string }[]): RFPresence[] {
   const presences: RFPresence[] = [];
-  for (const room of roomIds) {
-    // 1 human per room (conservative — the smart engine deduplicates)
+  const household = getHousehold();
+  const existing = getEntities();
+  const householdEntities = existing.filter((e) => household.some((h) => h.entityId === e.id));
+  const memberRooms = [...roomIds];
+
+  // One RF presence per household entity, placed in a room
+  for (const entity of householdEntities) {
+    // Use the entity's current room if available and in the scan list, otherwise pick randomly
+    const inList = memberRooms.find((r) => r.id === entity.roomId);
+    const room = inList || memberRooms[Math.floor(Math.random() * memberRooms.length)];
+    if (!room) continue;
+
     presences.push({
       roomId: room.id,
       roomName: room.name,
-      isHuman: true,
-      confidence: 0.75 + Math.random() * 0.23,
-      breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
-      heartRate: Math.round(60 + Math.random() * 30),
-    });
-    // Sometimes detect pet-like signature
-    if (Math.random() < 0.45) {
-      presences.push({
-        roomId: room.id,
-        roomName: room.name,
-        isHuman: false,
-        confidence: 0.5 + Math.random() * 0.3,
-        breathingRate: Math.round((15 + Math.random() * 20) * 10) / 10,
-        heartRate: Math.round(80 + Math.random() * 80),
-      });
-    }
+      isHuman: entity.type === "person",
+      confidence: 0.80 + Math.random() * 0.18,
+      breathingRate: entity.type === "pet"
+        ? Math.round((18 + Math.random() * 15) * 10) / 10
+        : Math.round((13 + Math.random() * 7) * 10) / 10,
+      heartRate: entity.type === "pet"
+        ? Math.round(90 + Math.random() * 60)
+        : Math.round(62 + Math.random() * 25),
+      // Carry entity linkage so resolvePresences can match
+      _entityId: entity.id,
+    } as RFPresence & { _entityId: string });
   }
+
   return presences;
 }
 
+/**
+ * BLE scan — only surfaces devices that are actually tethered to household
+ * members, plus any genuinely new devices from the device pool (rare).
+ * The user's own phone is always returned when household has an owner.
+ */
 export function simulateBLEDevices(roomIds: { id: string; name: string }[]): DiscoveredDevice[] {
   const devices: DiscoveredDevice[] = [];
-  for (const room of roomIds) {
-    const count = Math.floor(Math.random() * 3) + 1;
-    for (let i = 0; i < count; i++) {
-      const dev = DEVICE_POOL[Math.floor(Math.random() * DEVICE_POOL.length)];
-      devices.push({ ...dev, roomId: room.id, roomName: room.name, rssi: -(35 + Math.floor(Math.random() * 50)) });
+  const household = getHousehold();
+  const existing = getEntities();
+
+  // Return known tethered devices for household members
+  for (const member of household) {
+    const entity = existing.find((e) => e.id === member.entityId);
+    if (!entity || !entity.bleDeviceName) continue;
+    const room = roomIds.find((r) => r.id === entity.roomId) || roomIds[0];
+    if (!room) continue;
+    devices.push({
+      name: entity.bleDeviceName,
+      os: (entity.bleDeviceOS as DiscoveredDevice["os"]) || null,
+      manufacturer: entity.bleManufacturer,
+      companyId: entity.bleCompanyId,
+      addrType: (entity.bleAddressType as DiscoveredDevice["addrType"]) || null,
+      category: (entity.bleDeviceCategory as DiscoveredDevice["category"]) || "phone",
+      roomId: room.id,
+      roomName: room.name,
+      rssi: -(35 + Math.floor(Math.random() * 20)),
+    });
+  }
+
+  // Very rarely inject a genuinely new device (5% chance) to simulate a visitor
+  if (Math.random() < 0.05 && roomIds.length > 0) {
+    const room = roomIds[Math.floor(Math.random() * roomIds.length)];
+    // Pick a device NOT already in the household tethered set
+    const tetheredNames = new Set(devices.map((d) => d.name));
+    const newDev = DEVICE_POOL.filter((d) => d.category === "phone" && !tetheredNames.has(d.name));
+    if (newDev.length > 0) {
+      const dev = newDev[Math.floor(Math.random() * newDev.length)];
+      devices.push({ ...dev, roomId: room.id, roomName: room.name, rssi: -(50 + Math.floor(Math.random() * 30)) });
     }
   }
+
+  // Always include existing registered beacons so they stay active
+  const beacons = existing.filter((e) => e.isBeacon && e.bleDeviceName);
+  for (const beacon of beacons) {
+    const room = roomIds.find((r) => r.id === beacon.roomId) || roomIds[0];
+    if (!room) continue;
+    devices.push({
+      name: beacon.bleDeviceName,
+      os: (beacon.bleDeviceOS as DiscoveredDevice["os"]) || null,
+      manufacturer: beacon.bleManufacturer,
+      companyId: beacon.bleCompanyId,
+      addrType: (beacon.bleAddressType as DiscoveredDevice["addrType"]) || null,
+      category: (beacon.bleDeviceCategory as DiscoveredDevice["category"]) || "hub",
+      roomId: room.id,
+      roomName: room.name,
+      rssi: -(30 + Math.floor(Math.random() * 15)),
+    });
+  }
+
   return devices;
 }
 
@@ -157,27 +223,35 @@ export function resolvePresences(
   const petRF = rfPresences.filter((p) => !p.isHuman);
 
   // ── Rule 1: Update household people (never create duplicates) ──
-  // Pick a unique room for each household person from the RF presences
+  // Match RF presences that carry _entityId back to their household entity
   const usedRFIndices = new Set<number>();
   for (const member of householdPeople) {
-    // Find an RF presence in any room to update this member
-    const rfIdx = humanRF.findIndex((rf, i) => !usedRFIndices.has(i));
+    // First try the linked RF presence
+    const linkedIdx = humanRF.findIndex((rf, i) => !usedRFIndices.has(i) && (rf as RFPresence & { _entityId?: string })._entityId === member.id);
+    const rfIdx = linkedIdx !== -1 ? linkedIdx : humanRF.findIndex((_rf, i) => !usedRFIndices.has(i));
     if (rfIdx !== -1) {
       usedRFIndices.add(rfIdx);
       const rf = humanRF[rfIdx];
-      const activities = ["Walking", "Sitting", "Standing", "Resting", "Moving"];
+      // Determine activity based on current state — keep consistent unless scan detects change
+      const currentActivity = member.activity || "Unknown";
+      const stableActivities = ["Resting", "Sitting", "Standing"];
+      const activity = stableActivities.includes(currentActivity) && Math.random() < 0.7
+        ? currentActivity  // Likely still doing the same thing
+        : ["Resting", "Sitting", "Standing", "Walking", "Moving"][Math.floor(Math.random() * 5)];
+
       const knownPhone = knownPhones.find((p) =>
         p.name && p.manufacturer && member.bleDeviceName === p.name && member.bleManufacturer === p.manufacturer
       );
       const bleUpdate: Record<string, unknown> = {
         status: "active",
         confidence: Math.round(rf.confidence * 100) / 100,
-        activity: activities[Math.floor(Math.random() * activities.length)],
+        activity,
         breathingRate: rf.breathingRate,
         heartRate: rf.heartRate,
         lastSeen: "Just now",
         roomId: rf.roomId,
         location: rf.roomName,
+        // rfSignature is NEVER changed — it persists from entity creation
       };
       if (knownPhone) {
         const distM = Math.round(Math.pow(10, (-59 - knownPhone.rssi) / (10 * 2.5)) * 100) / 100;
@@ -189,28 +263,35 @@ export function resolvePresences(
       }
       updateEntity(member.id, bleUpdate);
       mergedCount++;
-      log.push(`↻ Updated household member ${member.name} (${member.rfSignature}) → ${rf.roomName}`);
+      log.push(`↻ Updated household member ${member.name} (${member.rfSignature}) → ${rf.roomName} [${activity}]`);
     }
   }
 
   // ── Rule 2: Update household pets (never create duplicates) ──
   for (const pet of householdPets) {
-    const petRfIdx = petRF.findIndex(() => true);
+    // Try linked RF presence first
+    const linkedIdx = petRF.findIndex((rf) => (rf as RFPresence & { _entityId?: string })._entityId === pet.id);
+    const petRfIdx = linkedIdx !== -1 ? linkedIdx : petRF.findIndex(() => true);
     if (petRfIdx !== -1) {
       const rf = petRF[petRfIdx];
       petRF.splice(petRfIdx, 1);
+      const currentActivity = pet.activity || "Unknown";
+      const activity = currentActivity === "Resting" && Math.random() < 0.75
+        ? "Resting"
+        : ["Resting", "Moving", "Sitting"][Math.floor(Math.random() * 3)];
       updateEntity(pet.id, {
         status: "active",
         confidence: Math.round(rf.confidence * 100) / 100,
-        activity: ["Resting", "Moving", "Sitting"][Math.floor(Math.random() * 3)],
+        activity,
         breathingRate: rf.breathingRate,
         heartRate: rf.heartRate,
         lastSeen: "Just now",
         roomId: rf.roomId,
         location: rf.roomName,
+        // rfSignature is NEVER changed
       });
       mergedCount++;
-      log.push(`↻ Updated household pet ${pet.name} (${pet.rfSignature}) → ${rf.roomName}`);
+      log.push(`↻ Updated household pet ${pet.name} (${pet.rfSignature}) → ${rf.roomName} [${activity}]`);
     }
   }
 
@@ -341,10 +422,47 @@ export function resolvePresences(
     log.push(`⊘ Pet-like RF in area but household pet already tracked — skipping duplicate`);
   }
 
-  // ── Beacon registration ──
-  for (const acc of accessoryDevices) {
-    if (acc.rssi > -60) {
-      log.push(`📍 Beacon candidate: ${acc.name} (${acc.manufacturer}) in ${acc.roomName} — RSSI ${acc.rssi} dBm`);
+  // ── Beacon registration — use hubs and accessories as spatial anchors ──
+  const beaconDevices = [...hubDevices, ...accessoryDevices];
+  for (const dev of beaconDevices) {
+    // Check if a beacon entity already exists for this device
+    const existingBeacon = existing.find(
+      (e) => e.isBeacon && e.bleDeviceName === dev.name && e.bleManufacturer === dev.manufacturer
+    );
+    if (existingBeacon) {
+      // Update RSSI / room
+      updateEntity(existingBeacon.id, {
+        status: "active",
+        deviceRssi: dev.rssi,
+        roomId: dev.roomId,
+        location: dev.roomName,
+        lastSeen: "Just now",
+      });
+      log.push(`📍 Beacon updated: ${dev.name} in ${dev.roomName} — RSSI ${dev.rssi} dBm`);
+    } else {
+      // Register new beacon
+      const entity = createEntity({
+        name: dev.name || "Unknown Beacon",
+        type: "person", // Beacons reuse entity storage
+        emoji: dev.category === "hub" ? "📡" : "📍",
+        roomId: dev.roomId,
+        location: dev.roomName,
+      });
+      updateEntity(entity.id, {
+        status: "active",
+        isBeacon: true,
+        beaconLocationName: dev.roomName,
+        bleDeviceName: dev.name,
+        bleManufacturer: dev.manufacturer,
+        bleDeviceOS: dev.os,
+        bleCompanyId: dev.companyId,
+        bleDeviceCategory: dev.category,
+        deviceRssi: dev.rssi,
+        lastSeen: "Just now",
+        confidence: 1.0,
+        activity: "Anchor",
+      });
+      log.push(`📍 New beacon registered: ${dev.name} (${dev.manufacturer}) in ${dev.roomName} — spatial anchor for CSI triangulation`);
     }
   }
 
