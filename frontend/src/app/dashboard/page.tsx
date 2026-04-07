@@ -44,7 +44,18 @@ import {
   deleteFloorPlan,
   type FloorPlanRoom,
   type FloorPlan,
+  getHousehold,
+  addHouseholdMember,
+  removeHouseholdMember,
+  isHouseholdMember,
+  getVisitors,
+  type VisitorRecord,
 } from "@/lib/environments";
+import {
+  simulateRFPresences,
+  simulateBLEDevices,
+  resolvePresences,
+} from "@/lib/presenceEngine";
 import EmojiPicker from "@/components/EmojiPicker";
 import { subscribePose, hasActivePose, getLatestPose } from "@/lib/poseBus";
 import {
@@ -59,6 +70,7 @@ import dynamic from "next/dynamic";
 
 const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer"), { ssr: false });
 const FloorPlanEditor = dynamic(() => import("@/components/FloorPlanEditor"), { ssr: false });
+const LiveFloorPlanMap = dynamic(() => import("@/components/LiveFloorPlanMap"), { ssr: false });
 
 interface UserData {
   id: string;
@@ -123,6 +135,8 @@ export default function DashboardPage() {
   const initDone = useRef(false);
   const [showFloorPlan, setShowFloorPlan] = useState(false);
   const [currentFloorPlan, setCurrentFloorPlan] = useState<FloorPlan | null>(null);
+  const [liveMapRoomId, setLiveMapRoomId] = useState<string | null>(null);
+  const [liveEntities, setLiveEntities] = useState<TrackedEntity[]>([]);
 
   // Single initialization effect — reads user, migrates data, loads environments
   useEffect(() => {
@@ -187,6 +201,13 @@ export default function DashboardPage() {
     }
     setShowFloorPlan(false);
   }, [selectedEnvId]);
+
+  // Poll live entities for the floor plan map (2s interval)
+  useEffect(() => {
+    setLiveEntities(getEntities());
+    const iv = setInterval(() => setLiveEntities(getEntities()), 2000);
+    return () => clearInterval(iv);
+  }, []);
 
   const handleSaveFloorPlan = (width: number, height: number, fpRooms: FloorPlanRoom[]) => {
     if (!selectedEnvId) return;
@@ -387,7 +408,31 @@ export default function DashboardPage() {
 
         <div className="p-8">
           {activeTab === "spaces" && !showFloorPlan && (
-            <RoomsView rooms={rooms} selectedEnvId={selectedEnvId} selectedEnv={selectedEnv ?? null} onAddEnv={() => setShowNewEnvModal(true)} onAddRoom={() => setShowNewRoomModal(true)} onDeleteRoom={handleDeleteRoom} currentFloorPlan={currentFloorPlan} onEditFloorPlan={() => setShowFloorPlan(true)} />
+            <>
+              {currentFloorPlan && selectedEnvId && (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--gh-text-muted)" }}>🗺️ Live Floor Plan</h2>
+                    <div className="flex items-center gap-2">
+                      {liveMapRoomId && (
+                        <button onClick={() => setLiveMapRoomId(null)} className="text-[10px] px-2 py-1 rounded-lg" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>Clear Selection</button>
+                      )}
+                    </div>
+                  </div>
+                  <LiveFloorPlanMap
+                    floorPlan={currentFloorPlan}
+                    rooms={rooms.map((r) => getRoomsForEnvironment(selectedEnvId).find((e) => e.id === r.id)!).filter(Boolean)}
+                    entities={liveEntities.filter((e) => {
+                      const envRoomIds = rooms.map((r) => r.id);
+                      return envRoomIds.includes(e.roomId);
+                    })}
+                    selectedRoomId={liveMapRoomId}
+                    onSelectRoom={setLiveMapRoomId}
+                  />
+                </div>
+              )}
+              <RoomsView rooms={rooms} selectedEnvId={selectedEnvId} selectedEnv={selectedEnv ?? null} onAddEnv={() => setShowNewEnvModal(true)} onAddRoom={() => setShowNewRoomModal(true)} onDeleteRoom={handleDeleteRoom} currentFloorPlan={currentFloorPlan} onEditFloorPlan={() => setShowFloorPlan(true)} />
+            </>
           )}
           {activeTab === "spaces" && showFloorPlan && selectedEnvId && (
             <div>
@@ -1063,6 +1108,8 @@ function PresenceView() {
   const [tuningRF, setTuningRF] = useState<string | null>(null);
   const [rfProgress, setRfProgress] = useState(0);
   const [activityHistory, setActivityHistory] = useState<string | null>(null);
+  const [householdIds, setHouseholdIds] = useState<Set<string>>(new Set());
+  const [visitors, setVisitors] = useState<VisitorRecord[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanTarget, setScanTarget] = useState<"all" | string>("all");
@@ -1124,8 +1171,12 @@ function PresenceView() {
     return () => clearInterval(iv);
   }, [entities]);
 
-  // Load entities from localStorage
-  useEffect(() => { setEntities(getEntities()); }, []);
+  // Load entities, household, and visitors from localStorage
+  useEffect(() => {
+    setEntities(getEntities());
+    setHouseholdIds(new Set(getHousehold().map((m) => m.entityId)));
+    setVisitors(getVisitors());
+  }, []);
   // Subscribe to pose bus for live detection status
   useEffect(() => {
     const unsub = subscribePose(() => setHasPose(hasActivePose()));
@@ -1143,13 +1194,11 @@ function PresenceView() {
   const roomEmojis: Record<string, string> = {};
   allRooms.forEach((r) => { roomNames[r.id] = r.name; roomEmojis[r.id] = r.emoji || ""; });
 
-  // Simulated scan: uses camera/poseBus + RF to detect entities
-  // Implements CSI Anchor Protocol — groups multiple BLE devices by manufacturer
-  // and spatial proximity into single entities, preventing false duplicates.
+  // Smart scan: uses presence engine to avoid duplicates for household members
   const runScan = () => {
     setScanning(true);
     setScanProgress(0);
-    setScanLog(["Initializing presence detection scan..."]);
+    setScanLog(["Initializing smart presence detection scan..."]);
     let progress = 0;
 
     scanIntervalRef.current = setInterval(() => {
@@ -1157,295 +1206,58 @@ function PresenceView() {
       if (progress > 100) progress = 100;
       setScanProgress(Math.round(progress));
 
-      // Simulate phased scan log messages — WiFi-first approach
-      if (progress > 8 && progress < 12) setScanLog((prev) => prev.length < 3 ? [...prev, "Phase 1: WiFi CSI channel scanning \u2014 detecting RF body signatures..."] : prev);
+      // Phased scan log messages
+      if (progress > 8 && progress < 12) setScanLog((prev) => prev.length < 3 ? [...prev, "Phase 1: WiFi CSI channel scanning — detecting RF body signatures..."] : prev);
       if (progress > 15 && progress < 19) setScanLog((prev) => prev.length < 4 ? [...prev, "Analyzing breathing micro-motion patterns for body detection..."] : prev);
-      if (progress > 22 && progress < 26) setScanLog((prev) => prev.length < 5 ? [...prev, "RF micro-motion analysis \u2014 distinguishing human vs pet signatures..."] : prev);
-      if (progress > 30 && progress < 34) setScanLog((prev) => prev.length < 6 ? [...prev, "Phase 2: BLE passive scan \u2014 inventorying nearby devices..."] : prev);
+      if (progress > 22 && progress < 26) setScanLog((prev) => prev.length < 5 ? [...prev, "RF micro-motion analysis — distinguishing human vs pet signatures..."] : prev);
+      if (progress > 30 && progress < 34) setScanLog((prev) => prev.length < 6 ? [...prev, "Phase 2: BLE passive scan — inventorying nearby devices..."] : prev);
       if (progress > 38 && progress < 42) setScanLog((prev) => prev.length < 7 ? [...prev, "Classifying BLE devices: phones, laptops, accessories, hubs..."] : prev);
-      if (progress > 46 && progress < 50) setScanLog((prev) => prev.length < 8 ? [...prev, "Filtering non-phone devices from person detection (laptops, hubs, accessories)..."] : prev);
-      if (progress > 54 && progress < 58) setScanLog((prev) => prev.length < 9 ? [...prev, "Phase 3: Correlating phone-only BLE with WiFi-detected presences..."] : prev);
-      if (progress > 62 && progress < 66) setScanLog((prev) => prev.length < 10 ? [...prev, "Phase 4: Evaluating accessories for location beacon registration..."] : prev);
-      if (progress > 70 && progress < 74) setScanLog((prev) => prev.length < 11 ? [...prev, "Phase 5: RF micro-motion pet detection (no BLE required)..."] : prev);
-      if (progress > 80 && progress < 84) setScanLog((prev) => prev.length < 12 ? [...prev, "Deduplicating entities via CSI Anchor Protocol..."] : prev);
-      if (progress > 88 && progress < 92) setScanLog((prev) => prev.length < 13 ? [...prev, "Finalizing presence map..."] : prev);
+      if (progress > 50 && progress < 54) setScanLog((prev) => prev.length < 8 ? [...prev, "Phase 3: Checking household profile — identifying known members..."] : prev);
+      if (progress > 60 && progress < 64) setScanLog((prev) => prev.length < 9 ? [...prev, "Phase 4: Correlating new BLE devices with new RF presences..."] : prev);
+      if (progress > 72 && progress < 76) setScanLog((prev) => prev.length < 10 ? [...prev, "Phase 5: Checking visitor registry for recurring devices..."] : prev);
+      if (progress > 85 && progress < 89) setScanLog((prev) => prev.length < 11 ? [...prev, "Deduplicating via household-aware CSI Anchor Protocol..."] : prev);
 
       if (progress >= 100) {
         if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
 
         const targetRooms = scanTarget === "all" ? allRooms : allRooms.filter((r) => r.id === scanTarget);
-        const existing = getEntities();
-        const discoveryLog: string[] = [];
+        const roomData = targetRooms.map((r) => ({ id: r.id, name: r.name }));
 
-        // ── Phase 1: WiFi CSI RF Presence Detection ──
-        // PRIMARY detection: CSI breathing micro-motion detects bodies.
-        // BLE is supplementary — used only for phone-device correlation.
-        interface RFPresence {
-          roomId: string;
-          roomName: string;
-          isHuman: boolean;
-          confidence: number;
-        }
+        const rfPresences = simulateRFPresences(roomData);
+        const bleDevices = simulateBLEDevices(roomData);
+        const result = resolvePresences(rfPresences, bleDevices);
 
-        const rfPresences: RFPresence[] = [];
-        targetRooms.forEach((room) => {
-          // CSI breathing micro-motion detects bodies per room
-          const humanCount = Math.max(1, Math.floor(Math.random() * 3));
-          for (let i = 0; i < humanCount; i++) {
-            rfPresences.push({
-              roomId: room.id,
-              roomName: room.name,
-              isHuman: true,
-              confidence: 0.75 + Math.random() * 0.23,
-            });
-          }
-          // Pet detection: smaller body, faster breathing pattern
-          if (Math.random() < 0.55) {
-            rfPresences.push({
-              roomId: room.id,
-              roomName: room.name,
-              isHuman: false,
-              confidence: 0.5 + Math.random() * 0.3,
-            });
-          }
-        });
-
-        const humanRF = rfPresences.filter((p) => p.isHuman);
-        const petRF = rfPresences.filter((p) => !p.isHuman);
-        discoveryLog.push(`WiFi CSI detected ${humanRF.length} human RF presence(s) and ${petRF.length} pet-like RF signature(s).`);
-
-        // ── Phase 2: BLE Device Inventory & Classification ──
-        // Classify every BLE device. Only phones are eligible for person tethering.
-        type BLEDeviceCat = "phone" | "tablet" | "laptop" | "accessory" | "hub" | "unknown";
-
-        interface DiscoveredDevice {
-          name: string | null;
-          os: "iOS" | "Android" | "Windows" | "Other" | null;
-          manufacturer: string | null;
-          companyId: string | null;
-          addrType: "random" | "public" | null;
-          category: BLEDeviceCat;
-          roomId: string;
-          roomName: string;
-          rssi: number;
-        }
-
-        // Device pool with pre-assigned categories
-        const devicePool: Array<Omit<DiscoveredDevice, "roomId" | "roomName" | "rssi">> = [
-          { name: "iPhone 15", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "phone" },
-          { name: "iPad Pro", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "tablet" },
-          { name: "Apple Watch", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "accessory" },
-          { name: "AirPods Pro", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "accessory" },
-          { name: "Google Pixel 9 Plus", os: "Android", manufacturer: "Google LLC", companyId: "0x00E0", addrType: "random", category: "phone" },
-          { name: "Nest Hub", os: "Android", manufacturer: "Google LLC", companyId: "0x00E0", addrType: "public", category: "hub" },
-          { name: "Galaxy S24", os: "Android", manufacturer: "Samsung Electronics", companyId: "0x0075", addrType: "random", category: "phone" },
-          { name: "OnePlus 12", os: "Android", manufacturer: "OnePlus Technology", companyId: "0x038F", addrType: "random", category: "phone" },
-          { name: "Surface Pro", os: "Windows", manufacturer: "Microsoft Corp.", companyId: "0x0006", addrType: "public", category: "laptop" },
-        ];
-
-        const allDiscoveredDevices: DiscoveredDevice[] = [];
-        targetRooms.forEach((room) => {
-          const advCount = Math.floor(Math.random() * 4) + 1;
-          for (let i = 0; i < advCount; i++) {
-            const dev = devicePool[Math.floor(Math.random() * devicePool.length)];
-            allDiscoveredDevices.push({
-              ...dev,
-              roomId: room.id,
-              roomName: room.name,
-              rssi: -(35 + Math.floor(Math.random() * 50)),
-            });
-          }
-        });
-
-        const phoneDevices = allDiscoveredDevices.filter((d) => d.category === "phone");
-        const laptopDevices = allDiscoveredDevices.filter((d) => d.category === "laptop");
-        const hubDevices = allDiscoveredDevices.filter((d) => d.category === "hub");
-        const accessoryDevices = allDiscoveredDevices.filter((d) => d.category === "accessory");
-        const tabletDevices = allDiscoveredDevices.filter((d) => d.category === "tablet");
-
-        discoveryLog.push(`BLE scan: ${allDiscoveredDevices.length} device(s) \u2014 ${phoneDevices.length} phone(s), ${laptopDevices.length} laptop(s), ${hubDevices.length} hub(s), ${accessoryDevices.length} accessory(ies), ${tabletDevices.length} tablet(s).`);
-
-        if (laptopDevices.length > 0) {
-          discoveryLog.push(`\u2298 Filtered ${laptopDevices.length} laptop(s) from person detection: ${laptopDevices.map((d) => d.name).join(", ")}`);
-        }
-        if (hubDevices.length > 0) {
-          discoveryLog.push(`\u2298 Filtered ${hubDevices.length} hub/display(s) from person detection: ${hubDevices.map((d) => d.name).join(", ")}`);
-        }
-        if (accessoryDevices.length > 0) {
-          discoveryLog.push(`\ud83d\udccd ${accessoryDevices.length} accessory(ies) eligible for beacon registration: ${accessoryDevices.map((d) => d.name).join(", ")}`);
-        }
-
-        // ── Phase 3: Correlate Phones with WiFi-detected Presences ──
-        // Only phone-type BLE devices can be tethered to person entities.
-        // Laptops, hubs, accessories, and tablets are NEVER treated as persons.
-        const phonesByRoom: Record<string, DiscoveredDevice[]> = {};
-        for (const phone of phoneDevices) {
-          (phonesByRoom[phone.roomId] = phonesByRoom[phone.roomId] || []).push(phone);
-        }
-        // Sort each room's phones by RSSI (strongest first)
-        for (const roomId of Object.keys(phonesByRoom)) {
-          phonesByRoom[roomId].sort((a, b) => b.rssi - a.rssi);
-        }
-
-        let newCount = 0;
-        let mergedCount = 0;
-
-        for (const rf of humanRF) {
-          const roomPhones = phonesByRoom[rf.roomId] || [];
-          const matchedPhone = roomPhones.shift(); // strongest signal phone
-
-          const existingEntity = matchedPhone
-            ? existing.find((e) =>
-                e.bleManufacturer === matchedPhone.manufacturer &&
-                e.type === "person" &&
-                (e.bleDeviceCategory === "phone" || !e.bleDeviceCategory)
-              )
-            : null;
-
-          const activities = ["Walking", "Sitting", "Standing", "Resting", "Moving"];
-          const activity = activities[Math.floor(Math.random() * activities.length)];
-          const macSuffix = `${Math.floor(Math.random() * 256).toString(16).toUpperCase().padStart(2, "0")}:${Math.floor(Math.random() * 256).toString(16).toUpperCase().padStart(2, "0")}`;
-
-          if (existingEntity && matchedPhone) {
-            const rssi = matchedPhone.rssi;
-            const distM = Math.round(Math.pow(10, (-59 - rssi) / (10 * 2.5)) * 100) / 100;
-            updateEntityStorage(existingEntity.id, {
-              status: "active",
-              confidence: Math.round(rf.confidence * 100) / 100,
-              activity,
-              breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
-              heartRate: Math.round(60 + Math.random() * 30),
-              lastSeen: "Just now",
-              roomId: rf.roomId,
-              location: rf.roomName,
-              deviceMacSuffix: macSuffix,
-              deviceTetherStatus: "tethered",
-              deviceRssi: rssi,
-              deviceDistanceM: distM,
-              bleDeviceName: matchedPhone.name,
-              bleAddressType: matchedPhone.addrType,
-              bleManufacturer: matchedPhone.manufacturer,
-              bleDeviceOS: matchedPhone.os,
-              bleCompanyId: matchedPhone.companyId,
-              bleDeviceCategory: "phone",
-            });
-            mergedCount++;
-            discoveryLog.push(`\u21bb Re-tethered ${existingEntity.name} (${existingEntity.rfSignature}) \u2192 ${rf.roomName} \u2014 WiFi RF + ${matchedPhone.name} [${matchedPhone.os}]`);
-          } else {
-            const entity = createEntity({
-              name: `Person ${existing.length + newCount + 1}`,
-              type: "person",
-              emoji: "\ud83d\udc64",
-              roomId: rf.roomId,
-              location: rf.roomName,
-            });
-
-            const bleUpdate: Record<string, unknown> = {
-              status: "active",
-              confidence: Math.round(rf.confidence * 100) / 100,
-              activity,
-              breathingRate: Math.round((13 + Math.random() * 10) * 10) / 10,
-              heartRate: Math.round(60 + Math.random() * 30),
-              lastSeen: "Just now",
-            };
-
-            if (matchedPhone) {
-              const rssi = matchedPhone.rssi;
-              const distM = Math.round(Math.pow(10, (-59 - rssi) / (10 * 2.5)) * 100) / 100;
-              Object.assign(bleUpdate, {
-                deviceMacSuffix: macSuffix,
-                deviceTetherStatus: "tethered",
-                deviceRssi: rssi,
-                deviceDistanceM: distM,
-                bleDeviceName: matchedPhone.name,
-                bleAddressType: matchedPhone.addrType,
-                bleManufacturer: matchedPhone.manufacturer,
-                bleDeviceOS: matchedPhone.os,
-                bleCompanyId: matchedPhone.companyId,
-                bleDeviceCategory: "phone",
-              });
-              discoveryLog.push(`\u2713 Detected person in ${rf.roomName} (${entity.rfSignature}) \u2014 WiFi RF + ${matchedPhone.name} [${matchedPhone.os}]`);
-            } else {
-              discoveryLog.push(`\u2713 Detected person in ${rf.roomName} (${entity.rfSignature}) \u2014 WiFi RF only (no phone device nearby)`);
-            }
-
-            updateEntityStorage(entity.id, bleUpdate);
-            newCount++;
-          }
-        }
-
-        // ── Phase 4: Beacon Registration ──
-        // Accessories with strong consistent signal are logged as beacon candidates.
-        for (const acc of accessoryDevices) {
-          const existingBeacon = existing.find((e) =>
-            e.isBeacon && e.bleManufacturer === acc.manufacturer && e.bleDeviceName === acc.name
-          );
-          if (!existingBeacon && acc.rssi > -60) {
-            discoveryLog.push(`\ud83d\udccd Beacon candidate: ${acc.name} (${acc.manufacturer}) in ${acc.roomName} \u2014 RSSI ${acc.rssi} dBm \u2014 eligible for location hub`);
-          }
-        }
-
-        // ── Phase 5: Pet Detection via RF Micro-motion ──
-        // Pets are detected by WiFi CSI ONLY — no BLE device required.
-        // Non-human breathing/gait patterns (faster breathing, smaller RF reflection).
-        const existingPets = existing.filter((e) => e.type === "pet");
-        for (const rf of petRF) {
-          if (existingPets.length > 0) {
-            const existingPet = existingPets[0];
-            updateEntityStorage(existingPet.id, {
-              status: "active",
-              confidence: Math.round(rf.confidence * 100) / 100,
-              activity: ["Resting", "Moving", "Sitting"][Math.floor(Math.random() * 3)],
-              breathingRate: Math.round((15 + Math.random() * 20) * 10) / 10,
-              heartRate: Math.round(80 + Math.random() * 80),
-              lastSeen: "Just now",
-              roomId: rf.roomId,
-              location: rf.roomName,
-            });
-            mergedCount++;
-            discoveryLog.push(`\u21bb Updated pet ${existingPet.name} (${existingPet.rfSignature}) \u2192 ${rf.roomName} via RF micro-motion (non-human breathing pattern)`);
-            break;
-          } else {
-            const entity = createEntity({
-              name: `Pet ${existing.filter((e) => e.type === "pet").length + 1}`,
-              type: "pet",
-              emoji: "\ud83d\udc3e",
-              roomId: rf.roomId,
-              location: rf.roomName,
-            });
-            updateEntityStorage(entity.id, {
-              status: "active",
-              confidence: Math.round(rf.confidence * 100) / 100,
-              activity: ["Resting", "Moving", "Sitting"][Math.floor(Math.random() * 3)],
-              breathingRate: Math.round((15 + Math.random() * 20) * 10) / 10,
-              heartRate: Math.round(80 + Math.random() * 80),
-              lastSeen: "Just now",
-            });
-            newCount++;
-            discoveryLog.push(`\u2713 Detected pet in ${rf.roomName} (${entity.rfSignature}) via RF micro-motion (non-human breathing pattern, no BLE device)`);
-            break;
-          }
-        }
-
-        if (newCount === 0 && mergedCount === 0) {
-          discoveryLog.push("No new entities detected in scanned area.");
-        }
-
-        const summary = [];
-        if (newCount > 0) summary.push(`${newCount} new`);
-        if (mergedCount > 0) summary.push(`${mergedCount} re-tethered`);
-        discoveryLog.push(`Scan complete. ${summary.join(", ") || "0"} entities.`);
-
-        setScanLog((prev) => [...prev, ...discoveryLog]);
-        setEntities(getEntities()); // Reload all from storage
+        setScanLog((prev) => [...prev, ...result.log]);
+        setEntities(getEntities());
+        setVisitors(getVisitors());
         setScanning(false);
       }
     }, 250);
   };
 
+  const handleToggleHousehold = (entityId: string) => {
+    if (householdIds.has(entityId)) {
+      removeHouseholdMember(entityId);
+    } else {
+      const entity = entities.find((e) => e.id === entityId);
+      addHouseholdMember(entityId, "household");
+      // If it's the first person, mark as owner
+      if (entity && entity.type === "person" && getHousehold().filter((m) => {
+        const e = entities.find((en) => en.id === m.entityId);
+        return e?.type === "person";
+      }).length <= 1) {
+        removeHouseholdMember(entityId);
+        addHouseholdMember(entityId, "owner");
+      }
+    }
+    setHouseholdIds(new Set(getHousehold().map((m) => m.entityId)));
+  };
+
   const handleDeleteEntity = (id: string) => {
     deleteEntity(id);
+    removeHouseholdMember(id);
     setEntities(getEntities());
+    setHouseholdIds(new Set(getHousehold().map((m) => m.entityId)));
     if (selectedEntity === id) setSelectedEntity(null);
   };
 
@@ -1513,23 +1325,32 @@ function PresenceView() {
               </h3>
               <div className="space-y-2">
                 {people.map((p) => (
-                  <button key={p.id} onClick={() => setSelectedEntity(p.id)} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-blue)" } : {}}>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ backgroundColor: p.status === "active" ? "rgba(94,187,127,0.12)" : "rgba(139,143,154,0.12)" }}>
-                      {p.emoji || "\ud83d\udc64"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium text-sm">{p.name}</h4>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
-                        {(p.deviceTetherStatus === "connected" || p.deviceTetherStatus === "tethered") && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>BLE</span>}
-                        {p.bleDeviceOS && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: p.bleDeviceOS === "iOS" ? "rgba(139,143,154,0.15)" : "rgba(94,187,127,0.12)", color: p.bleDeviceOS === "iOS" ? "var(--gh-text-muted)" : "var(--gh-green)" }}>{p.bleDeviceOS}</span>}
+                  <div key={p.id} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-blue)" } : {}}>
+                    <button onClick={() => setSelectedEntity(p.id)} className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0" style={{ backgroundColor: p.status === "active" ? "rgba(94,187,127,0.12)" : "rgba(139,143,154,0.12)" }}>
+                        {p.emoji || "\ud83d\udc64"}
                       </div>
-                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} &middot; {p.activity}{p.bleManufacturer ? ` · ${p.bleManufacturer}` : ""} &middot; {p.lastSeen}</p>
-                    </div>
-                    <p className="text-xs font-medium" style={{ color: p.confidence > 0.5 ? "var(--gh-green)" : "var(--gh-text-muted)" }}>
-                      {p.confidence > 0 ? `${(p.confidence * 100).toFixed(0)}%` : "\u2014"}
-                    </p>
-                  </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-medium text-sm">{p.name}</h4>
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
+                          {householdIds.has(p.id) && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(124,140,248,0.12)", color: "var(--gh-accent)" }}>🏠 Household</span>}
+                          {(p.deviceTetherStatus === "connected" || p.deviceTetherStatus === "tethered") && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>BLE</span>}
+                          {p.bleDeviceOS && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: p.bleDeviceOS === "iOS" ? "rgba(139,143,154,0.15)" : "rgba(94,187,127,0.12)", color: p.bleDeviceOS === "iOS" ? "var(--gh-text-muted)" : "var(--gh-green)" }}>{p.bleDeviceOS}</span>}
+                        </div>
+                        <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} &middot; {p.activity}{p.bleManufacturer ? ` · ${p.bleManufacturer}` : ""} &middot; {p.lastSeen}</p>
+                      </div>
+                      <p className="text-xs font-medium flex-shrink-0" style={{ color: p.confidence > 0.5 ? "var(--gh-green)" : "var(--gh-text-muted)" }}>
+                        {p.confidence > 0 ? `${(p.confidence * 100).toFixed(0)}%` : "\u2014"}
+                      </p>
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); handleToggleHousehold(p.id); }}
+                      className="flex-shrink-0 text-[10px] px-2 py-1 rounded-lg transition hover:opacity-80"
+                      style={{ backgroundColor: householdIds.has(p.id) ? "rgba(124,140,248,0.15)" : "var(--gh-card)", color: householdIds.has(p.id) ? "var(--gh-accent)" : "var(--gh-text-muted)" }}
+                      title={householdIds.has(p.id) ? "Remove from household" : "Add to household"}>
+                      {householdIds.has(p.id) ? "🏠" : "＋🏠"}
+                    </button>
+                  </div>
                 ))}
                 {people.length === 0 && <p className="text-xs py-4 text-center" style={{ color: "var(--gh-text-muted)" }}>No people detected yet. Run a scan to discover.</p>}
               </div>
@@ -1540,23 +1361,100 @@ function PresenceView() {
               </h3>
               <div className="space-y-2">
                 {pets.map((p) => (
-                  <button key={p.id} onClick={() => setSelectedEntity(p.id)} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-yellow)" } : {}}>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ backgroundColor: "rgba(245,197,66,0.12)" }}>
-                      {p.emoji || "\ud83d\udc3e"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium text-sm">{p.name}</h4>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
+                  <div key={p.id} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-yellow)" } : {}}>
+                    <button onClick={() => setSelectedEntity(p.id)} className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0" style={{ backgroundColor: "rgba(245,197,66,0.12)" }}>
+                        {p.emoji || "\ud83d\udc3e"}
                       </div>
-                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} &middot; {p.activity} &middot; {p.lastSeen}</p>
-                    </div>
-                    <p className="text-xs font-medium" style={{ color: "var(--gh-yellow)" }}>{(p.confidence * 100).toFixed(0)}%</p>
-                  </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-medium text-sm">{p.name}</h4>
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
+                          {householdIds.has(p.id) && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(124,140,248,0.12)", color: "var(--gh-accent)" }}>🏠 Household</span>}
+                        </div>
+                        <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} &middot; {p.activity} &middot; {p.lastSeen}</p>
+                      </div>
+                      <p className="text-xs font-medium flex-shrink-0" style={{ color: "var(--gh-yellow)" }}>{(p.confidence * 100).toFixed(0)}%</p>
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); handleToggleHousehold(p.id); }}
+                      className="flex-shrink-0 text-[10px] px-2 py-1 rounded-lg transition hover:opacity-80"
+                      style={{ backgroundColor: householdIds.has(p.id) ? "rgba(124,140,248,0.15)" : "var(--gh-card)", color: householdIds.has(p.id) ? "var(--gh-accent)" : "var(--gh-text-muted)" }}
+                      title={householdIds.has(p.id) ? "Remove from household" : "Add to household"}>
+                      {householdIds.has(p.id) ? "🏠" : "＋🏠"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <span>\ud83d\udc3e</span> Pets <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(245,197,66,0.12)", color: "var(--gh-yellow)" }}>{pets.length}</span>
+              </h3>
+              <div className="space-y-2">
+                {pets.map((p) => (
+                  <div key={p.id} className={`device-card w-full text-left flex items-center gap-4 ${selectedEntity === p.id ? "ring-1" : ""}`} style={selectedEntity === p.id ? { borderColor: "var(--gh-yellow)" } : {}}>
+                    <button onClick={() => setSelectedEntity(p.id)} className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0" style={{ backgroundColor: "rgba(245,197,66,0.12)" }}>
+                        {p.emoji || "\ud83d\udc3e"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-medium text-sm">{p.name}</h4>
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>{p.rfSignature}</span>
+                          {householdIds.has(p.id) && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(124,140,248,0.12)", color: "var(--gh-accent)" }}>🏠 Household</span>}
+                        </div>
+                        <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{p.location} &middot; {p.activity} &middot; {p.lastSeen}</p>
+                      </div>
+                      <p className="text-xs font-medium flex-shrink-0" style={{ color: "var(--gh-yellow)" }}>{(p.confidence * 100).toFixed(0)}%</p>
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); handleToggleHousehold(p.id); }}
+                      className="flex-shrink-0 text-[10px] px-2 py-1 rounded-lg transition hover:opacity-80"
+                      style={{ backgroundColor: householdIds.has(p.id) ? "rgba(124,140,248,0.15)" : "var(--gh-card)", color: householdIds.has(p.id) ? "var(--gh-accent)" : "var(--gh-text-muted)" }}
+                      title={householdIds.has(p.id) ? "Remove from household" : "Add to household"}>
+                      {householdIds.has(p.id) ? "🏠" : "＋🏠"}
+                    </button>
+                  </div>
                 ))}
                 {pets.length === 0 && <p className="text-xs py-4 text-center" style={{ color: "var(--gh-text-muted)" }}>No pets detected yet.</p>}
               </div>
             </div>
+
+            {/* Visitor History */}
+            {visitors.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <span>🧑‍🦰</span> Visitor History <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(167,139,250,0.12)", color: "var(--gh-accent)" }}>{visitors.length}</span>
+                </h3>
+                <div className="space-y-2">
+                  {visitors.map((v) => (
+                    <div key={v.id} className="device-card flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0" style={{ backgroundColor: "rgba(167,139,250,0.12)" }}>
+                        {v.emoji || "🧑‍🦰"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-sm">{v.name}</h4>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(167,139,250,0.12)", color: "var(--gh-accent)" }}>Visit #{v.visitCount}</span>
+                        </div>
+                        <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>
+                          {v.bleDeviceName ?? "Unknown device"}{v.bleDeviceOS ? ` · ${v.bleDeviceOS}` : ""}{v.bleManufacturer ? ` · ${v.bleManufacturer}` : ""}
+                        </p>
+                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>
+                          Last seen: {new Date(v.lastSeen).toLocaleString()} · First: {new Date(v.firstSeen).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        {v.entityId ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(94,187,127,0.12)", color: "var(--gh-green)" }}>● Here</span>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(139,143,154,0.12)", color: "var(--gh-text-muted)" }}>○ Away</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Entity Detail Panel */}
@@ -1571,6 +1469,9 @@ function PresenceView() {
                     backgroundColor: selected.status === "active" ? "rgba(94,187,127,0.12)" : "rgba(139,143,154,0.12)",
                     color: selected.status === "active" ? "var(--gh-green)" : "var(--gh-text-muted)",
                   }}>{selected.status === "active" ? "\u25cf Active" : "\u25cb Away"}</span>
+                  {householdIds.has(selected.id) && (
+                    <span className="inline-block ml-1 mt-1 text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(124,140,248,0.12)", color: "var(--gh-accent)" }}>🏠 Household</span>
+                  )}
                 </div>
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between" style={{ color: "var(--gh-text-muted)" }}><span>Location</span><span className="font-medium" style={{ color: "var(--gh-text)" }}>{selected.location}</span></div>
@@ -1693,6 +1594,14 @@ function PresenceView() {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-yellow)" }} />
                     <span>BLE beacon registration <span style={{ color: "var(--gh-text-muted)" }}>\u2014 accessories as location hubs</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: householdIds.size > 0 ? "var(--gh-green)" : "var(--gh-text-muted)" }} />
+                    <span>Household-aware dedup <span style={{ color: "var(--gh-text-muted)" }}>\u2014 {householdIds.size > 0 ? `${householdIds.size} member(s) locked` : "no household set"}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: visitors.length > 0 ? "var(--gh-accent)" : "var(--gh-text-muted)" }} />
+                    <span>Visitor recognition <span style={{ color: "var(--gh-text-muted)" }}>\u2014 {visitors.length > 0 ? `${visitors.length} known visitor(s)` : "no visitor history"}</span></span>
                   </div>
                 </div>
               </div>

@@ -621,6 +621,103 @@ export function deleteEntity(id: string): boolean {
   return true;
 }
 
+/* ══════════════════════════════════════════════
+   Household Profile & Visitor Tracking
+   ══════════════════════════════════════════════ */
+
+export interface HouseholdMember {
+  entityId: string;
+  role: "owner" | "household";
+}
+
+export interface VisitorRecord {
+  id: string;
+  name: string;
+  emoji: string;
+  /** BLE device fingerprint for recurring recognition */
+  bleDeviceName: string | null;
+  bleManufacturer: string | null;
+  bleDeviceOS: "iOS" | "Android" | "Windows" | "Other" | null;
+  bleCompanyId: string | null;
+  firstSeen: string;
+  lastSeen: string;
+  visitCount: number;
+  /** Associated entity id when actively present */
+  entityId: string | null;
+}
+
+const HOUSEHOLD_KEY = "echo_vue_household";
+const VISITOR_KEY = "echo_vue_visitors";
+
+export function getHousehold(): HouseholdMember[] {
+  if (typeof window === "undefined") return [];
+  const raw = _get(HOUSEHOLD_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function setHousehold(members: HouseholdMember[]): void {
+  _set(HOUSEHOLD_KEY, JSON.stringify(members));
+}
+
+export function addHouseholdMember(entityId: string, role: HouseholdMember["role"] = "household"): void {
+  const members = getHousehold();
+  if (members.find((m) => m.entityId === entityId)) return;
+  members.push({ entityId, role });
+  setHousehold(members);
+}
+
+export function removeHouseholdMember(entityId: string): void {
+  setHousehold(getHousehold().filter((m) => m.entityId !== entityId));
+}
+
+export function isHouseholdMember(entityId: string): boolean {
+  return getHousehold().some((m) => m.entityId === entityId);
+}
+
+export function getVisitors(): VisitorRecord[] {
+  if (typeof window === "undefined") return [];
+  const raw = _get(VISITOR_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function upsertVisitor(data: Omit<VisitorRecord, "id" | "firstSeen" | "visitCount"> & { id?: string }): VisitorRecord {
+  const visitors = getVisitors();
+  // Try to match by BLE fingerprint for recurring recognition
+  const existing = data.bleDeviceName && data.bleManufacturer
+    ? visitors.find((v) => v.bleDeviceName === data.bleDeviceName && v.bleManufacturer === data.bleManufacturer)
+    : data.id ? visitors.find((v) => v.id === data.id) : null;
+  if (existing) {
+    existing.lastSeen = data.lastSeen;
+    existing.visitCount++;
+    existing.entityId = data.entityId;
+    if (data.name && data.name !== existing.name) existing.name = data.name;
+    _set(VISITOR_KEY, JSON.stringify(visitors));
+    return existing;
+  }
+  const visitor: VisitorRecord = {
+    id: crypto.randomUUID(),
+    name: data.name,
+    emoji: data.emoji,
+    bleDeviceName: data.bleDeviceName,
+    bleManufacturer: data.bleManufacturer,
+    bleDeviceOS: data.bleDeviceOS,
+    bleCompanyId: data.bleCompanyId,
+    firstSeen: new Date().toISOString(),
+    lastSeen: data.lastSeen,
+    visitCount: 1,
+    entityId: data.entityId,
+  };
+  visitors.push(visitor);
+  _set(VISITOR_KEY, JSON.stringify(visitors));
+  return visitor;
+}
+
+export function clearVisitorEntity(visitorId: string): void {
+  const visitors = getVisitors();
+  const v = visitors.find((vis) => vis.id === visitorId);
+  if (v) { v.entityId = null; _set(VISITOR_KEY, JSON.stringify(visitors)); }
+}
+
 /* ── Calibration Activity Prompts ── */
 
 export interface CalibrationActivity {
