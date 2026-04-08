@@ -148,6 +148,7 @@ export default function DashboardPage() {
   const [currentFloorPlan, setCurrentFloorPlan] = useState<FloorPlan | null>(null);
   const [liveMapRoomId, setLiveMapRoomId] = useState<string | null>(null);
   const [liveEntities, setLiveEntities] = useState<TrackedEntity[]>([]);
+  const [routerAnchor, setRouterAnchorState] = useState<RouterAnchor | null>(null);
 
   // Single initialization effect — reads user, migrates data, loads environments
   useEffect(() => {
@@ -216,6 +217,7 @@ export default function DashboardPage() {
   // Poll live entities for the floor plan map (2s interval)
   useEffect(() => {
     setLiveEntities(getEntities());
+    setRouterAnchorState(getRouterAnchor());
     const iv = setInterval(() => setLiveEntities(getEntities()), 2000);
     return () => clearInterval(iv);
   }, []);
