@@ -539,7 +539,7 @@ export interface DeviceCorrection {
   /** User-corrected manufacturer */
   correctedManufacturer: string;
   /** User-corrected category */
-  correctedCategory: "phone" | "tablet" | "laptop" | "accessory" | "hub" | "unknown";
+  correctedCategory: "phone" | "tablet" | "laptop" | "accessory" | "hub" | "router" | "unknown";
   /** User-corrected OS */
   correctedOS: "iOS" | "Android" | "Windows" | "Other" | null;
   /** User-assigned room ID (null = auto-detect) */
@@ -608,6 +608,101 @@ export const MAC_PREFIX_DB: Record<string, { manufacturer: string; commonDevices
 };
 
 /* ══════════════════════════════════════════════
+   WiFi Router Anchor — known TX position & orientation
+   for CSI-based distance / AoA triangulation
+   ══════════════════════════════════════════════ */
+
+/**
+ * Physical position and orientation of the WiFi router within its room.
+ * All coordinates are in metres relative to the room's top-left corner.
+ * `orientation` is the compass bearing (degrees) the router faces (0 = North, 90 = East).
+ */
+export interface RouterAnchor {
+  /** Which beacon entity this maps to */
+  entityId: string;
+  /** Room the router is in */
+  roomId: string;
+  /** Floor-plan room ID for coordinate mapping */
+  floorPlanRoomId: string | null;
+  /** X position within the room (metres from room left edge) */
+  roomX: number;
+  /** Y position within the room (metres from room top edge) */
+  roomY: number;
+  /** Absolute X on the floor plan (metres from origin) — computed */
+  absoluteX: number;
+  /** Absolute Y on the floor plan (metres from origin) — computed */
+  absoluteY: number;
+  /** Compass bearing the router faces in degrees (0=N, 90=E, 180=S, 270=W) */
+  orientationDeg: number;
+  /** Transmit power in dBm (typical home router: 20 dBm) */
+  txPowerDbm: number;
+  /** WiFi frequency band in GHz */
+  frequencyGhz: number;
+  /** Antenna count (for MIMO) */
+  antennaCount: number;
+  /** User label */
+  label: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const ROUTER_ANCHOR_KEY = "echo_vue_router_anchor";
+
+export function getRouterAnchor(): RouterAnchor | null {
+  if (typeof window === "undefined") return null;
+  const raw = _get(ROUTER_ANCHOR_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
+export function setRouterAnchor(anchor: RouterAnchor): void {
+  _set(ROUTER_ANCHOR_KEY, JSON.stringify(anchor));
+}
+
+export function removeRouterAnchor(): void {
+  _remove(ROUTER_ANCHOR_KEY);
+}
+
+/**
+ * Estimate distance from the router to a point using the log-distance path loss model.
+ * RSSI (dBm) = TxPower - 10 * n * log10(d) where n ≈ 2.7–3.5 indoors.
+ * Returns distance in metres.
+ */
+export function estimateDistanceFromRouter(rssiDbm: number, txPowerDbm: number = 20, pathLossExponent: number = 3.0): number {
+  // d = 10 ^ ((TxPower - RSSI) / (10 * n))
+  const distance = Math.pow(10, (txPowerDbm - rssiDbm) / (10 * pathLossExponent));
+  return Math.round(distance * 100) / 100; // round to cm precision
+}
+
+/**
+ * Given the router's known position/orientation and an estimated distance,
+ * compute the set of possible (x, y) positions on the floor plan.
+ * Returns an arc of candidate positions biased by the router's facing direction.
+ */
+export function computeSignalArc(
+  router: RouterAnchor,
+  distanceM: number,
+  arcSpreadDeg: number = 120,
+  steps: number = 12,
+): Array<{ x: number; y: number; weight: number }> {
+  const points: Array<{ x: number; y: number; weight: number }> = [];
+  const centerRad = (router.orientationDeg * Math.PI) / 180;
+  const spreadRad = (arcSpreadDeg * Math.PI) / 180;
+  const halfSpread = spreadRad / 2;
+
+  for (let i = 0; i < steps; i++) {
+    const angle = centerRad - halfSpread + (spreadRad * i) / (steps - 1);
+    // Floor plan Y increases downward, so sin is negated for "north = up"
+    const x = router.absoluteX + distanceM * Math.sin(angle);
+    const y = router.absoluteY - distanceM * Math.cos(angle);
+    // Weight: strongest at center of arc (router's facing direction)
+    const deviation = Math.abs(angle - centerRad);
+    const weight = Math.cos(deviation) * 0.5 + 0.5; // 0.5 – 1.0 range
+    points.push({ x, y, weight });
+  }
+  return points;
+}
+
+/* ══════════════════════════════════════════════
    Tracked Entity Persistence
    ══════════════════════════════════════════════ */
 
@@ -634,7 +729,7 @@ export interface TrackedEntity {
   bleManufacturer: string | null;
   bleDeviceOS: "iOS" | "Android" | "Windows" | "Other" | null;
   bleCompanyId: string | null;
-  bleDeviceCategory: "phone" | "tablet" | "laptop" | "accessory" | "beacon" | "hub" | "unknown" | null;
+  bleDeviceCategory: "phone" | "tablet" | "laptop" | "accessory" | "beacon" | "hub" | "router" | "unknown" | null;
   isBeacon: boolean;
   beaconLocationName: string | null;
   createdAt: string;

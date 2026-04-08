@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import type { FloorPlan, FloorPlanRoom, Environment, TrackedEntity } from "@/lib/environments";
+import type { FloorPlan, FloorPlanRoom, Environment, TrackedEntity, RouterAnchor } from "@/lib/environments";
 
 const ROOM_COLORS: Record<string, string> = {
   kitchen: "#f59e0b",
@@ -27,6 +27,8 @@ interface LiveFloorPlanMapProps {
   /** Currently selected room id */
   selectedRoomId?: string | null;
   onSelectRoom?: (roomId: string | null) => void;
+  /** Known WiFi router position for CSI triangulation overlay */
+  routerAnchor?: RouterAnchor | null;
 }
 
 interface AvatarPos {
@@ -37,7 +39,7 @@ interface AvatarPos {
   targetY: number;
 }
 
-export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedRoomId, onSelectRoom }: LiveFloorPlanMapProps) {
+export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedRoomId, onSelectRoom, routerAnchor }: LiveFloorPlanMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const avatarPosRef = useRef<Map<string, AvatarPos>>(new Map());
@@ -341,38 +343,137 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
       // Render BLE beacons as fixed anchor icons
       const beacons = entities.filter((e) => e.isBeacon);
       for (const beacon of beacons) {
+        const isRouter = beacon.bleDeviceCategory === "router";
         // Find which room this beacon is in
         const fpRoom = floorPlan.rooms.find((r) => {
           const env = fpRoomToEnv(r);
           return env?.id === beacon.roomId;
         });
         if (!fpRoom) continue;
-        // Place beacon in a fixed corner of the room
-        const bx = fpRoom.x + fpRoom.w * 0.85;
-        const by = fpRoom.y + fpRoom.h * 0.15;
+
+        let bx: number, by: number;
+        if (isRouter && routerAnchor) {
+          // Use precise router anchor position
+          bx = routerAnchor.absoluteX;
+          by = routerAnchor.absoluteY;
+        } else {
+          // Place beacon in a fixed corner of the room
+          bx = fpRoom.x + fpRoom.w * 0.85;
+          by = fpRoom.y + fpRoom.h * 0.15;
+        }
         const [bpx, bpy] = toPixel(bx, by);
 
-        // Pulsing ring
-        const pulse = 0.5 + Math.sin(Date.now() * 0.003) * 0.3;
-        ctx.beginPath();
-        ctx.arc(bpx, bpy, 12 * pulse + 8, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(6,182,212,0.3)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        if (isRouter) {
+          // ── Router-specific rendering with signal cone ──
+          const orientDeg = routerAnchor?.orientationDeg ?? 0;
+          const orientRad = (orientDeg * Math.PI) / 180;
+          const coneSpread = (120 * Math.PI) / 180; // 120° coverage cone
 
-        // Beacon icon
-        ctx.beginPath();
-        ctx.arc(bpx, bpy, 5, 0, Math.PI * 2);
-        ctx.fillStyle = "#06b6d4";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255,255,255,0.5)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
+          // Animated signal wave rings
+          const waveTime = Date.now() * 0.002;
+          for (let w = 0; w < 3; w++) {
+            const wavePhase = (waveTime + w * 2.1) % (Math.PI * 2);
+            const waveRadius = 15 + Math.sin(wavePhase) * 20 + w * 12;
+            const waveAlpha = 0.15 - w * 0.04;
+            ctx.beginPath();
+            // Draw arc in router's facing direction
+            ctx.arc(bpx, bpy, waveRadius, orientRad - Math.PI / 2 - coneSpread / 2, orientRad - Math.PI / 2 + coneSpread / 2);
+            ctx.strokeStyle = `rgba(16,185,129,${waveAlpha})`;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
 
-        ctx.fillStyle = "rgba(6,182,212,0.8)";
-        ctx.font = "8px -apple-system, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(beacon.beaconLocationName || beacon.name, bpx, bpy + 14);
+          // Signal coverage cone (faded fill)
+          const coneLength = 50;
+          ctx.beginPath();
+          ctx.moveTo(bpx, bpy);
+          // Floor plan: Y increases downward, orientation 0=North=up
+          const coneLeftAngle = orientRad - Math.PI / 2 - coneSpread / 2;
+          const coneRightAngle = orientRad - Math.PI / 2 + coneSpread / 2;
+          ctx.arc(bpx, bpy, coneLength, coneLeftAngle, coneRightAngle);
+          ctx.closePath();
+          const coneGrad = ctx.createRadialGradient(bpx, bpy, 0, bpx, bpy, coneLength);
+          coneGrad.addColorStop(0, "rgba(16,185,129,0.12)");
+          coneGrad.addColorStop(1, "rgba(16,185,129,0.0)");
+          ctx.fillStyle = coneGrad;
+          ctx.fill();
+
+          // Router icon — larger, green
+          ctx.beginPath();
+          ctx.arc(bpx, bpy, 7, 0, Math.PI * 2);
+          ctx.fillStyle = "#10b981";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.6)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          // Direction pointer (small triangle showing facing)
+          const pointerLen = 12;
+          const pointerAngle = orientRad - Math.PI / 2; // convert compass to canvas angle
+          ctx.beginPath();
+          ctx.moveTo(
+            bpx + pointerLen * Math.cos(pointerAngle),
+            bpy + pointerLen * Math.sin(pointerAngle)
+          );
+          ctx.lineTo(
+            bpx + 4 * Math.cos(pointerAngle + 2.5),
+            bpy + 4 * Math.sin(pointerAngle + 2.5)
+          );
+          ctx.lineTo(
+            bpx + 4 * Math.cos(pointerAngle - 2.5),
+            bpy + 4 * Math.sin(pointerAngle - 2.5)
+          );
+          ctx.closePath();
+          ctx.fillStyle = "#10b981";
+          ctx.fill();
+
+          // Router label
+          ctx.fillStyle = "rgba(16,185,129,0.9)";
+          ctx.font = "bold 8px -apple-system, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("📶 " + (beacon.beaconLocationName || beacon.name), bpx, bpy + 18);
+
+          // Distance rings (at 2m and 5m from router if router anchor is set)
+          if (routerAnchor) {
+            for (const dist of [2, 5]) {
+              const ringPx = dist * scale;
+              ctx.beginPath();
+              ctx.arc(bpx, bpy, ringPx, 0, Math.PI * 2);
+              ctx.strokeStyle = `rgba(16,185,129,${dist === 2 ? 0.12 : 0.06})`;
+              ctx.lineWidth = 0.5;
+              ctx.setLineDash([3, 3]);
+              ctx.stroke();
+              ctx.setLineDash([]);
+              // Distance label
+              ctx.fillStyle = `rgba(16,185,129,${dist === 2 ? 0.4 : 0.25})`;
+              ctx.font = "7px -apple-system, sans-serif";
+              ctx.fillText(`${dist}m`, bpx + ringPx + 4, bpy - 2);
+            }
+          }
+        } else {
+          // ── Standard beacon rendering ──
+          // Pulsing ring
+          const pulse = 0.5 + Math.sin(Date.now() * 0.003) * 0.3;
+          ctx.beginPath();
+          ctx.arc(bpx, bpy, 12 * pulse + 8, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(6,182,212,0.3)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Beacon icon
+          ctx.beginPath();
+          ctx.arc(bpx, bpy, 5, 0, Math.PI * 2);
+          ctx.fillStyle = "#06b6d4";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.5)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.fillStyle = "rgba(6,182,212,0.8)";
+          ctx.font = "8px -apple-system, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(beacon.beaconLocationName || beacon.name, bpx, bpy + 14);
+        }
       }
 
       animFrameRef.current = requestAnimationFrame(draw);
@@ -380,7 +481,7 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
 
     draw();
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [canvasSize, floorPlan, entities, selectedRoomId, hoveredRoom, toPixel, offsetX, offsetY, scale, fpRoomToEnv]);
+  }, [canvasSize, floorPlan, entities, selectedRoomId, hoveredRoom, toPixel, offsetX, offsetY, scale, fpRoomToEnv, routerAnchor]);
 
   // Selected room detail panel data
   const selectedFpRoom = selectedRoomId ? floorPlan.rooms.find((r) => {
@@ -407,6 +508,7 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: ENTITY_COLORS.person }} /> Person</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: ENTITY_COLORS.pet }} /> Pet</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#06b6d4" }} /> Beacon</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#10b981" }} /> Router</span>
         </div>
       </div>
 

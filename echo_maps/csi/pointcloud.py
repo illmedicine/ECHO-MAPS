@@ -16,6 +16,10 @@ class CSI2PointCloud:
     Uses the phase difference between MIMO antenna pairs to compute
     Angle of Arrival (AoA), combined with time-of-flight estimates
     from subcarrier phase slopes, to triangulate scatterer positions.
+
+    When a router_position is provided, all point coordinates are
+    relative to the router's known location and orientation, enabling
+    accurate absolute positioning on the floor plan.
     """
 
     # Speed of light in m/s
@@ -30,11 +34,17 @@ class CSI2PointCloud:
         carrier_freq_hz: float = 5.8e9,
         n_subcarriers: int = 242,
         room_bounds: tuple[float, float, float] = (10.0, 10.0, 3.5),
+        router_position: tuple[float, float, float] | None = None,
+        router_orientation_deg: float = 0.0,
     ) -> None:
         self.carrier_freq_hz = carrier_freq_hz
         self.wavelength = self.C / carrier_freq_hz
         self.n_subcarriers = n_subcarriers
         self.room_bounds = room_bounds
+        # Router anchor: (x, y, z) absolute position in metres
+        self.router_position = router_position or (0.0, 0.0, 0.0)
+        # Compass bearing the router faces (0=North, 90=East)
+        self.router_orientation_rad = np.radians(router_orientation_deg)
 
     def estimate_aoa(
         self,
@@ -109,10 +119,12 @@ class CSI2PointCloud:
                 dist = self.estimate_tof(phase_ant0_seq[t])[0]
 
                 # Convert polar (distance, angle) to Cartesian
-                x = dist * np.cos(aoa)
-                y = dist * np.sin(aoa)
+                # Apply router orientation: rotate AoA by the router's facing direction
+                absolute_angle = aoa + self.router_orientation_rad
+                x = self.router_position[0] + dist * np.sin(absolute_angle)
+                y = self.router_position[1] - dist * np.cos(absolute_angle)
                 # Z estimated from subcarrier index (elevation proxy)
-                z = (idx / self.n_subcarriers) * self.room_bounds[2]
+                z = self.router_position[2] + (idx / self.n_subcarriers) * self.room_bounds[2]
 
                 # Clip to room bounds
                 x = np.clip(x, 0, self.room_bounds[0])

@@ -22,6 +22,10 @@ import {
   getDeviceCorrections,
   getDeviceFingerprint,
   MAC_PREFIX_DB,
+  getRouterAnchor,
+  estimateDistanceFromRouter,
+  computeSignalArc,
+  type RouterAnchor,
 } from "./environments";
 
 /* ─── Types ─── */
@@ -41,7 +45,7 @@ export interface DiscoveredDevice {
   manufacturer: string | null;
   companyId: string | null;
   addrType: "random" | "public" | null;
-  category: "phone" | "tablet" | "laptop" | "accessory" | "hub" | "unknown";
+  category: "phone" | "tablet" | "laptop" | "accessory" | "hub" | "router" | "unknown";
   roomId: string;
   roomName: string;
   rssi: number;
@@ -68,6 +72,8 @@ const DEVICE_POOL: Array<Omit<DiscoveredDevice, "roomId" | "roomName" | "rssi">>
   { name: "Garmin GPS Hub Screen", os: "Other", manufacturer: "Garmin International", companyId: "0x01DA", addrType: "public", category: "hub" },
   { name: "Google Pixel Watch", os: "Android", manufacturer: "Google LLC", companyId: "0x030B", addrType: "random", category: "accessory" },
   { name: "Meta Quest Pro", os: "Other", manufacturer: "Meta Platforms", companyId: "0x02E5", addrType: "random", category: "accessory" },
+  // WiFi router — primary CSI signal source
+  { name: "Home WiFi Router", os: "Other", manufacturer: "WiFi AP", companyId: null, addrType: "public", category: "router" },
 ];
 
 /* ─── Simulated RF scan ─── */
@@ -153,9 +159,9 @@ export function simulateBLEDevices(roomIds: { id: string; name: string }[]): Dis
     }
   }
 
-  // Always discover infrastructure devices (hubs, accessories) from the device pool
+  // Always discover infrastructure devices (hubs, accessories, routers) from the device pool
   // These are fixed devices in the home that act as spatial anchors
-  const infraDevices = DEVICE_POOL.filter((d) => d.category === "hub" || d.category === "accessory");
+  const infraDevices = DEVICE_POOL.filter((d) => d.category === "hub" || d.category === "accessory" || d.category === "router");
   const existingBeaconNames = new Set(existing.filter((e) => e.isBeacon).map((e) => e.bleDeviceName));
   const tetheredDeviceNames = new Set(devices.map((d) => d.name));
   for (const dev of infraDevices) {
@@ -216,12 +222,14 @@ export function resolvePresences(
   const accessoryDevices = bleDevices.filter((d) => d.category === "accessory");
   const laptopDevices = bleDevices.filter((d) => d.category === "laptop");
   const hubDevices = bleDevices.filter((d) => d.category === "hub");
+  const routerDevices = bleDevices.filter((d) => d.category === "router");
 
   log.push(`WiFi CSI detected ${rfPresences.filter((p) => p.isHuman).length} human and ${rfPresences.filter((p) => !p.isHuman).length} pet-like RF signatures.`);
-  log.push(`BLE scan: ${bleDevices.length} device(s) — ${phoneDevices.length} phone(s), ${laptopDevices.length} laptop(s), ${hubDevices.length} hub(s), ${accessoryDevices.length} accessory(ies).`);
+  log.push(`BLE scan: ${bleDevices.length} device(s) — ${phoneDevices.length} phone(s), ${laptopDevices.length} laptop(s), ${hubDevices.length} hub(s), ${accessoryDevices.length} accessory(ies), ${routerDevices.length} router(s).`);
 
   if (laptopDevices.length > 0) log.push(`⊘ Filtered ${laptopDevices.length} laptop(s): ${laptopDevices.map((d) => d.name).join(", ")}`);
   if (hubDevices.length > 0) log.push(`⊘ Filtered ${hubDevices.length} hub(s): ${hubDevices.map((d) => d.name).join(", ")}`);
+  if (routerDevices.length > 0) log.push(`📡 Router(s): ${routerDevices.map((d) => d.name).join(", ")} — CSI TX anchor`);
 
   // Build a map of phones already tethered to household members
   const tetheredPhoneFingerprints = new Set(
@@ -459,11 +467,12 @@ export function resolvePresences(
     log.push(`⊘ Pet-like RF in area but household pet already tracked — skipping duplicate`);
   }
 
-  // ── Beacon registration — use hubs and accessories as spatial anchors ──
+  // ── Beacon registration — use hubs, accessories, and routers as spatial anchors ──
   // Apply user device corrections from stored overrides
   const corrections = getDeviceCorrections();
+  const routerAnchor = getRouterAnchor();
 
-  const beaconDevices = [...hubDevices, ...accessoryDevices];
+  const beaconDevices = [...hubDevices, ...accessoryDevices, ...routerDevices];
   for (const dev of beaconDevices) {
     // Build fingerprint to check for user corrections
     const devFingerprint = `${dev.name}|${dev.manufacturer}`;
@@ -543,6 +552,20 @@ export function resolvePresences(
       });
       log.push(`📍 New beacon registered: ${correction ? displayName : initName} (${correction ? displayManuf : initManuf}) in ${finalRoomName}${correction ? " (user corrected)" : ""}`);
     }
+  }
+
+  // ── CSI-Enhanced Location Refinement using Router Anchor ──
+  // If the user has configured a router anchor position, use it to improve
+  // entity distance estimates based on simulated RSSI path-loss model
+  if (routerAnchor) {
+    const activeEntities = getEntities().filter((e) => e.status === "active" && !e.isBeacon);
+    for (const entity of activeEntities) {
+      const rssi = entity.deviceRssi ?? -60;
+      const distanceM = estimateDistanceFromRouter(rssi, routerAnchor.txPowerDbm);
+      // Update the entity with computed distance from router
+      updateEntity(entity.id, { deviceDistanceM: distanceM });
+    }
+    log.push(`📡 Router anchor active: ${routerAnchor.label} facing ${routerAnchor.orientationDeg}° — CSI distance refinement applied to ${activeEntities.length} entities`);
   }
 
   const summary = [];

@@ -56,6 +56,11 @@ import {
   getDeviceFingerprint,
   MAC_PREFIX_DB,
   type DeviceCorrection,
+  getRouterAnchor,
+  setRouterAnchor,
+  removeRouterAnchor,
+  type RouterAnchor,
+  estimateDistanceFromRouter,
 } from "@/lib/environments";
 import {
   simulateRFPresences,
@@ -434,6 +439,7 @@ export default function DashboardPage() {
                     })}
                     selectedRoomId={liveMapRoomId}
                     onSelectRoom={setLiveMapRoomId}
+                    routerAnchor={routerAnchor}
                   />
                 </div>
               )}
@@ -1128,10 +1134,22 @@ function PresenceView() {
   const [editingBeacon, setEditingBeacon] = useState<string | null>(null);
   const [beaconEditName, setBeaconEditName] = useState("");
   const [beaconEditManuf, setBeaconEditManuf] = useState("");
-  const [beaconEditCategory, setBeaconEditCategory] = useState<"phone" | "tablet" | "laptop" | "accessory" | "hub" | "unknown">("hub");
+  const [beaconEditCategory, setBeaconEditCategory] = useState<"phone" | "tablet" | "laptop" | "accessory" | "hub" | "router" | "unknown">("hub");
   const [beaconEditOS, setBeaconEditOS] = useState<"iOS" | "Android" | "Windows" | "Other" | null>(null);
   const [beaconEditRoom, setBeaconEditRoom] = useState<string>("");
   const [beaconEditEmoji, setBeaconEditEmoji] = useState("📡");
+
+  // Router anchor state
+  const [routerAnchor, setRouterAnchorState] = useState<RouterAnchor | null>(null);
+  const [showRouterSetup, setShowRouterSetup] = useState(false);
+  const [routerLabel, setRouterLabel] = useState("Home WiFi Router");
+  const [routerRoom, setRouterRoom] = useState("");
+  const [routerRoomX, setRouterRoomX] = useState(0);
+  const [routerRoomY, setRouterRoomY] = useState(0);
+  const [routerOrientation, setRouterOrientation] = useState(0); // degrees
+  const [routerTxPower, setRouterTxPower] = useState(20);
+  const [routerFrequency, setRouterFrequency] = useState(5.8);
+  const [routerAntennas, setRouterAntennas] = useState(4);
 
   // Per-entity skeleton animation for live 3D rendering
   const [pointCloud, setPointCloud] = useState<number[][]>([]);
@@ -1186,11 +1204,12 @@ function PresenceView() {
     return () => clearInterval(iv);
   }, [entities]);
 
-  // Load entities, household, and visitors from localStorage
+  // Load entities, household, visitors, and router anchor from localStorage
   useEffect(() => {
     setEntities(getEntities());
     setHouseholdIds(new Set(getHousehold().map((m) => m.entityId)));
     setVisitors(getVisitors());
+    setRouterAnchorState(getRouterAnchor());
   }, []);
   // Subscribe to pose bus for live detection status
   useEffect(() => {
@@ -1333,8 +1352,50 @@ function PresenceView() {
       ...(beaconEditRoom && roomObj ? { roomId: beaconEditRoom, location: roomObj.name, beaconLocationName: roomObj.name } : {}),
     });
 
+    // If category is router, prompt to set up router anchor position
+    if (beaconEditCategory === "router") {
+      setShowRouterSetup(true);
+      setRouterLabel(beaconEditName);
+      setRouterRoom(beaconEditRoom || beacon.roomId || "");
+    }
+
     setEntities(getEntities());
     setEditingBeacon(null);
+  };
+
+  const handleSaveRouterAnchor = () => {
+    const roomObj = allRooms.find((r) => r.id === routerRoom);
+    const fpRoom = currentFloorPlan?.rooms.find((r) => r.label === roomObj?.name || r.id === routerRoom);
+    // Find the beacon entity for router
+    const routerBeacon = entities.find((e) => e.isBeacon && e.bleDeviceCategory === "router");
+
+    const anchor: RouterAnchor = {
+      entityId: routerBeacon?.id || "",
+      roomId: routerRoom,
+      floorPlanRoomId: fpRoom?.id || null,
+      roomX: routerRoomX,
+      roomY: routerRoomY,
+      // Compute absolute position from floor plan room
+      absoluteX: fpRoom ? fpRoom.x + routerRoomX : routerRoomX,
+      absoluteY: fpRoom ? fpRoom.y + routerRoomY : routerRoomY,
+      orientationDeg: routerOrientation,
+      txPowerDbm: routerTxPower,
+      frequencyGhz: routerFrequency,
+      antennaCount: routerAntennas,
+      label: routerLabel,
+      createdAt: routerAnchor?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setRouterAnchor(anchor);
+    setRouterAnchorState(anchor);
+    setShowRouterSetup(false);
+  };
+
+  const handleRemoveRouterAnchor = () => {
+    removeRouterAnchor();
+    setRouterAnchorState(null);
+    setShowRouterSetup(false);
   };
 
   const handleDeleteBeacon = (id: string) => {
@@ -1487,6 +1548,7 @@ function PresenceView() {
                               className="text-[11px] px-2 py-1 rounded-lg border"
                               style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
                               <option value="hub">Hub / Smart Display</option>
+                              <option value="router">WiFi Router / AP</option>
                               <option value="accessory">Accessory / Wearable</option>
                               <option value="phone">Phone</option>
                               <option value="tablet">Tablet</option>
@@ -1511,7 +1573,7 @@ function PresenceView() {
                           </div>
                           {/* Emoji quick picks */}
                           <div className="flex gap-1 flex-wrap">
-                            {["📡", "📍", "🎮", "⌚", "🎧", "📺", "🔊", "💡", "📷", "🖥️", "🕶️"].map((em) => (
+                            {["📡", "📍", "🎮", "⌚", "🎧", "📺", "🔊", "💡", "📷", "🖥️", "🕶️", "📶"].map((em) => (
                               <button key={em} onClick={() => setBeaconEditEmoji(em)}
                                 className="w-6 h-6 rounded text-sm flex items-center justify-center transition"
                                 style={{ backgroundColor: beaconEditEmoji === em ? "rgba(6,182,212,0.2)" : "transparent" }}>{em}</button>
@@ -1572,6 +1634,137 @@ function PresenceView() {
                 </div>
               </div>
             )}
+
+            {/* WiFi Router Anchor Configuration */}
+            <div>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <span>📶</span> WiFi Router Anchor
+                {routerAnchor && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(16,185,129,0.12)", color: "#10b981" }}>Active</span>}
+              </h3>
+              {routerAnchor && !showRouterSetup ? (
+                <div className="device-card space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0" style={{ backgroundColor: "rgba(16,185,129,0.12)" }}>📶</div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-xs">{routerAnchor.label}</h4>
+                      <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>
+                        Facing {routerAnchor.orientationDeg}° · {routerAnchor.txPowerDbm} dBm TX · {routerAnchor.frequencyGhz} GHz · {routerAnchor.antennaCount}×MIMO
+                      </p>
+                      <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>
+                        Position: ({routerAnchor.roomX.toFixed(1)}m, {routerAnchor.roomY.toFixed(1)}m) in room · Absolute: ({routerAnchor.absoluteX.toFixed(1)}, {routerAnchor.absoluteY.toFixed(1)})m
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowRouterSetup(true)}
+                      className="flex-1 text-[11px] py-1.5 rounded-lg font-medium transition hover:opacity-90"
+                      style={{ backgroundColor: "rgba(16,185,129,0.12)", color: "#10b981" }}>
+                      ✏️ Edit Position
+                    </button>
+                    <button onClick={handleRemoveRouterAnchor}
+                      className="text-[11px] px-3 py-1.5 rounded-lg transition hover:opacity-80"
+                      style={{ color: "var(--gh-red)" }}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : showRouterSetup ? (
+                <div className="rounded-xl border p-3 space-y-3" style={{ backgroundColor: "var(--gh-surface)", borderColor: "rgba(16,185,129,0.3)" }}>
+                  <p className="text-[11px] font-medium" style={{ color: "#10b981" }}>Configure your WiFi router&apos;s physical location for CSI triangulation</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] block mb-1" style={{ color: "var(--gh-text-muted)" }}>Label</label>
+                      <input value={routerLabel} onChange={(e) => setRouterLabel(e.target.value)}
+                        className="w-full text-[11px] px-2 py-1 rounded-lg border"
+                        style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] block mb-1" style={{ color: "var(--gh-text-muted)" }}>Room</label>
+                      <select value={routerRoom} onChange={(e) => setRouterRoom(e.target.value)}
+                        className="w-full text-[11px] px-2 py-1 rounded-lg border"
+                        style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
+                        <option value="">Select room...</option>
+                        {allRooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] block mb-1" style={{ color: "var(--gh-text-muted)" }}>Position X in room (metres from left wall)</label>
+                      <input type="number" step="0.1" min="0" value={routerRoomX} onChange={(e) => setRouterRoomX(parseFloat(e.target.value) || 0)}
+                        className="w-full text-[11px] px-2 py-1 rounded-lg border"
+                        style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] block mb-1" style={{ color: "var(--gh-text-muted)" }}>Position Y in room (metres from top wall)</label>
+                      <input type="number" step="0.1" min="0" value={routerRoomY} onChange={(e) => setRouterRoomY(parseFloat(e.target.value) || 0)}
+                        className="w-full text-[11px] px-2 py-1 rounded-lg border"
+                        style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] block mb-1" style={{ color: "var(--gh-text-muted)" }}>
+                      Facing Direction: <strong>{routerOrientation}°</strong> ({routerOrientation === 0 ? "North" : routerOrientation === 90 ? "East" : routerOrientation === 180 ? "South" : routerOrientation === 270 ? "West" : `${routerOrientation}°`})
+                    </label>
+                    <input type="range" min="0" max="359" step="1" value={routerOrientation} onChange={(e) => setRouterOrientation(parseInt(e.target.value))}
+                      className="w-full" />
+                    <div className="flex justify-between text-[9px]" style={{ color: "var(--gh-text-muted)" }}>
+                      <span>N (0°)</span><span>E (90°)</span><span>S (180°)</span><span>W (270°)</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] block mb-1" style={{ color: "var(--gh-text-muted)" }}>TX Power (dBm)</label>
+                      <input type="number" step="1" value={routerTxPower} onChange={(e) => setRouterTxPower(parseInt(e.target.value) || 20)}
+                        className="w-full text-[11px] px-2 py-1 rounded-lg border"
+                        style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] block mb-1" style={{ color: "var(--gh-text-muted)" }}>Frequency (GHz)</label>
+                      <select value={routerFrequency} onChange={(e) => setRouterFrequency(parseFloat(e.target.value))}
+                        className="w-full text-[11px] px-2 py-1 rounded-lg border"
+                        style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
+                        <option value="2.4">2.4 GHz</option>
+                        <option value="5.0">5.0 GHz</option>
+                        <option value="5.8">5.8 GHz</option>
+                        <option value="6.0">6.0 GHz (WiFi 6E)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] block mb-1" style={{ color: "var(--gh-text-muted)" }}>Antennas</label>
+                      <select value={routerAntennas} onChange={(e) => setRouterAntennas(parseInt(e.target.value))}
+                        className="w-full text-[11px] px-2 py-1 rounded-lg border"
+                        style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
+                        <option value="2">2×2 MIMO</option>
+                        <option value="4">4×4 MIMO</option>
+                        <option value="8">8×8 MIMO</option>
+                      </select>
+                    </div>
+                  </div>
+                  <p className="text-[10px] px-2 py-1 rounded-lg" style={{ backgroundColor: "rgba(16,185,129,0.08)", color: "#10b981" }}>
+                    💡 The router&apos;s position and facing direction are used by the CSI engine to compute signal distance, angle-of-arrival, and triangulate entity positions on the floor plan.
+                  </p>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={handleSaveRouterAnchor}
+                      className="flex-1 text-[11px] py-1.5 rounded-lg font-medium transition hover:opacity-90"
+                      style={{ backgroundColor: "rgba(16,185,129,0.15)", color: "#10b981" }}>
+                      ✓ Save Router Position
+                    </button>
+                    <button onClick={() => setShowRouterSetup(false)}
+                      className="text-[11px] px-3 py-1.5 rounded-lg transition hover:opacity-80"
+                      style={{ color: "var(--gh-text-muted)" }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setShowRouterSetup(true)}
+                  className="w-full text-[11px] py-2 rounded-lg border border-dashed transition hover:opacity-80"
+                  style={{ borderColor: "rgba(16,185,129,0.3)", color: "#10b981" }}>
+                  + Configure WiFi Router Position for CSI Triangulation
+                </button>
+              )}
+            </div>
 
             {/* Visitor History */}
             {visitors.length > 0 && (
