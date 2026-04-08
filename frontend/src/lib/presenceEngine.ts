@@ -19,6 +19,9 @@ import {
   type TrackedEntity,
   type VisitorRecord,
   getRoomsForEnvironment,
+  getDeviceCorrections,
+  getDeviceFingerprint,
+  MAC_PREFIX_DB,
 } from "./environments";
 
 /* ─── Types ─── */
@@ -56,16 +59,15 @@ export interface ScanResult {
 const DEVICE_POOL: Array<Omit<DiscoveredDevice, "roomId" | "roomName" | "rssi">> = [
   { name: "iPhone 15", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "phone" },
   { name: "iPad Pro", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "tablet" },
-  { name: "Apple Watch", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "accessory" },
-  { name: "AirPods Pro", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "accessory" },
   { name: "Google Pixel 9 Plus", os: "Android", manufacturer: "Google LLC", companyId: "0x00E0", addrType: "random", category: "phone" },
-  { name: "Nest Hub", os: "Android", manufacturer: "Google LLC", companyId: "0x00E0", addrType: "public", category: "hub" },
   { name: "Galaxy S24", os: "Android", manufacturer: "Samsung Electronics", companyId: "0x0075", addrType: "random", category: "phone" },
   { name: "OnePlus 12", os: "Android", manufacturer: "OnePlus Technology", companyId: "0x038F", addrType: "random", category: "phone" },
   { name: "Surface Pro", os: "Windows", manufacturer: "Microsoft Corp.", companyId: "0x0006", addrType: "public", category: "laptop" },
-  // User's spatial anchor devices
+  // User's spatial anchor devices — hubs and accessories
   { name: "Blink Cam Hub", os: "Other", manufacturer: "Amazon/Blink", companyId: "0x0171", addrType: "public", category: "hub" },
-  { name: "iPod Case Beacon", os: "iOS", manufacturer: "Apple Inc.", companyId: "0x004C", addrType: "random", category: "accessory" },
+  { name: "Garmin GPS Hub Screen", os: "Other", manufacturer: "Garmin International", companyId: "0x01DA", addrType: "public", category: "hub" },
+  { name: "Google Pixel Watch", os: "Android", manufacturer: "Google LLC", companyId: "0x030B", addrType: "random", category: "accessory" },
+  { name: "Meta Quest Pro", os: "Other", manufacturer: "Meta Platforms", companyId: "0x02E5", addrType: "random", category: "accessory" },
 ];
 
 /* ─── Simulated RF scan ─── */
@@ -458,46 +460,88 @@ export function resolvePresences(
   }
 
   // ── Beacon registration — use hubs and accessories as spatial anchors ──
+  // Apply user device corrections from stored overrides
+  const corrections = getDeviceCorrections();
+
   const beaconDevices = [...hubDevices, ...accessoryDevices];
   for (const dev of beaconDevices) {
+    // Build fingerprint to check for user corrections
+    const devFingerprint = `${dev.name}|${dev.manufacturer}`;
+    const correction = corrections[devFingerprint];
+
+    // Apply correction overrides if the user has corrected this device
+    const displayName = correction?.correctedName || dev.name || "Unknown Beacon";
+    const displayManuf = correction?.correctedManufacturer || dev.manufacturer;
+    const displayCategory = correction?.correctedCategory || dev.category;
+    const displayOS = correction?.correctedOS ?? dev.os;
+    const displayEmoji = correction?.correctedEmoji || (displayCategory === "hub" ? "📡" : "📍");
+    // If user pinned a room, use it; otherwise use auto-detected room
+    const correctedRoom = correction?.correctedRoomId
+      ? { id: correction.correctedRoomId, name: correction.correctedRoomName || dev.roomName }
+      : null;
+    const finalRoomId = correctedRoom?.id || dev.roomId;
+    const finalRoomName = correctedRoom?.name || dev.roomName;
+
     // Check if a beacon entity already exists for this device
     const existingBeacon = existing.find(
       (e) => e.isBeacon && e.bleDeviceName === dev.name && e.bleManufacturer === dev.manufacturer
     );
     if (existingBeacon) {
-      // Update RSSI / room
-      updateEntity(existingBeacon.id, {
+      // Update with corrections applied
+      const updates: Record<string, unknown> = {
         status: "active",
         deviceRssi: dev.rssi,
-        roomId: dev.roomId,
-        location: dev.roomName,
         lastSeen: "Just now",
-      });
-      log.push(`📍 Beacon updated: ${dev.name} in ${dev.roomName} — RSSI ${dev.rssi} dBm`);
+      };
+      // If user corrected name/manufacturer, apply those too
+      if (correction) {
+        Object.assign(updates, {
+          name: displayName,
+          bleManufacturer: displayManuf,
+          bleDeviceCategory: displayCategory,
+          bleDeviceOS: displayOS,
+          emoji: displayEmoji,
+        });
+      }
+      // Only update room if not user-pinned OR if auto-detected
+      if (correctedRoom) {
+        Object.assign(updates, { roomId: finalRoomId, location: finalRoomName, beaconLocationName: finalRoomName });
+      } else {
+        Object.assign(updates, { roomId: dev.roomId, location: dev.roomName });
+      }
+      updateEntity(existingBeacon.id, updates);
+      log.push(`📍 Beacon updated: ${displayName} in ${finalRoomName} — RSSI ${dev.rssi} dBm${correction ? " (user corrected)" : ""}`);
     } else {
-      // Register new beacon
+      // Register new beacon — apply MAC prefix lookup for better initial identity
+      let initName = dev.name || "Unknown Beacon";
+      let initManuf = dev.manufacturer;
+      if (dev.companyId && MAC_PREFIX_DB[dev.companyId] && !correction) {
+        // Use MAC prefix DB to suggest a better manufacturer if the auto-detected one seems wrong
+        initManuf = MAC_PREFIX_DB[dev.companyId].manufacturer;
+      }
+      // User correction takes precedence
       const entity = createEntity({
-        name: dev.name || "Unknown Beacon",
-        type: "person", // Beacons reuse entity storage
-        emoji: dev.category === "hub" ? "📡" : "📍",
-        roomId: dev.roomId,
-        location: dev.roomName,
+        name: correction ? displayName : initName,
+        type: "person",
+        emoji: displayEmoji,
+        roomId: finalRoomId,
+        location: finalRoomName,
       });
       updateEntity(entity.id, {
         status: "active",
         isBeacon: true,
-        beaconLocationName: dev.roomName,
-        bleDeviceName: dev.name,
-        bleManufacturer: dev.manufacturer,
-        bleDeviceOS: dev.os,
+        beaconLocationName: finalRoomName,
+        bleDeviceName: dev.name, // Always store original BLE name for fingerprinting
+        bleManufacturer: correction ? displayManuf : initManuf,
+        bleDeviceOS: correction ? displayOS : dev.os,
         bleCompanyId: dev.companyId,
-        bleDeviceCategory: dev.category,
+        bleDeviceCategory: correction ? displayCategory : dev.category,
         deviceRssi: dev.rssi,
         lastSeen: "Just now",
         confidence: 1.0,
         activity: "Anchor",
       });
-      log.push(`📍 New beacon registered: ${dev.name} (${dev.manufacturer}) in ${dev.roomName} — spatial anchor for CSI triangulation`);
+      log.push(`📍 New beacon registered: ${correction ? displayName : initName} (${correction ? displayManuf : initManuf}) in ${finalRoomName}${correction ? " (user corrected)" : ""}`);
     }
   }
 

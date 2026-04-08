@@ -50,6 +50,12 @@ import {
   isHouseholdMember,
   getVisitors,
   type VisitorRecord,
+  getDeviceCorrections,
+  setDeviceCorrection,
+  removeDeviceCorrection,
+  getDeviceFingerprint,
+  MAC_PREFIX_DB,
+  type DeviceCorrection,
 } from "@/lib/environments";
 import {
   simulateRFPresences,
@@ -1118,6 +1124,15 @@ function PresenceView() {
   const [hasPose, setHasPose] = useState(false);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Beacon editing state
+  const [editingBeacon, setEditingBeacon] = useState<string | null>(null);
+  const [beaconEditName, setBeaconEditName] = useState("");
+  const [beaconEditManuf, setBeaconEditManuf] = useState("");
+  const [beaconEditCategory, setBeaconEditCategory] = useState<"phone" | "tablet" | "laptop" | "accessory" | "hub" | "unknown">("hub");
+  const [beaconEditOS, setBeaconEditOS] = useState<"iOS" | "Android" | "Windows" | "Other" | null>(null);
+  const [beaconEditRoom, setBeaconEditRoom] = useState<string>("");
+  const [beaconEditEmoji, setBeaconEditEmoji] = useState("📡");
+
   // Per-entity skeleton animation for live 3D rendering
   const [pointCloud, setPointCloud] = useState<number[][]>([]);
   const [animatedPersons, setAnimatedPersons] = useState<Array<{
@@ -1275,6 +1290,63 @@ function PresenceView() {
     setEditingProfile(null);
   };
 
+  // ── Beacon editing handlers ──
+  const handleStartEditBeacon = (beacon: TrackedEntity) => {
+    setEditingBeacon(beacon.id);
+    setBeaconEditName(beacon.name);
+    setBeaconEditManuf(beacon.bleManufacturer || "");
+    setBeaconEditCategory((beacon.bleDeviceCategory as typeof beaconEditCategory) || "hub");
+    setBeaconEditOS(beacon.bleDeviceOS || null);
+    setBeaconEditRoom(beacon.roomId || "");
+    setBeaconEditEmoji(beacon.emoji || "📡");
+  };
+
+  const handleSaveBeacon = () => {
+    if (!editingBeacon) return;
+    const beacon = entities.find((e) => e.id === editingBeacon);
+    if (!beacon) return;
+
+    const fingerprint = getDeviceFingerprint(beacon);
+    const roomObj = allRooms.find((r) => r.id === beaconEditRoom);
+
+    // Save correction for future scans
+    setDeviceCorrection(fingerprint, {
+      originalName: beacon.bleDeviceName || beacon.name,
+      correctedName: beaconEditName,
+      correctedManufacturer: beaconEditManuf,
+      correctedCategory: beaconEditCategory,
+      correctedOS: beaconEditOS,
+      correctedRoomId: beaconEditRoom || null,
+      correctedRoomName: roomObj?.name || null,
+      correctedEmoji: beaconEditEmoji,
+      companyId: beacon.bleCompanyId || null,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Apply correction to entity immediately
+    updateEntityStorage(editingBeacon, {
+      name: beaconEditName,
+      bleManufacturer: beaconEditManuf,
+      bleDeviceCategory: beaconEditCategory as TrackedEntity["bleDeviceCategory"],
+      bleDeviceOS: beaconEditOS,
+      emoji: beaconEditEmoji,
+      ...(beaconEditRoom && roomObj ? { roomId: beaconEditRoom, location: roomObj.name, beaconLocationName: roomObj.name } : {}),
+    });
+
+    setEntities(getEntities());
+    setEditingBeacon(null);
+  };
+
+  const handleDeleteBeacon = (id: string) => {
+    const beacon = entities.find((e) => e.id === id);
+    if (beacon) {
+      const fingerprint = getDeviceFingerprint(beacon);
+      removeDeviceCorrection(fingerprint);
+    }
+    deleteEntity(id);
+    setEntities(getEntities());
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -1397,19 +1469,104 @@ function PresenceView() {
                 </h3>
                 <div className="space-y-2">
                   {beacons.map((b) => (
-                    <div key={b.id} className="device-card flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0" style={{ backgroundColor: "rgba(6,182,212,0.12)" }}>
-                        {b.emoji || "📡"}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-xs">{b.name}</h4>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(6,182,212,0.12)", color: "#06b6d4" }}>Anchor</span>
+                    <div key={b.id}>
+                      {editingBeacon === b.id ? (
+                        /* ── Beacon Edit Form ── */
+                        <div className="rounded-xl border p-3 space-y-2" style={{ backgroundColor: "var(--gh-surface)", borderColor: "rgba(6,182,212,0.3)" }}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-lg cursor-pointer" title="Click to change emoji">{beaconEditEmoji}</span>
+                            <input value={beaconEditName} onChange={(e) => setBeaconEditName(e.target.value)}
+                              className="flex-1 text-xs font-medium px-2 py-1 rounded-lg border" placeholder="Device name"
+                              style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <input value={beaconEditManuf} onChange={(e) => setBeaconEditManuf(e.target.value)}
+                              className="text-[11px] px-2 py-1 rounded-lg border" placeholder="Manufacturer"
+                              style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }} />
+                            <select value={beaconEditCategory} onChange={(e) => setBeaconEditCategory(e.target.value as typeof beaconEditCategory)}
+                              className="text-[11px] px-2 py-1 rounded-lg border"
+                              style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
+                              <option value="hub">Hub / Smart Display</option>
+                              <option value="accessory">Accessory / Wearable</option>
+                              <option value="phone">Phone</option>
+                              <option value="tablet">Tablet</option>
+                              <option value="laptop">Laptop</option>
+                              <option value="unknown">Other</option>
+                            </select>
+                            <select value={beaconEditOS || ""} onChange={(e) => setBeaconEditOS(e.target.value as typeof beaconEditOS || null)}
+                              className="text-[11px] px-2 py-1 rounded-lg border"
+                              style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
+                              <option value="">OS: Auto</option>
+                              <option value="iOS">iOS</option>
+                              <option value="Android">Android</option>
+                              <option value="Windows">Windows</option>
+                              <option value="Other">Other</option>
+                            </select>
+                            <select value={beaconEditRoom} onChange={(e) => setBeaconEditRoom(e.target.value)}
+                              className="text-[11px] px-2 py-1 rounded-lg border"
+                              style={{ backgroundColor: "var(--gh-card)", borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
+                              <option value="">Room: Auto</option>
+                              {allRooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            </select>
+                          </div>
+                          {/* Emoji quick picks */}
+                          <div className="flex gap-1 flex-wrap">
+                            {["📡", "📍", "🎮", "⌚", "🎧", "📺", "🔊", "💡", "📷", "🖥️", "🕶️"].map((em) => (
+                              <button key={em} onClick={() => setBeaconEditEmoji(em)}
+                                className="w-6 h-6 rounded text-sm flex items-center justify-center transition"
+                                style={{ backgroundColor: beaconEditEmoji === em ? "rgba(6,182,212,0.2)" : "transparent" }}>{em}</button>
+                            ))}
+                          </div>
+                          {/* MAC prefix hint */}
+                          {b.bleCompanyId && MAC_PREFIX_DB[b.bleCompanyId] && (
+                            <p className="text-[10px] px-2 py-1 rounded-lg" style={{ backgroundColor: "rgba(6,182,212,0.08)", color: "#06b6d4" }}>
+                              💡 BLE Company ID {b.bleCompanyId} → {MAC_PREFIX_DB[b.bleCompanyId].manufacturer} ({MAC_PREFIX_DB[b.bleCompanyId].commonDevices.join(", ")})
+                            </p>
+                          )}
+                          <div className="flex gap-2 pt-1">
+                            <button onClick={handleSaveBeacon}
+                              className="flex-1 text-[11px] py-1.5 rounded-lg font-medium transition hover:opacity-90"
+                              style={{ backgroundColor: "rgba(6,182,212,0.15)", color: "#06b6d4" }}>
+                              ✓ Save Correction
+                            </button>
+                            <button onClick={() => setEditingBeacon(null)}
+                              className="text-[11px] px-3 py-1.5 rounded-lg transition hover:opacity-80"
+                              style={{ color: "var(--gh-text-muted)" }}>
+                              Cancel
+                            </button>
+                            <button onClick={() => { handleDeleteBeacon(b.id); setEditingBeacon(null); }}
+                              className="text-[11px] px-3 py-1.5 rounded-lg transition hover:opacity-80"
+                              style={{ color: "var(--gh-red)" }}>
+                              🗑
+                            </button>
+                          </div>
                         </div>
-                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>
-                          {b.bleManufacturer}{b.location ? ` · ${b.location}` : ""}{b.deviceRssi ? ` · ${b.deviceRssi} dBm` : ""}
-                        </p>
-                      </div>
+                      ) : (
+                        /* ── Beacon Display Card ── */
+                        <div className="device-card flex items-center gap-3 cursor-pointer hover:opacity-90 transition" onClick={() => handleStartEditBeacon(b)}>
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0" style={{ backgroundColor: "rgba(6,182,212,0.12)" }}>
+                            {b.emoji || "📡"}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-xs">{b.name}</h4>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(6,182,212,0.12)", color: "#06b6d4" }}>Anchor</span>
+                              {getDeviceCorrections()[getDeviceFingerprint(b)] && (
+                                <span className="text-[10px] px-1 py-0.5 rounded-full" style={{ backgroundColor: "rgba(94,187,127,0.12)", color: "var(--gh-green)" }}>✓ Corrected</span>
+                              )}
+                            </div>
+                            <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>
+                              {b.bleManufacturer}{b.location ? ` · ${b.location}` : ""}{b.deviceRssi ? ` · ${b.deviceRssi} dBm` : ""}
+                            </p>
+                            {b.bleCompanyId && (
+                              <p className="text-[9px]" style={{ color: "var(--gh-text-muted)" }}>
+                                BLE: {b.bleCompanyId} · {b.bleAddressType || "?"} · {b.bleDeviceCategory || "?"}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-[10px] flex-shrink-0" style={{ color: "var(--gh-text-muted)" }}>✏️</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

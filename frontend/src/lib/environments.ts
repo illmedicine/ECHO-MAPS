@@ -522,6 +522,92 @@ export function removeCamera(id: string): boolean {
 }
 
 /* ══════════════════════════════════════════════
+   Device Corrections & MAC Prefix Database
+   ══════════════════════════════════════════════ */
+
+/**
+ * User-corrected device identities.
+ * Keyed by BLE fingerprint (companyId|addrType or bleDeviceName|bleManufacturer).
+ * When a correction exists, the presence engine applies it instead of the
+ * auto-detected identity on every scan.
+ */
+export interface DeviceCorrection {
+  /** Original auto-detected name */
+  originalName: string;
+  /** User-corrected display name */
+  correctedName: string;
+  /** User-corrected manufacturer */
+  correctedManufacturer: string;
+  /** User-corrected category */
+  correctedCategory: "phone" | "tablet" | "laptop" | "accessory" | "hub" | "unknown";
+  /** User-corrected OS */
+  correctedOS: "iOS" | "Android" | "Windows" | "Other" | null;
+  /** User-assigned room ID (null = auto-detect) */
+  correctedRoomId: string | null;
+  /** User-assigned room name */
+  correctedRoomName: string | null;
+  /** Emoji override */
+  correctedEmoji: string;
+  /** BLE company ID for fingerprinting */
+  companyId: string | null;
+  /** Timestamp of correction */
+  createdAt: string;
+}
+
+const DEVICE_CORRECTIONS_KEY = "echo_vue_device_corrections";
+
+export function getDeviceCorrections(): Record<string, DeviceCorrection> {
+  if (typeof window === "undefined") return {};
+  const raw = _get(DEVICE_CORRECTIONS_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+export function setDeviceCorrection(fingerprint: string, correction: DeviceCorrection): void {
+  const corrections = getDeviceCorrections();
+  corrections[fingerprint] = correction;
+  _set(DEVICE_CORRECTIONS_KEY, JSON.stringify(corrections));
+}
+
+export function removeDeviceCorrection(fingerprint: string): void {
+  const corrections = getDeviceCorrections();
+  delete corrections[fingerprint];
+  _set(DEVICE_CORRECTIONS_KEY, JSON.stringify(corrections));
+}
+
+/** Build a fingerprint key from a beacon entity's BLE fields */
+export function getDeviceFingerprint(entity: TrackedEntity): string {
+  // Primary: bleDeviceName + bleManufacturer (most specific)
+  if (entity.bleDeviceName && entity.bleManufacturer) {
+    return `${entity.bleDeviceName}|${entity.bleManufacturer}`;
+  }
+  // Fallback: companyId + addressType
+  if (entity.bleCompanyId) {
+    return `${entity.bleCompanyId}|${entity.bleAddressType || "unknown"}`;
+  }
+  return entity.id;
+}
+
+/**
+ * MAC prefix / BLE Company ID → Manufacturer mapping.
+ * Used to improve auto-detection when a device's companyId is known
+ * but the BLE advertisement name is ambiguous.
+ */
+export const MAC_PREFIX_DB: Record<string, { manufacturer: string; commonDevices: string[] }> = {
+  "0x004C": { manufacturer: "Apple Inc.", commonDevices: ["iPhone", "iPad", "Apple Watch", "AirPods", "HomePod", "MacBook"] },
+  "0x00E0": { manufacturer: "Google LLC", commonDevices: ["Pixel Phone", "Pixel Watch", "Nest Hub", "Chromecast"] },
+  "0x0075": { manufacturer: "Samsung Electronics", commonDevices: ["Galaxy Phone", "Galaxy Watch", "Galaxy Buds", "SmartThings Hub"] },
+  "0x0006": { manufacturer: "Microsoft Corp.", commonDevices: ["Surface Pro", "Xbox", "Surface Headphones"] },
+  "0x0171": { manufacturer: "Amazon/Blink", commonDevices: ["Echo Dot", "Blink Camera", "Ring Doorbell", "Fire TV"] },
+  "0x038F": { manufacturer: "OnePlus Technology", commonDevices: ["OnePlus Phone", "OnePlus Buds"] },
+  "0x0059": { manufacturer: "Nordic Semiconductor", commonDevices: ["Fitness Tracker", "BLE Beacon", "Smart Lock"] },
+  "0x000D": { manufacturer: "Texas Instruments", commonDevices: ["Sensor Tag", "BLE Module"] },
+  "0x01DA": { manufacturer: "Garmin International", commonDevices: ["Garmin GPS", "Garmin Watch", "Garmin Hub Screen"] },
+  "0x0087": { manufacturer: "Garmin International", commonDevices: ["Garmin Forerunner", "Garmin Edge", "Garmin inReach"] },
+  "0x02E5": { manufacturer: "Meta Platforms", commonDevices: ["Meta Quest Pro", "Meta Quest 3", "Ray-Ban Meta"] },
+  "0x030B": { manufacturer: "Google (Fitbit)", commonDevices: ["Pixel Watch", "Fitbit Sense", "Fitbit Charge"] },
+};
+
+/* ══════════════════════════════════════════════
    Tracked Entity Persistence
    ══════════════════════════════════════════════ */
 
