@@ -66,7 +66,7 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
   const padding = 24;
   const scaleX = (canvasSize.w - padding * 2) / floorPlan.width;
   const scaleY = (canvasSize.h - padding * 2) / floorPlan.height;
-  const scale = Math.min(scaleX, scaleY);
+  const scale = Math.max(0.1, Math.min(scaleX, scaleY));
   const offsetX = (canvasSize.w - floorPlan.width * scale) / 2;
   const offsetY = (canvasSize.h - floorPlan.height * scale) / 2;
 
@@ -373,7 +373,8 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
           const waveTime = Date.now() * 0.002;
           for (let w = 0; w < 3; w++) {
             const wavePhase = (waveTime + w * 2.1) % (Math.PI * 2);
-            const waveRadius = 15 + Math.sin(wavePhase) * 20 + w * 12;
+            const waveRadius = Math.max(0, 15 + Math.sin(wavePhase) * 20 + w * 12);
+            if (waveRadius === 0) continue;
             const waveAlpha = 0.15 - w * 0.04;
             ctx.beginPath();
             // Draw arc in router's facing direction
