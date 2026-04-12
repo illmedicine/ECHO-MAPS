@@ -138,10 +138,10 @@ class UserSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
-    signature_vector: Mapped[bytes] = mapped_column()   # 512 × float32 = 2048 bytes
-    gait_embedding: Mapped[bytes] = mapped_column()     # 64 × float32 = 256 bytes
-    breathing_embedding: Mapped[bytes] = mapped_column() # 32 × float32 = 128 bytes
-    mass_reflection: Mapped[bytes] = mapped_column()    # 16 × float32 = 64 bytes
+    signature_vector: Mapped[bytes | None] = mapped_column(nullable=True)   # 512 × float32 = 2048 bytes
+    gait_embedding: Mapped[bytes | None] = mapped_column(nullable=True)     # 64 × float32 = 256 bytes
+    breathing_embedding: Mapped[bytes | None] = mapped_column(nullable=True) # 32 × float32 = 128 bytes
+    mass_reflection: Mapped[bytes | None] = mapped_column(nullable=True)    # 16 × float32 = 64 bytes
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

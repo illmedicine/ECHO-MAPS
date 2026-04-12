@@ -15,15 +15,20 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-// All syncable localStorage base keys
+// All syncable localStorage base keys — every key here is pushed/pulled to cloud
 const SYNCABLE_KEYS = [
   "echo_vue_environments",
   "echo_maps_environments",
   "echo_vue_cameras",
   "echo_vue_entities",
+  "echo_vue_floor_plans",
+  "echo_vue_household",
+  "echo_vue_visitors",
+  "echo_vue_router_anchor",
+  "echo_vue_device_corrections",
 ] as const;
 
-// Activity log keys are dynamic (per-environment), handled separately
+// Dynamic per-environment keys — handled separately during collect/restore
 const ACTIVITY_KEY_PREFIX = "echo_maps_activity_";
 
 /* ── User scoping helpers ── */
@@ -64,7 +69,7 @@ export function migrateToUserScope(userId: string): void {
     }
   }
 
-  // Migrate activity logs
+  // Migrate dynamic per-environment keys (activity logs, etc.)
   const keysToMigrate: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -119,20 +124,24 @@ export function collectAllSettings(): Record<string, unknown> {
     }
   }
 
-  // Collect activity logs
-  const activityLogs: Record<string, unknown> = {};
+  // Collect activity logs and other dynamic per-environment keys
+  const dynamicData: Record<string, unknown> = {};
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key && key.startsWith(`${ACTIVITY_KEY_PREFIX}`) && key.includes(`::${uid}`)) {
-      const baseKey = key.replace(`::${uid}`, "");
+    if (!key || !key.includes(`::${uid}`)) continue;
+    // Already covered by SYNCABLE_KEYS above
+    const baseKey = key.replace(`::${uid}`, "");
+    if ((SYNCABLE_KEYS as readonly string[]).includes(baseKey)) continue;
+    // Capture activity logs and any other user-scoped dynamic keys
+    if (key.startsWith(ACTIVITY_KEY_PREFIX) || key.startsWith("echo_vue_") || key.startsWith("echo_maps_")) {
       const raw = localStorage.getItem(key);
       if (raw) {
-        try { activityLogs[baseKey] = JSON.parse(raw); } catch { /* skip */ }
+        try { dynamicData[baseKey] = JSON.parse(raw); } catch { /* skip */ }
       }
     }
   }
-  if (Object.keys(activityLogs).length > 0) {
-    data["_activity_logs"] = activityLogs;
+  if (Object.keys(dynamicData).length > 0) {
+    data["_dynamic_keys"] = dynamicData;
   }
 
   return data;
@@ -197,7 +206,17 @@ export async function syncPullFromCloud(): Promise<boolean> {
       }
     }
 
-    // Restore activity logs
+    // Restore dynamic keys (activity logs, per-environment data, etc.)
+    const dynamicKeys = settings["_dynamic_keys"] as Record<string, unknown> | undefined;
+    if (dynamicKeys) {
+      for (const [key, data] of Object.entries(dynamicKeys)) {
+        if (data !== undefined) {
+          localStorage.setItem(`${key}::${uid}`, JSON.stringify(data));
+        }
+      }
+    }
+
+    // Legacy: also check old "_activity_logs" key for backwards compat
     const activityLogs = settings["_activity_logs"] as Record<string, unknown> | undefined;
     if (activityLogs) {
       for (const [key, data] of Object.entries(activityLogs)) {

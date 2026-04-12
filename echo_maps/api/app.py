@@ -13,7 +13,8 @@ from echo_maps.api.routes import auth, bridge, calibration, environments, health
 from echo_maps.api.routes import room_scan
 from echo_maps.api.routes import settings as settings_routes
 from echo_maps.config import get_settings
-from echo_maps.db.session import init_db, close_db, create_tables
+from echo_maps.db.session import init_db, close_db, create_tables, get_session
+from sqlalchemy import text
 
 
 @asynccontextmanager
@@ -38,10 +39,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         pass
 
 
+async def _apply_schema_fixes() -> None:
+    """One-time schema fixes for deployed databases."""
+    try:
+        async with get_session() as session:
+            # Make RF signature columns nullable (they were incorrectly NOT NULL)
+            for col in ("signature_vector", "gait_embedding", "breathing_embedding", "mass_reflection"):
+                await session.execute(
+                    text(f"ALTER TABLE user_settings ALTER COLUMN {col} DROP NOT NULL")
+                )
+            await session.commit()
+    except Exception:
+        pass  # Table may not exist yet or columns already nullable
+
+
 async def _init_database(database_url: str) -> None:
     """Initialize DB with a hard timeout so the app starts regardless."""
     await init_db(database_url)
     await create_tables()
+    await _apply_schema_fixes()
 
 
 def create_app() -> FastAPI:
