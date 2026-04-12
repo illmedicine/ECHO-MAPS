@@ -935,6 +935,19 @@ export interface FloorPlanRoom {
   h: number;
 }
 
+/** A detected object placed on the floor plan via room scanning. */
+export interface FloorPlanObject {
+  id: string;
+  category: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  confidence: number;
+}
+
 export interface FloorPlan {
   id: string;
   environmentId: string;
@@ -942,6 +955,11 @@ export interface FloorPlan {
   width: number;
   height: number;
   rooms: FloorPlanRoom[];
+  /** Auto-detected objects from room scanner */
+  objects?: FloorPlanObject[];
+  /** Room scan metadata */
+  scanConfidence?: number;
+  isFullyMapped?: boolean;
   createdAt: string;
   updatedAt: string;
 }

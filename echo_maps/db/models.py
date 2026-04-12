@@ -170,3 +170,37 @@ class UserSettings(Base):
             .where(cls.environment_id == uuid.UUID(environment_id))
             .values(is_active=False)
         )
+
+
+class BridgeDeviceRecord(Base):
+    """Persisted Illy Bridge device (FNK0086) registration."""
+    __tablename__ = "bridge_devices"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    device_id: Mapped[str] = mapped_column(String(18), unique=True, index=True)  # MAC address
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("environments.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(100), default="Illy Bridge")
+    model: Mapped[str] = mapped_column(String(50), default="FNK0086")
+    firmware_version: Mapped[str] = mapped_column(String(20), default="2.0.0")
+    ip_address: Mapped[str] = mapped_column(String(45), default="")
+    is_bound: Mapped[bool] = mapped_column(Boolean, default=False)
+    rooms_calibrated: Mapped[dict] = mapped_column(JSONB, default=list)
+    last_seen: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    @classmethod
+    async def get_by_device_id(cls, session: AsyncSession, device_id: str) -> Self | None:
+        result = await session.execute(select(cls).where(cls.device_id == device_id))
+        return result.scalar_one_or_none()
+
+    @classmethod
+    async def get_for_user(cls, session: AsyncSession, user_id: str) -> list[Self]:
+        result = await session.execute(
+            select(cls).where(cls.user_id == uuid.UUID(user_id)).order_by(cls.last_seen.desc())
+        )
+        return list(result.scalars().all())

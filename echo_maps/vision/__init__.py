@@ -1,1 +1,1 @@
-"""Vision processing — skeletal extraction during the calibration phase."""
+"""Vision processing — skeletal extraction and room scanning during calibration."""

@@ -341,7 +341,10 @@ export default function DashboardPage() {
           ))}
         </nav>
 
-        <div className="px-3 mb-2">
+        <div className="px-3 mb-2 space-y-0.5">
+          <Link href="/dashboard/bridge" className="sidebar-item w-full">
+            <span className="text-lg">📡</span>Illy Bridge
+          </Link>
           <Link href="/research" className="sidebar-item w-full">
             <span className="text-lg">📄</span>Research
           </Link>

@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     tls_cert_path: str = ""
     tls_key_path: str = ""
 
+    # ── Illy Bridge (FNK0086) ──
+    bridge_mdns_service: str = "_illybridge._tcp.local."
+    bridge_discovery_timeout: float = 5.0
+    bridge_cloud_port: int = 8443
+    bridge_max_devices: int = 20
+    bridge_calibration_fps: int = 10
+    bridge_camera_quality: int = 12  # 0-63, lower = better JPEG quality
+    bridge_audio_sample_rate: int = 16000
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
 
     @property

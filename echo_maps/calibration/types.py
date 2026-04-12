@@ -58,3 +58,11 @@ class CalibrationState:
     # Phase 4–5: Active tracking
     active_tracks: int = 0
     ghosted_tracks: int = 0
+
+    # Room Scan — visual mapping phase (mobile phone camera)
+    room_scan_active: bool = False
+    room_scan_confidence: float = 0.0
+    room_scan_objects_detected: int = 0
+    room_scan_coverage_degrees: float = 0.0
+    room_dimensions_mapped: bool = False
+    floor_plan_generated: bool = False

@@ -24,7 +24,13 @@ class BridgeCommand(IntEnum):
     STOP_BLE_SCAN = 0x14
     START_CALIBRATION = 0x20
     STOP_CALIBRATION = 0x21
+    START_ROOM_SCAN = 0x22       # Camera + Mic + CSI room calibration
+    START_PRESENCE_SCAN = 0x23   # CSI + Mic presence detection
+    STOP_ROOM_SCAN = 0x24
     GET_STATUS = 0x30
+    BIND_USER = 0x31             # Bind bridge to an Echo Vue user
+    UNBIND_USER = 0x32           # Unbind bridge from user
+    SET_ROOM_NAME = 0x33         # Set current room context
     OTA_UPDATE = 0xF0
     REBOOT = 0xFF
 
@@ -37,6 +43,9 @@ class BridgeStatus(IntEnum):
     MONITORING = 0x02         # Green LED — CSI-only mode
     OFFLINE = 0x03            # Red LED
     OTA_IN_PROGRESS = 0x04
+    PROVISIONING = 0x05       # SoftAP WiFi setup mode
+    ROOM_SCANNING = 0x06      # Camera + Mic + CSI room scan
+    PRESENCE_SCANNING = 0x07  # CSI + Mic presence detection
     ERROR = 0xFF
 
 
@@ -49,6 +58,10 @@ class BridgeEvent(IntEnum):
     VITAL_ALERT = 0x04
     ERROR_REPORT = 0x05
     BLE_SCAN = 0x06            # BLE advertisement batch from passive scan
+    CAMERA_FRAME = 0x10        # JPEG camera frame for visual calibration
+    AUDIO_SAMPLE = 0x11        # PCM audio sample for acoustic fingerprinting
+    ROOM_SCAN_COMPLETE = 0x12  # Room scan finished
+    PRESENCE_RESULT = 0x13     # Presence detection result from bridge
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,3 +231,56 @@ def parse_ble_scan_payload(payload: bytes) -> list[dict]:
         })
 
     return devices
+
+
+def parse_camera_frame_payload(payload: bytes) -> dict:
+    """Parse a CAMERA_FRAME event payload from the bridge.
+
+    Payload format:
+        [timestamp_us(8B)][room_name_len(1B)][room_name(N)][jpeg_data(...)]
+    """
+    if len(payload) < 9:
+        raise ValueError(f"Camera payload too short: {len(payload)} bytes")
+
+    timestamp_us = struct.unpack(">Q", payload[0:8])[0]
+    room_name_len = payload[8]
+    room_name = payload[9 : 9 + room_name_len].decode("utf-8", errors="replace")
+    jpeg_data = payload[9 + room_name_len :]
+
+    return {
+        "timestamp_us": timestamp_us,
+        "room_name": room_name,
+        "jpeg_data": jpeg_data,
+        "jpeg_size": len(jpeg_data),
+    }
+
+
+def parse_audio_sample_payload(payload: bytes) -> dict:
+    """Parse an AUDIO_SAMPLE event payload from the bridge.
+
+    Payload format:
+        [timestamp_us(8B)][sample_rate(4B)][n_samples(4B)]
+        [room_name_len(1B)][room_name(N)][pcm_data(n_samples*2 int16)]
+    """
+    if len(payload) < 17:
+        raise ValueError(f"Audio payload too short: {len(payload)} bytes")
+
+    timestamp_us = struct.unpack(">Q", payload[0:8])[0]
+    sample_rate = struct.unpack(">I", payload[8:12])[0]
+    n_samples = struct.unpack(">I", payload[12:16])[0]
+    room_name_len = payload[16]
+    room_name = payload[17 : 17 + room_name_len].decode("utf-8", errors="replace")
+
+    pcm_offset = 17 + room_name_len
+    pcm_data = np.frombuffer(
+        payload[pcm_offset : pcm_offset + n_samples * 2],
+        dtype=np.int16,
+    )
+
+    return {
+        "timestamp_us": timestamp_us,
+        "sample_rate": sample_rate,
+        "n_samples": n_samples,
+        "room_name": room_name,
+        "pcm_data": pcm_data,
+    }
