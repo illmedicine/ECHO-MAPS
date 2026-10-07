@@ -25,8 +25,10 @@ import {
   getRouterAnchor,
   estimateDistanceFromRouter,
   computeSignalArc,
+  deleteEntity,
   type RouterAnchor,
 } from "./environments";
+import type { AccessPoint } from "./wifiSurvey";
 
 /* ─── Types ─── */
 
@@ -67,13 +69,9 @@ const DEVICE_POOL: Array<Omit<DiscoveredDevice, "roomId" | "roomName" | "rssi">>
   { name: "Galaxy S24", os: "Android", manufacturer: "Samsung Electronics", companyId: "0x0075", addrType: "random", category: "phone" },
   { name: "OnePlus 12", os: "Android", manufacturer: "OnePlus Technology", companyId: "0x038F", addrType: "random", category: "phone" },
   { name: "Surface Pro", os: "Windows", manufacturer: "Microsoft Corp.", companyId: "0x0006", addrType: "public", category: "laptop" },
-  // User's spatial anchor devices — hubs and accessories
-  { name: "Blink Cam Hub", os: "Other", manufacturer: "Amazon/Blink", companyId: "0x0171", addrType: "public", category: "hub" },
-  { name: "Garmin GPS Hub Screen", os: "Other", manufacturer: "Garmin International", companyId: "0x01DA", addrType: "public", category: "hub" },
-  { name: "Google Pixel Watch", os: "Android", manufacturer: "Google LLC", companyId: "0x030B", addrType: "random", category: "accessory" },
-  { name: "Meta Quest Pro", os: "Other", manufacturer: "Meta Platforms", companyId: "0x02E5", addrType: "random", category: "accessory" },
-  // WiFi router — primary CSI signal source
-  { name: "Home WiFi Router", os: "Other", manufacturer: "WiFi AP", companyId: null, addrType: "public", category: "router" },
+  // NOTE: Spatial-anchor / infrastructure devices are no longer hardcoded here.
+  // Real WiFi access points, repeaters and routers from the live capture are
+  // registered as beacons via syncRealBeacons() — those are the true anchors.
 ];
 
 /* ─── Simulated RF scan ─── */
@@ -159,26 +157,8 @@ export function simulateBLEDevices(roomIds: { id: string; name: string }[]): Dis
     }
   }
 
-  // Always discover infrastructure devices (hubs, accessories, routers) from the device pool
-  // These are fixed devices in the home that act as spatial anchors
-  const infraDevices = DEVICE_POOL.filter((d) => d.category === "hub" || d.category === "accessory" || d.category === "router");
-  const existingBeaconNames = new Set(existing.filter((e) => e.isBeacon).map((e) => e.bleDeviceName));
-  const tetheredDeviceNames = new Set(devices.map((d) => d.name));
-  for (const dev of infraDevices) {
-    if (tetheredDeviceNames.has(dev.name)) continue; // Already surfaced
-    // Assign to a room — use matching beacon's room if already registered, else distribute
-    const existingBeacon = existing.find((e) => e.isBeacon && e.bleDeviceName === dev.name);
-    const room = existingBeacon && roomIds.find((r) => r.id === existingBeacon.roomId)
-      ? roomIds.find((r) => r.id === existingBeacon.roomId)!
-      : roomIds[Math.floor(Math.random() * roomIds.length)];
-    if (!room) continue;
-    devices.push({
-      ...dev,
-      roomId: room.id,
-      roomName: room.name,
-      rssi: -(25 + Math.floor(Math.random() * 15)),
-    });
-  }
+  // Infrastructure beacons are no longer invented from a hardcoded pool.
+  // Real WiFi APs/repeaters/routers are registered via syncRealBeacons().
 
   // Always include existing registered beacons so they stay active
   const beacons = existing.filter((e) => e.isBeacon && e.bleDeviceName);
@@ -575,4 +555,53 @@ export function resolvePresences(
   log.push(`Scan complete. ${summary.join(", ") || "No changes"}.`);
 
   return { newCount, mergedCount, visitorCount, log };
+}
+
+/* ─── Real WiFi infrastructure as spatial beacons ─── */
+
+/**
+ * Replace the beacon set with the REAL captured WiFi access points / repeaters /
+ * routers. These live in public/common areas (hallways, lobby, pool) and act as
+ * the spatial anchors for public-area presence sensing — the true "spatial
+ * beacons," not invented devices.
+ *
+ * @param aps          Own-network APs from the live capture (role !== "neighbor").
+ * @param publicRooms  Public/common-area rooms the beacons are distributed across.
+ * @returns number of beacons registered.
+ */
+export function syncRealBeacons(
+  aps: AccessPoint[],
+  publicRooms: { id: string; name: string }[],
+): number {
+  // Clear any existing beacons (removes the old hardcoded/simulated ones).
+  for (const e of getEntities()) {
+    if (e.isBeacon) deleteEntity(e.id);
+  }
+  if (aps.length === 0 || publicRooms.length === 0) return 0;
+
+  aps.forEach((ap, i) => {
+    const room = publicRooms[i % publicRooms.length];
+    const roleLabel = ap.role === "gateway" ? "Gateway / Modem" : ap.role === "mesh" ? "Mesh Node" : "Repeater";
+    const entity = createEntity({
+      name: `${ap.vendor} ${roleLabel}`,
+      type: "person",
+      emoji: "📶",
+      roomId: room.id,
+      location: room.name,
+    });
+    updateEntity(entity.id, {
+      status: "active",
+      isBeacon: true,
+      beaconLocationName: room.name,
+      bleDeviceName: ap.bssid,
+      bleManufacturer: ap.vendor,
+      bleDeviceCategory: "router",
+      bleCompanyId: null,
+      deviceRssi: ap.rssi,
+      confidence: 1.0,
+      activity: "Anchor",
+      lastSeen: "Just now",
+    });
+  });
+  return aps.length;
 }

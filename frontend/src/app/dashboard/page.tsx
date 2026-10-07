@@ -66,8 +66,10 @@ import {
   simulateRFPresences,
   simulateBLEDevices,
   resolvePresences,
+  syncRealBeacons,
 } from "@/lib/presenceEngine";
-import { partitionBySensing } from "@/lib/sensingZones";
+import { partitionBySensing, classifyRoom } from "@/lib/sensingZones";
+import { loadLiveSnapshot, surveyFromLiveSnapshot } from "@/lib/wifiSurvey";
 import EmojiPicker from "@/components/EmojiPicker";
 import { subscribePose, hasActivePose, getLatestPose } from "@/lib/poseBus";
 import {
@@ -1255,6 +1257,28 @@ function PresenceView() {
     setHouseholdIds(new Set(getHousehold().map((m) => m.entityId)));
     setVisitors(getVisitors());
     setRouterAnchorState(getRouterAnchor());
+  }, []);
+
+  // Register the REAL captured WiFi APs/repeaters as spatial beacons in public
+  // areas (replaces the old hardcoded beacon pool). Only runs when a live
+  // capture exists; otherwise existing beacons are left untouched.
+  useEffect(() => {
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    let cancelled = false;
+    (async () => {
+      const snap = await loadLiveSnapshot(basePath);
+      if (cancelled || !snap) return;
+      const ownAps = surveyFromLiveSnapshot(snap).aps.filter((a) => a.role !== "neighbor");
+      const cams = new Set(getCameras().map((c) => c.roomId));
+      const publicRooms = getEchoEnvironments()
+        .flatMap((e) => getRoomsForEnvironment(e.id))
+        .filter((r) => classifyRoom({ id: r.id, name: r.name, type: r.type, hasNetworkedCamera: cams.has(r.id) }) === "public")
+        .map((r) => ({ id: r.id, name: r.name }));
+      if (publicRooms.length === 0) return;
+      syncRealBeacons(ownAps, publicRooms);
+      if (!cancelled) setEntities(getEntities());
+    })();
+    return () => { cancelled = true; };
   }, []);
   // Subscribe to pose bus for live detection status
   useEffect(() => {
