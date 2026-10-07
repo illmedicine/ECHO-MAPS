@@ -184,7 +184,7 @@ export default function BridgeCalibration({
             <label className="block text-sm font-medium text-zinc-300 mb-2">
               Scan Type
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 onClick={() => setScanType("room")}
                 className={`p-4 rounded-lg border text-left transition-colors ${

@@ -82,6 +82,7 @@ import dynamic from "next/dynamic";
 const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer"), { ssr: false });
 const FloorPlanEditor = dynamic(() => import("@/components/FloorPlanEditor"), { ssr: false });
 const LiveFloorPlanMap = dynamic(() => import("@/components/LiveFloorPlanMap"), { ssr: false });
+const HotelSetupModal = dynamic(() => import("@/components/HotelSetupModal"), { ssr: false });
 
 interface UserData {
   id: string;
@@ -135,6 +136,7 @@ export default function DashboardPage() {
   const [rooms, setRooms] = useState<RoomCard[]>([]);
   const [showNewEnvModal, setShowNewEnvModal] = useState(false);
   const [showNewRoomModal, setShowNewRoomModal] = useState(false);
+  const [showHotelModal, setShowHotelModal] = useState(false);
   const [showAddCameraModal, setShowAddCameraModal] = useState(false);
   const [cameraVersion, setCameraVersion] = useState(0);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
@@ -149,6 +151,7 @@ export default function DashboardPage() {
   const [liveMapRoomId, setLiveMapRoomId] = useState<string | null>(null);
   const [liveEntities, setLiveEntities] = useState<TrackedEntity[]>([]);
   const [routerAnchor, setRouterAnchorState] = useState<RouterAnchor | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Single initialization effect — reads user, migrates data, loads environments
   useEffect(() => {
@@ -293,8 +296,13 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Sidebar */}
-      <aside className="w-64 border-r flex flex-col" style={{ borderColor: "var(--gh-border)", backgroundColor: "var(--gh-surface)" }}>
+      {/* Mobile sidebar backdrop */}
+      {sidebarOpen && (
+        <div className="mobile-sidebar-backdrop md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* Sidebar — always visible on md+, slide-out drawer on mobile */}
+      <aside className={`w-72 md:w-64 border-r flex flex-col fixed md:static inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`} style={{ borderColor: "var(--gh-border)", backgroundColor: "var(--gh-surface)" }}>
         <div className="p-4 flex items-center justify-center">
           <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={306} height={306} unoptimized style={{ background: "transparent" }} />
         </div>
@@ -309,7 +317,7 @@ export default function DashboardPage() {
           </div>
           <div className="space-y-0.5 max-h-[180px] overflow-y-auto">
             {echoEnvs.map((env) => (
-              <button key={env.id} onClick={() => { setSelectedEnvId(env.id); setActiveTab("spaces"); }}
+              <button key={env.id} onClick={() => { setSelectedEnvId(env.id); setActiveTab("spaces"); setSidebarOpen(false); }}
                 className={`sidebar-item w-full group ${selectedEnvId === env.id && activeTab === "spaces" ? "active" : ""}`}>
                 <span className="text-base">{env.emoji ?? ENV_ICONS[env.category] ?? "📍"}</span>
                 <div className="flex-1 min-w-0">
@@ -335,13 +343,16 @@ export default function DashboardPage() {
             { tab: "automations" as const, label: "Automations", icon: "⚡" },
             { tab: "presence" as const, label: "Presence", icon: "👤" },
           ]).map(({ tab, label, icon }) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`sidebar-item w-full ${activeTab === tab ? "active" : ""}`}>
+            <button key={tab} onClick={() => { setActiveTab(tab); setSidebarOpen(false); }} className={`sidebar-item w-full ${activeTab === tab ? "active" : ""}`}>
               <span className="text-lg">{icon}</span>{label}
             </button>
           ))}
         </nav>
 
         <div className="px-3 mb-2 space-y-0.5">
+          <Link href="/dashboard/survey" className="sidebar-item w-full" style={{ backgroundColor: "rgba(66,133,244,0.08)", color: "var(--gh-blue)", fontWeight: 500 }}>
+            <span className="text-lg">🛰️</span>WiFi Site Survey
+          </Link>
           <Link href="/dashboard/bridge" className="sidebar-item w-full">
             <span className="text-lg">📡</span>Illy Bridge
           </Link>
@@ -378,10 +389,15 @@ export default function DashboardPage() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "var(--gh-bg)" }}>
-        <header className="sticky top-0 z-10 px-8 py-4 flex items-center justify-between" style={{ backgroundColor: "var(--gh-bg)", borderBottom: "1px solid var(--gh-border)" }}>
-          <div>
-            <h1 className="text-xl font-semibold">
+      <main className="flex-1 overflow-y-auto md:ml-0" style={{ backgroundColor: "var(--gh-bg)" }}>
+        <header className="sticky top-0 z-10 px-4 md:px-8 py-3 md:py-4 flex items-center justify-between" style={{ backgroundColor: "var(--gh-bg)", borderBottom: "1px solid var(--gh-border)" }}>
+          <div className="flex items-center gap-3">
+            {/* Hamburger — mobile only */}
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 -ml-2 rounded-xl hover:bg-black/5 transition" aria-label="Open menu">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+            </button>
+            <div>
+            <h1 className="text-lg md:text-xl font-semibold">
               {activeTab === "spaces" ? (selectedEnv ? `${selectedEnv.emoji ?? ENV_ICONS[selectedEnv.category] ?? "📍"} ${selectedEnv.name}` : "Select an Environment")
                 : activeTab === "cameras" ? "📹 Cameras"
                 : activeTab === "automations" ? "⚡ Automations"
@@ -392,37 +408,42 @@ export default function DashboardPage() {
                 {rooms.length} room{rooms.length !== 1 ? "s" : ""} · {rooms.filter((r) => r.isCalibrated).length} calibrated
               </p>
             )}
+            </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             {activeTab === "spaces" && selectedEnvId && (
               <>
-                <button onClick={() => { setShowFloorPlan(true); }} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition"
+                <button onClick={() => { setShowFloorPlan(true); }} className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition"
                   style={{ backgroundColor: currentFloorPlan ? "rgba(52,168,83,0.15)" : "var(--gh-card)", color: currentFloorPlan ? "var(--gh-green)" : "var(--gh-text-muted)", border: "1px solid var(--gh-border)" }}>
                   🏗️ {currentFloorPlan ? "Edit Floor Plan" : "Floor Plan"}
                 </button>
+                <button onClick={() => setShowHotelModal(true)} className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition"
+                  style={{ backgroundColor: "rgba(66,133,244,0.1)", color: "var(--gh-blue)", border: "1px solid var(--gh-border)" }}>
+                  🏨 <span>Auto-Setup Hotel</span>
+                </button>
                 <button onClick={() => setShowNewRoomModal(true)} className="btn-primary flex items-center gap-2">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                  Add Room
+                  <span className="hidden sm:inline">Add Room</span>
                 </button>
               </>
             )}
             {activeTab === "cameras" && (
               <button onClick={() => setShowAddCameraModal(true)} className="btn-primary flex items-center gap-2">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                Add Camera
+                <span className="hidden sm:inline">Add Camera</span>
               </button>
             )}
           </div>
         </header>
 
         {error && (
-          <div className="mx-8 mt-4 p-3 rounded-xl text-sm flex items-center justify-between" style={{ backgroundColor: "rgba(232,104,90,0.1)", color: "var(--gh-red)" }}>
+          <div className="mx-4 md:mx-8 mt-4 p-3 rounded-xl text-sm flex items-center justify-between" style={{ backgroundColor: "rgba(232,104,90,0.1)", color: "var(--gh-red)" }}>
             <span>{error}</span>
             <button onClick={() => setError(null)} className="hover:opacity-70">✕</button>
           </div>
         )}
 
-        <div className="p-8">
+        <div className="p-4 md:p-8">
           {activeTab === "spaces" && !showFloorPlan && (
             <>
               {currentFloorPlan && selectedEnvId && (
@@ -448,7 +469,7 @@ export default function DashboardPage() {
                   />
                 </div>
               )}
-              <RoomsView rooms={rooms} selectedEnvId={selectedEnvId} selectedEnv={selectedEnv ?? null} onAddEnv={() => setShowNewEnvModal(true)} onAddRoom={() => setShowNewRoomModal(true)} onDeleteRoom={handleDeleteRoom} currentFloorPlan={currentFloorPlan} onEditFloorPlan={() => setShowFloorPlan(true)} />
+              <RoomsView rooms={rooms} selectedEnvId={selectedEnvId} selectedEnv={selectedEnv ?? null} onAddEnv={() => setShowNewEnvModal(true)} onAddRoom={() => setShowNewRoomModal(true)} onDeleteRoom={handleDeleteRoom} currentFloorPlan={currentFloorPlan} onEditFloorPlan={() => setShowFloorPlan(true)} onAutoSetup={() => setShowHotelModal(true)} />
             </>
           )}
           {activeTab === "spaces" && showFloorPlan && selectedEnvId && (
@@ -480,13 +501,27 @@ export default function DashboardPage() {
 
       {showNewEnvModal && <NewEnvironmentModal onClose={() => setShowNewEnvModal(false)} onCreate={handleCreateEnv} />}
       {showNewRoomModal && <NewRoomModal onClose={() => { setShowNewRoomModal(false); setCameraVersion((v) => v + 1); }} onCreate={handleCreateRoom} />}
+      {showHotelModal && selectedEnvId && (
+        <HotelSetupModal
+          environmentId={selectedEnvId}
+          environmentName={selectedEnv?.name ?? "this property"}
+          defaultAddress={selectedEnv?.address ?? "7541 Nates Rd, Columbia, SC 29223 (Fort Jackson Area)"}
+          onClose={() => setShowHotelModal(false)}
+          onComplete={() => {
+            setShowHotelModal(false);
+            reloadRooms();
+            setCurrentFloorPlan(getFloorPlan(selectedEnvId));
+            setEchoEnvs(getEchoEnvironments());
+          }}
+        />
+      )}
       {showAddCameraModal && <AddCameraModal rooms={rooms} selectedEnvId={selectedEnvId} onClose={() => { setShowAddCameraModal(false); setCameraVersion((v) => v + 1); }} onRoomCreated={reloadRooms} />}
     </div>
   );
 }
 
 /* ── Rooms View ── */
-function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onDeleteRoom, currentFloorPlan, onEditFloorPlan }: {
+function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onDeleteRoom, currentFloorPlan, onEditFloorPlan, onAutoSetup }: {
   rooms: RoomCard[];
   selectedEnvId: string | null;
   selectedEnv: EchoEnvironment | null;
@@ -495,6 +530,7 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
   onDeleteRoom: (id: string) => void;
   currentFloorPlan: FloorPlan | null;
   onEditFloorPlan: () => void;
+  onAutoSetup: () => void;
 }) {
   if (!selectedEnvId) {
     return (
@@ -512,7 +548,10 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
         <div className="text-6xl mb-4 opacity-30">🚪</div>
         <p className="text-lg mb-2">No rooms in {selectedEnv?.name}</p>
         <p className="text-sm mb-6">Add rooms individually or create a floor plan to define all rooms at once</p>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap justify-center">
+          <button onClick={onAutoSetup} className="px-5 py-2.5 rounded-xl text-sm font-medium transition" style={{ backgroundColor: "rgba(66,133,244,0.1)", border: "1px solid var(--gh-border)", color: "var(--gh-blue)" }}>
+            🏨 Auto-Setup Hotel
+          </button>
           <button onClick={onEditFloorPlan} className="px-5 py-2.5 rounded-xl text-sm font-medium transition" style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text-muted)" }}>
             🏗️ Create Floor Plan
           </button>
@@ -549,7 +588,7 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
             {items.map((room) => (
               <div key={room.id} className="device-card group relative">
                 <button onClick={(e) => { e.stopPropagation(); onDeleteRoom(room.id); }}
-                  className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-white/10"
+                  className="absolute top-2 right-2 w-7 h-7 md:w-6 md:h-6 rounded-full flex items-center justify-center opacity-100 md:opacity-0 group-hover:opacity-100 transition hover:bg-white/10"
                   style={{ color: "var(--gh-text-muted)" }}>✕</button>
                 <Link href={`/dashboard/env?id=${room.id}`} className="block">
                   <div className="flex items-center gap-3">
@@ -781,18 +820,18 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
                         </div>
                       )}
                     </div>
-                    <div className="p-3 flex items-center justify-between">
+                    <div className="p-3 md:p-3 flex items-center justify-between">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{cam.label}</p>
                         <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{isLive ? "Streaming · AI tuning" : "Inactive"}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={() => isLive ? stopStream(cam.id) : startStream(cam)}
-                          className="px-3 py-1.5 rounded-xl text-xs font-medium transition"
+                          className="px-4 py-2 md:px-3 md:py-1.5 rounded-xl text-xs font-medium transition"
                           style={isLive ? { backgroundColor: "rgba(232,104,90,0.15)", color: "var(--gh-red)" } : { backgroundColor: "rgba(91,156,246,0.15)", color: "var(--gh-blue)" }}>
                           {isLive ? "■ Stop" : "▶ Start"}
                         </button>
-                        <button onClick={() => handleRemove(cam.id)} className="p-1.5 rounded-lg hover:bg-white/10 transition" style={{ color: "var(--gh-text-muted)" }}>
+                        <button onClick={() => handleRemove(cam.id)} className="p-2 md:p-1.5 rounded-lg hover:bg-white/10 transition" style={{ color: "var(--gh-text-muted)" }}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                         </button>
                       </div>
@@ -807,7 +846,7 @@ function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; versio
       <div className="mt-6 p-5 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
         <div className="flex items-center gap-3 mb-3"><span className="text-xl">🧠</span><h3 className="font-semibold">CSI AI Learning Engine</h3></div>
         <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>When cameras are active, Echo Vue correlates visual data with WiFi CSI signals to learn presence patterns — standing, sitting, walking, sleeping, device use, and more.</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {[
             { label: "Active Cameras", value: `${Object.keys(activeStreams).length}`, color: "var(--gh-green)" },
             { label: "Frames Collected", value: `${totalFrames}`, color: "var(--gh-blue)" },
@@ -887,11 +926,11 @@ function AddCameraModal({ rooms, selectedEnvId, onClose, onRoomCreated }: { room
   const cleanup = () => { if (previewStream) previewStream.getTracks().forEach((t) => t.stop()); onClose(); };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={cleanup}>
-      <div className="rounded-2xl w-full max-w-lg p-6" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 mobile-modal-outer" onClick={cleanup}>
+      <div className="rounded-2xl w-full max-w-lg p-6 mobile-modal-inner" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold">Add Camera</h2>
-          <button onClick={cleanup} style={{ color: "var(--gh-text-muted)" }}>✕</button>
+          <button onClick={cleanup} className="p-2 -mr-2 rounded-xl hover:bg-black/5" style={{ color: "var(--gh-text-muted)" }}>✕</button>
         </div>
         {loading ? (
           <div className="py-12 text-center text-sm" style={{ color: "var(--gh-text-muted)" }}>Scanning for cameras...</div>
@@ -952,11 +991,11 @@ function NewEnvironmentModal({ onClose, onCreate }: { onClose: () => void; onCre
     { key: "business", label: "Business", icon: "💼" }, { key: "other", label: "Other", icon: "📍" },
   ];
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="rounded-2xl w-full max-w-md p-6" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 mobile-modal-outer" onClick={onClose}>
+      <div className="rounded-2xl w-full max-w-md p-6 mobile-modal-inner" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">New Environment</h2>
-          <button onClick={onClose} style={{ color: "var(--gh-text-muted)" }}>✕</button>
+          <button onClick={onClose} className="p-2 -mr-2 rounded-xl hover:bg-black/5" style={{ color: "var(--gh-text-muted)" }}>✕</button>
         </div>
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) onCreate(name.trim(), category, emoji); }} className="space-y-5">
           <div>
@@ -1013,11 +1052,11 @@ function NewRoomModal({ onClose, onCreate }: { onClose: () => void; onCreate: (n
     }
   };
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 mobile-modal-outer" onClick={onClose}>
+      <div className="rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto mobile-modal-inner" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">Add Room</h2>
-          <button onClick={onClose} style={{ color: "var(--gh-text-muted)" }}>✕</button>
+          <button onClick={onClose} className="p-2 -mr-2 rounded-xl hover:bg-black/5" style={{ color: "var(--gh-text-muted)" }}>✕</button>
         </div>
         {localError && (
           <div className="mb-4 p-3 rounded-xl text-sm" style={{ backgroundColor: "rgba(232,104,90,0.1)", color: "var(--gh-red)" }}>{localError}</div>
@@ -1030,10 +1069,10 @@ function NewRoomModal({ onClose, onCreate }: { onClose: () => void; onCreate: (n
           <EmojiPicker selected={emoji} onSelect={setEmoji} label="Room Icon" />
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Room Type</label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {types.map((t) => (
                 <button key={t.key} type="button" onClick={() => { setType(t.key); if (emoji === types.find((tp) => tp.key === type)?.icon) setEmoji(t.icon); }}
-                  className="p-2 rounded-xl text-center text-xs transition"
+                  className="p-3 sm:p-2 rounded-xl text-center text-xs transition"
                   style={{ backgroundColor: type === t.key ? "rgba(91,156,246,0.12)" : "var(--gh-card)", border: type === t.key ? "1px solid var(--gh-blue)" : "1px solid var(--gh-border)", color: type === t.key ? "var(--gh-blue)" : "var(--gh-text-muted)" }}>
                   <div className="text-lg mb-0.5">{t.icon}</div>{t.label}
                 </button>
@@ -1070,7 +1109,7 @@ function AutomationsView() {
   ];
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>Create workflows triggered by Echo Vue events. Connect with Google Home, IFTTT, and smart devices.</p>
         <button className="btn-primary opacity-60 cursor-not-allowed flex items-center gap-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
@@ -1079,7 +1118,7 @@ function AutomationsView() {
       </div>
       <div className="space-y-3">
         {automations.map((auto) => (
-          <div key={auto.id} className="device-card flex items-center gap-4">
+          <div key={auto.id} className="device-card flex items-center gap-3 md:gap-4">
             <span className="text-2xl">{auto.icon}</span>
             <div className="flex-1">
               <h3 className="font-medium text-sm">{auto.name}</h3>
@@ -1370,7 +1409,8 @@ function PresenceView() {
 
   const handleSaveRouterAnchor = () => {
     const roomObj = allRooms.find((r) => r.id === routerRoom);
-    const fpRoom = currentFloorPlan?.rooms.find((r) => r.label === roomObj?.name || r.id === routerRoom);
+    const fp = roomObj?.environmentId ? getFloorPlan(roomObj.environmentId) : null;
+    const fpRoom = fp?.rooms.find((r) => r.label === roomObj?.name || r.id === routerRoom);
     // Find the beacon entity for router
     const routerBeacon = entities.find((e) => e.isBeacon && e.bleDeviceCategory === "router");
 
@@ -1415,7 +1455,7 @@ function PresenceView() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>Scan environments to detect entities via RF signatures and camera data. Edit detected entity profiles below.</p>
         <button onClick={() => setShowScanModal(true)} className="btn-primary px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2">
           <span>\ud83d\udce1</span> Run Presence Scan
@@ -1446,8 +1486,8 @@ function PresenceView() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+          <div className="lg:col-span-2 space-y-4 md:space-y-6">
             {/* 3D Viewer — shows tracked entities as dots */}
             <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)", height: 260 }}>
               <EnvironmentViewer
@@ -1909,8 +1949,8 @@ function PresenceView() {
 
       {/* Run Presence Scan Modal */}
       {showScanModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { if (!scanning) setShowScanModal(false); }}>
-          <div className="rounded-2xl p-6 w-full max-w-lg max-h-[85vh] flex flex-col" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 mobile-modal-outer" onClick={() => { if (!scanning) setShowScanModal(false); }}>
+          <div className="rounded-2xl p-6 w-full max-w-lg max-h-[85vh] flex flex-col mobile-modal-inner" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-1">
               <span className="text-2xl">\ud83d\udce1</span>
               <h3 className="text-lg font-semibold">Presence Detection Scan</h3>
@@ -1995,8 +2035,8 @@ function PresenceView() {
         const entity = entities.find((e) => e.id === editingProfile);
         if (!entity) return null;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setEditingProfile(null)}>
-            <div className="rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 mobile-modal-outer" onClick={() => setEditingProfile(null)}>
+            <div className="rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto mobile-modal-inner" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
               <h3 className="text-lg font-semibold mb-4">Edit Profile \u2014 {entity.name}</h3>
               <div className="space-y-3">
                 <div className="flex justify-center mb-2">

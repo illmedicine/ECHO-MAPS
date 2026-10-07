@@ -362,12 +362,12 @@ function EnvironmentViewContent() {
   const isCalibrating = calStep !== "idle";
 
   return (
-    <main className="min-h-screen p-6" style={{ backgroundColor: "var(--gh-bg)" }}>
+    <main className="min-h-screen p-3 md:p-6" style={{ backgroundColor: "var(--gh-bg)" }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 max-w-6xl mx-auto">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 md:mb-6 max-w-6xl mx-auto gap-3">
+        <div className="flex items-center gap-3 md:gap-4 flex-wrap">
           <Link href="/dashboard" className="text-sm transition hover:opacity-80" style={{ color: "var(--gh-text-muted)" }}>← Dashboard</Link>
-          <h1 className="text-2xl font-bold">{env.name}</h1>
+          <h1 className="text-xl md:text-2xl font-bold">{env.name}</h1>
           {env.isCalibrated && (
             <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(52,168,83,0.15)", color: "var(--gh-green)" }}>Calibrated</span>
           )}
@@ -380,13 +380,13 @@ function EnvironmentViewContent() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
           {env.isCalibrated && live && (
             <button
               onClick={() => {
                 if (cameraActive) { stopCamera(); } else { startCamera(); }
               }}
-              className="px-4 py-1.5 rounded-full text-sm font-medium transition"
+              className="px-4 py-2 md:py-1.5 rounded-full text-sm font-medium transition"
               style={cameraActive
                 ? { backgroundColor: "rgba(255,204,0,0.2)", color: "#ffcc00" }
                 : { backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }
@@ -402,7 +402,7 @@ function EnvironmentViewContent() {
                 setLive(next);
                 if (!next && cameraActive) stopCamera();
               }}
-              className="px-4 py-1.5 rounded-full text-sm font-medium transition"
+              className="px-4 py-2 md:py-1.5 rounded-full text-sm font-medium transition"
               style={live ? { backgroundColor: "var(--gh-green)", color: "#000" } : { backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}
             >
               {live ? "■ Stop Live" : "▶ Start Live"}
@@ -513,7 +513,7 @@ function EnvironmentViewContent() {
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6">
         {/* Main Content */}
         <div className="lg:col-span-3">
           {/* Uncalibrated: show setup wizard */}
@@ -539,7 +539,7 @@ function EnvironmentViewContent() {
               </div>
               <button
                 onClick={runCalibration}
-                className="px-8 py-3 rounded-full font-semibold text-sm hover:opacity-90 transition"
+                className="px-8 py-3.5 md:py-3 rounded-full font-semibold text-sm md:text-sm hover:opacity-90 transition"
                 style={{ backgroundColor: "var(--gh-blue)" }}
               >
                 Begin Calibration
@@ -550,12 +550,12 @@ function EnvironmentViewContent() {
           {/* View Tabs — shown when calibrated or during calibration */}
           {(env.isCalibrated || isCalibrating) && (
             <>
-              <div className="flex gap-2 mb-4">
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
                 {(["3d", "heatmap", "vitals"] as const).map((v) => (
                   <button
                     key={v}
                     onClick={() => setView(v)}
-                    className="px-4 py-2 rounded-full text-sm font-medium transition"
+                    className="px-4 py-2 rounded-full text-sm font-medium transition whitespace-nowrap"
                     style={view === v ? { backgroundColor: "var(--gh-blue)" } : { backgroundColor: "var(--gh-surface)", color: "var(--gh-text-muted)" }}
                   >
                     {v === "3d" ? "3D View" : v === "heatmap" ? "Heatmap" : "Vitals"}

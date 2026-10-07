@@ -7,34 +7,34 @@ export default function Home() {
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8">
+    <main className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8">
       {/* Hero */}
       <div className="text-center max-w-3xl">
         {/* Logo */}
         <div className="flex justify-center mb-6">
           <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={340} height={340} unoptimized style={{ background: "transparent" }} />
         </div>
-        <p className="text-xl mb-8 max-w-xl mx-auto leading-relaxed">
+        <p className="text-lg md:text-xl mb-8 max-w-xl mx-auto leading-relaxed">
           Your home, understood. <span style={{ color: "var(--gh-text-muted)" }}>Sense every room with WiFi — no cameras, no wearables.</span>
         </p>
 
-        <div className="flex gap-4 justify-center mb-16">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-16">
           <Link
             href="/auth/signin"
-            className="btn-primary px-8 py-3 rounded-xl font-semibold text-base"
+            className="btn-primary px-8 py-3.5 md:py-3 rounded-xl font-semibold text-base text-center"
           >
             Get Started
           </Link>
           <Link
             href="/research"
-            className="px-8 py-3 border rounded-xl font-semibold hover:border-[var(--gh-text-muted)] transition"
+            className="px-8 py-3.5 md:py-3 border rounded-xl font-semibold hover:border-[var(--gh-text-muted)] transition text-center"
             style={{ borderColor: "var(--gh-border)" }}
           >
             Research
           </Link>
           <a
             href="#how-it-works"
-            className="px-8 py-3 border rounded-xl font-semibold hover:border-[var(--gh-text-muted)] transition"
+            className="px-8 py-3.5 md:py-3 border rounded-xl font-semibold hover:border-[var(--gh-text-muted)] transition text-center"
             style={{ borderColor: "var(--gh-border)" }}
           >
             Learn More

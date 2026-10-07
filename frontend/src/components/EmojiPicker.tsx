@@ -116,13 +116,13 @@ export default function EmojiPicker({ selected, onSelect, label }: EmojiPickerPr
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-8 gap-1 overflow-y-auto flex-1">
+          <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-1.5 md:gap-1 overflow-y-auto flex-1">
             {EMOJI_CATEGORIES[activeCategory].emojis.map((emoji) => (
               <button
                 key={emoji}
                 type="button"
                 onClick={() => { onSelect(emoji); setOpen(false); }}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-lg hover:bg-black/5 transition"
+                className="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center rounded-lg text-lg hover:bg-black/5 transition"
                 style={selected === emoji ? { backgroundColor: "rgba(91,156,246,0.15)", outline: "1px solid var(--gh-blue)" } : {}}
               >
                 {emoji}

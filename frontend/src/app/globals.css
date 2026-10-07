@@ -29,6 +29,7 @@ body {
   background-color: var(--gh-bg);
   color: var(--gh-text);
   font-family: 'Google Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::-webkit-scrollbar { width: 6px; }
@@ -59,3 +60,49 @@ body {
 }
 .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3); }
 .btn-primary:disabled { opacity: 0.5; transform: none; box-shadow: none; }
+
+/* ── Mobile-responsive utilities ── */
+
+/* Sidebar overlay backdrop */
+.mobile-sidebar-backdrop {
+  @apply fixed inset-0 bg-black/50 z-40 transition-opacity duration-300;
+}
+
+/* Sidebar slide-in on mobile */
+@media (max-width: 767px) {
+  .sidebar-item {
+    @apply py-3 text-base gap-4;
+  }
+  .btn-primary {
+    @apply px-6 py-3 text-base;
+  }
+  .device-card {
+    @apply p-5;
+  }
+  /* Modal bottom-sheet behavior */
+  .mobile-modal-outer {
+    align-items: flex-end !important;
+  }
+  .mobile-modal-inner {
+    border-radius: 1.5rem 1.5rem 0 0 !important;
+    max-height: 92vh !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    animation: slideUp 0.3s ease-out;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  /* Bottom-sheet drag indicator */
+  .mobile-modal-inner::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: var(--gh-border);
+    border-radius: 4px;
+    margin: 8px auto 12px;
+  }
+}

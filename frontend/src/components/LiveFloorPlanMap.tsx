@@ -493,8 +493,8 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
   const selectedEntities = selectedRoomId ? entities.filter((e) => e.roomId === selectedRoomId && e.status === "active") : [];
 
   return (
-    <div className="flex gap-4">
-      <div ref={containerRef} className="flex-1 rounded-2xl overflow-hidden relative" style={{ backgroundColor: "#0d1117", border: "1px solid var(--gh-border)", minHeight: 350 }}>
+    <div className="flex flex-col md:flex-row gap-4">
+      <div ref={containerRef} className="flex-1 rounded-2xl overflow-hidden relative" style={{ backgroundColor: "#0d1117", border: "1px solid var(--gh-border)", minHeight: 280 }}>
         <canvas
           ref={canvasRef}
           style={{ width: canvasSize.w, height: canvasSize.h, cursor: hoveredRoom ? "pointer" : "default" }}
@@ -503,7 +503,7 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
           onMouseLeave={() => setHoveredRoom(null)}
         />
         {/* Legend */}
-        <div className="absolute bottom-3 left-3 flex gap-3 text-[9px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+        <div className="absolute bottom-3 left-3 flex flex-wrap gap-2 md:gap-3 text-[9px]" style={{ color: "rgba(255,255,255,0.5)" }}>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#5ebb7f" }} /> Calibrated</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#8b8f9a" }} /> Pending</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: ENTITY_COLORS.person }} /> Person</span>
@@ -515,7 +515,7 @@ export default function LiveFloorPlanMap({ floorPlan, rooms, entities, selectedR
 
       {/* Room detail panel */}
       {selectedFpRoom && selectedEnv && (
-        <div className="w-64 rounded-2xl p-4 flex-shrink-0" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
+        <div className="w-full md:w-64 rounded-2xl p-4 flex-shrink-0" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
           <div className="text-center mb-3">
             <div className="text-2xl mb-1">{selectedEnv.emoji || "📍"}</div>
             <h4 className="font-semibold text-sm">{selectedEnv.name}</h4>

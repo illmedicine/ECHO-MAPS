@@ -18,6 +18,9 @@ export default function RootLayout({
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   return (
     <html lang="en">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      </head>
       <body>
         <ChunkErrorRecover />
         <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
