@@ -100,7 +100,8 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="mt-20 text-center text-xs text-[var(--gh-text-muted)] pb-8">
-        &copy; {new Date().getFullYear()} Illy Robotics. Echo Vue — Privacy-first smart environment sensing.
+        <p>&copy; {new Date().getFullYear()} Illy Robotics. Echo Vue — Privacy-first smart environment sensing.</p>
+        <a href="/privacy" className="hover:underline mt-1 inline-block" style={{ color: "var(--gh-blue)" }}>Privacy &amp; Sensing Policy</a>
       </footer>
     </main>
   );

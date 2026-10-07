@@ -67,6 +67,7 @@ import {
   simulateBLEDevices,
   resolvePresences,
 } from "@/lib/presenceEngine";
+import { partitionBySensing } from "@/lib/sensingZones";
 import EmojiPicker from "@/components/EmojiPicker";
 import { subscribePose, hasActivePose, getLatestPose } from "@/lib/poseBus";
 import {
@@ -1300,12 +1301,21 @@ function PresenceView() {
         if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
 
         const targetRooms = scanTarget === "all" ? allRooms : allRooms.filter((r) => r.id === scanTarget);
-        const roomData = targetRooms.map((r) => ({ id: r.id, name: r.name }));
+        // Privacy scope: when public-only sensing is on, exclude private guest rooms entirely.
+        // A networked camera marks a space as public (hotels camera lobbies/hallways, never guest rooms).
+        const cameraRoomIds = new Set(getCameras().map((c) => c.roomId));
+        const { sensed, excluded } = partitionBySensing(
+          targetRooms.map((r) => ({ id: r.id, name: r.name, type: r.type, hasNetworkedCamera: cameraRoomIds.has(r.id) }))
+        );
+        const roomData = sensed.map((r) => ({ id: r.id, name: r.name }));
 
         const rfPresences = simulateRFPresences(roomData);
         const bleDevices = simulateBLEDevices(roomData);
         const result = resolvePresences(rfPresences, bleDevices);
 
+        if (excluded.length > 0) {
+          result.log.unshift(`🔒 Public-area sensing only — skipped ${excluded.length} private guest room(s). No CSI collected in private rooms.`);
+        }
         setScanLog((prev) => [...prev, ...result.log]);
         setEntities(getEntities());
         setVisitors(getVisitors());

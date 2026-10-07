@@ -90,6 +90,7 @@ export function generateHotel(cfg: HotelConfig): GeneratedHotel {
   const fpRooms: FloorPlanRoom[] = [];
   let guestRooms = 0;
 
+  let hallways = 0;
   for (let f = 1; f <= cfg.floors; f++) {
     const blockTop = (f - 1) * (floorHeight + floorGap);
     for (let n = 1; n <= cfg.roomsPerFloor; n++) {
@@ -103,6 +104,17 @@ export function generateHotel(cfg: HotelConfig): GeneratedHotel {
       fpRooms.push({ id: `fp-${num}`, label: `Room ${num} · ${cls.label}`, type: "bedroom", x, y, w: rw, h: rh });
       guestRooms++;
     }
+    // Per-floor hallway — a public, sensing-eligible common space in the corridor band.
+    fpRooms.push({
+      id: `fp-hall-${f}`,
+      label: `Floor ${f} Hallway`,
+      type: "other",
+      x: 0,
+      y: blockTop + rh,
+      w: perSide * rw,
+      h: corridor,
+    });
+    hallways++;
   }
 
   const totalFloorsHeight = cfg.floors * floorHeight + (cfg.floors - 1) * floorGap;
@@ -130,6 +142,6 @@ export function generateHotel(cfg: HotelConfig): GeneratedHotel {
   return {
     rooms,
     floorPlan: { width, height, rooms: fpRooms },
-    summary: { guestRooms, amenities, floors: cfg.floors },
+    summary: { guestRooms, amenities: amenities + hallways, floors: cfg.floors },
   };
 }

@@ -409,9 +409,9 @@ export default function WiFiSiteSurvey() {
 function APRow({ ap, selected, onSelect }: { ap: AccessPoint; selected: boolean; onSelect: () => void }) {
   const roleBadge =
     ap.role === "gateway"
-      ? { label: "Gateway", bg: "rgba(66,133,244,0.12)", fg: "var(--gh-blue)" }
+      ? { label: "Gateway / Modem", bg: "rgba(66,133,244,0.12)", fg: "var(--gh-blue)" }
       : ap.role === "mesh"
-        ? { label: "Mesh", bg: "rgba(52,168,83,0.12)", fg: "var(--gh-green)" }
+        ? { label: "Mesh Node", bg: "rgba(52,168,83,0.12)", fg: "var(--gh-green)" }
         : { label: "Repeater", bg: "rgba(251,188,5,0.14)", fg: "#B8860B" };
   return (
     <button
