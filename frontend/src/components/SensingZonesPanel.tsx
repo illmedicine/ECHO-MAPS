@@ -39,10 +39,17 @@ export default function SensingZonesPanel() {
     return { pub, priv };
   }, [rooms, cameraRoomIds]);
 
-  const occupancyFor = (roomId: string) =>
-    entities.filter((e) => e.roomId === roomId && e.status === "active" && !e.isBeacon).length;
-
-  const totalPublicOccupancy = classified.pub.reduce((sum, r) => sum + occupancyFor(r.id), 0);
+  const publicIds = useMemo(() => new Set(classified.pub.map((r) => r.id)), [classified.pub]);
+  const activePublic = useMemo(
+    () => entities.filter((e) => publicIds.has(e.roomId) && e.status === "active" && !e.isBeacon),
+    [entities, publicIds],
+  );
+  // People occupancy per public area (public spaces — location is fine to show).
+  const peopleFor = (roomId: string) =>
+    activePublic.filter((e) => e.roomId === roomId && e.type === "person").length;
+  const totalPublicPeople = activePublic.filter((e) => e.type === "person").length;
+  // Pets: AGGREGATE count only, no per-room/location breakdown.
+  const totalPublicPets = activePublic.filter((e) => e.type === "pet").length;
 
   const toggle = () => {
     const next = !publicOnly;
@@ -75,7 +82,7 @@ export default function SensingZonesPanel() {
       </div>
 
       {/* Summary row */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
         <div className="p-3 rounded-xl text-center" style={{ backgroundColor: "rgba(52,168,83,0.1)" }}>
           <p className="text-xl font-bold" style={{ color: "var(--gh-green)" }}>{classified.pub.length}</p>
           <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Public areas sensed</p>
@@ -85,16 +92,25 @@ export default function SensingZonesPanel() {
           <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Private rooms excluded</p>
         </div>
         <div className="p-3 rounded-xl text-center" style={{ backgroundColor: "rgba(66,133,244,0.1)" }}>
-          <p className="text-xl font-bold" style={{ color: "var(--gh-blue)" }}>{totalPublicOccupancy}</p>
+          <p className="text-xl font-bold" style={{ color: "var(--gh-blue)" }}>{totalPublicPeople}</p>
           <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>People in public areas</p>
         </div>
+        <div className="p-3 rounded-xl text-center" style={{ backgroundColor: "rgba(251,188,5,0.12)" }}>
+          <p className="text-xl font-bold" style={{ color: "#B8860B" }}>{totalPublicPets}</p>
+          <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Pets (est.) 🐾</p>
+        </div>
       </div>
+
+      <p className="text-[10px] mb-3 -mt-1" style={{ color: "var(--gh-text-muted)" }}>
+        Pet count is an aggregate estimate across public areas only — no room or location is shown.
+        Pets in private guest rooms are not sensed; use guest registration for in-room pet compliance.
+      </p>
 
       {/* Public areas list */}
       <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Sensing Active</p>
       <div className="space-y-1.5 mb-4">
         {classified.pub.map((r) => {
-          const occ = occupancyFor(r.id);
+          const occ = peopleFor(r.id);
           const hasCam = cameraRoomIds.has(r.id);
           return (
             <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: "var(--gh-card)", border: "1px solid rgba(52,168,83,0.25)" }}>
