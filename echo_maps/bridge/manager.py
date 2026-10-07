@@ -2,7 +2,7 @@
 
 Manages the lifecycle of connected Illy Bridge hardware nodes (FNK0086),
 including device registration, CSI stream management, room calibration,
-camera/audio data relay, and LED status control.
+audio data relay, and LED status control.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from echo_maps.bridge.protocol import (
     BridgePacket,
     BridgeStatus,
     build_command_packet,
-    parse_camera_frame_payload,
     parse_audio_sample_payload,
     parse_csi_payload,
 )
@@ -41,7 +40,6 @@ class BridgeDevice:
     ip_address: str = ""
     # FNK0086 capabilities
     model: str = "FNK0086"
-    has_camera: bool = True
     has_mic: bool = True
     has_speaker: bool = True
     has_lcd: bool = True
@@ -57,13 +55,12 @@ class BridgeManager:
     """Manages connected Illy Bridge devices (FNK0086).
 
     Handles device discovery, registration, user binding, command dispatch,
-    room calibration orchestration, camera/audio data relay, and CSI stream routing.
+    room calibration orchestration, audio data relay, and CSI stream routing.
     """
 
     def __init__(self) -> None:
         self._devices: dict[str, BridgeDevice] = {}
         self._csi_callbacks: dict[str, list] = {}
-        self._camera_callbacks: dict[str, list] = {}
         self._audio_callbacks: dict[str, list] = {}
         self._discovered: dict[str, dict] = {}  # Devices found via local scan
 
@@ -178,19 +175,6 @@ class BridgeManager:
             logger.warning("vital_alert", device_id=device_id)
             return None
 
-        if packet.event == BridgeEvent.CAMERA_FRAME:
-            data = parse_camera_frame_payload(packet.payload)
-            logger.debug(
-                "camera_frame_received",
-                device_id=device_id,
-                room=data.get("room_name"),
-                jpeg_size=data.get("jpeg_size"),
-            )
-            # Notify camera callbacks
-            for cb in self._camera_callbacks.get(device_id, []):
-                asyncio.get_event_loop().call_soon(cb, data)
-            return data
-
         if packet.event == BridgeEvent.AUDIO_SAMPLE:
             data = parse_audio_sample_payload(packet.payload)
             logger.debug(
@@ -202,14 +186,6 @@ class BridgeManager:
             for cb in self._audio_callbacks.get(device_id, []):
                 asyncio.get_event_loop().call_soon(cb, data)
             return data
-
-        if packet.event == BridgeEvent.ROOM_SCAN_COMPLETE:
-            logger.info("room_scan_complete", device_id=device_id)
-            if device is not None:
-                device.status = BridgeStatus.IDLE
-                if device.current_room and device.current_room not in device.rooms_calibrated:
-                    device.rooms_calibrated.append(device.current_room)
-            return None
 
         return None
 
@@ -235,7 +211,6 @@ class BridgeManager:
                     "firmware_version": device.firmware_version,
                     "status": device.status.name.lower(),
                     "is_bound": device.is_bound,
-                    "has_camera": device.has_camera,
                     "has_mic": device.has_mic,
                     "has_speaker": device.has_speaker,
                     "has_lcd": device.has_lcd,
@@ -285,36 +260,8 @@ class BridgeManager:
         return True
 
     # ──────────────────────────────────────────────
-    # Room Calibration — walk-through room scanning
+    # Presence scans
     # ──────────────────────────────────────────────
-
-    async def start_room_calibration(
-        self,
-        device_id: str,
-        environment_id: str,
-        room_name: str,
-    ) -> bool:
-        """Start a room calibration scan (camera + mic + CSI) on a bridge."""
-        device = self._devices.get(device_id)
-        if device is None or not device.is_bound:
-            return False
-
-        device.environment_id = environment_id
-        device.current_room = room_name
-        device.status = BridgeStatus.ROOM_SCANNING
-
-        # Send room name then start command
-        room_payload = room_name.encode("utf-8")[:63]
-        await self.send_command(device_id, BridgeCommand.SET_ROOM_NAME, room_payload)
-        await self.send_command(device_id, BridgeCommand.START_ROOM_SCAN)
-
-        logger.info(
-            "room_calibration_started",
-            device_id=device_id,
-            environment_id=environment_id,
-            room=room_name,
-        )
-        return True
 
     async def start_presence_scan(
         self,
@@ -322,7 +269,7 @@ class BridgeManager:
         environment_id: str,
         room_name: str,
     ) -> bool:
-        """Start a presence detection scan (CSI + mic, no camera) on a bridge."""
+        """Start a presence detection scan (CSI + mic) on a bridge."""
         device = self._devices.get(device_id)
         if device is None or not device.is_bound:
             return False
@@ -343,19 +290,19 @@ class BridgeManager:
         )
         return True
 
-    async def stop_room_scan(self, device_id: str) -> bool:
-        """Stop any active room scan or presence detection."""
+    async def stop_scan(self, device_id: str) -> bool:
+        """Stop any active presence scan."""
         device = self._devices.get(device_id)
         if device is None:
             return False
 
-        await self.send_command(device_id, BridgeCommand.STOP_ROOM_SCAN)
+        await self.send_command(device_id, BridgeCommand.STOP_SCAN)
         device.status = BridgeStatus.IDLE
 
         if device.current_room and device.current_room not in device.rooms_calibrated:
             device.rooms_calibrated.append(device.current_room)
 
-        logger.info("room_scan_stopped", device_id=device_id, room=device.current_room)
+        logger.info("scan_stopped", device_id=device_id, room=device.current_room)
         return True
 
     def get_calibration_progress(self, device_id: str) -> dict | None:
@@ -374,12 +321,8 @@ class BridgeManager:
         }
 
     # ──────────────────────────────────────────────
-    # Callbacks for camera/audio data
+    # Callbacks for audio data
     # ──────────────────────────────────────────────
-
-    def on_camera_frame(self, device_id: str, callback) -> None:
-        """Register a callback for camera frames from a bridge."""
-        self._camera_callbacks.setdefault(device_id, []).append(callback)
 
     def on_audio_sample(self, device_id: str, callback) -> None:
         """Register a callback for audio samples from a bridge."""

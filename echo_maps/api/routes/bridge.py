@@ -3,8 +3,7 @@
 Provides endpoints for:
   - Discovering Illy Bridge devices on the local network
   - Binding/unbinding bridges to Echo Vue user accounts
-  - Initiating room calibration and presence detection scans
-  - Streaming calibration data (camera + mic + CSI) to the cloud AI engine
+  - Initiating presence detection scans
   - Monitoring bridge status and calibration progress
 """
 
@@ -38,7 +37,6 @@ class BridgeDiscoverRequest(BaseModel):
     ip_address: str
     model: str = "FNK0086"
     firmware_version: str = "2.0.0"
-    has_camera: bool = True
     has_mic: bool = True
     has_speaker: bool = True
     has_lcd: bool = True
@@ -55,7 +53,6 @@ class BridgeOut(BaseModel):
     status: str
     is_bound: bool
     ip_address: str = ""
-    has_camera: bool = True
     has_mic: bool = True
     has_speaker: bool = True
     has_lcd: bool = True
@@ -171,41 +168,12 @@ async def get_bridge(
 
 # ── Room Calibration ──
 
-@router.post("/calibrate/start", response_model=CalibrationProgressOut)
-async def start_room_calibration(
-    body: RoomCalibrationRequest,
-    user: TokenPayload = Depends(get_current_user),
-) -> CalibrationProgressOut:
-    """Start a room calibration scan using the bridge's camera + mic + CSI.
-
-    The user walks into a room with the bridge and initiates calibration.
-    Camera captures visual data for skeleton extraction, mic captures room
-    acoustics, and CSI provides RF fingerprinting — all sent to the cloud
-    AI engine for processing.
-    """
-    manager = get_bridge_manager()
-    device = manager.get_device(body.device_id)
-    if device is None:
-        raise HTTPException(status_code=404, detail="Bridge not found")
-    if device.user_id != user.user_id:
-        raise HTTPException(status_code=403, detail="Not your bridge")
-
-    success = await manager.start_room_calibration(
-        body.device_id, body.environment_id, body.room_name
-    )
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to start calibration")
-
-    progress = manager.get_calibration_progress(body.device_id)
-    return CalibrationProgressOut(**progress)
-
-
 @router.post("/calibrate/presence", response_model=CalibrationProgressOut)
 async def start_presence_scan(
     body: RoomCalibrationRequest,
     user: TokenPayload = Depends(get_current_user),
 ) -> CalibrationProgressOut:
-    """Start a presence detection scan (CSI + mic, no camera).
+    """Start a presence detection scan (CSI + mic).
 
     Used for detecting occupancy and movement patterns in a room
     without the visual component.
@@ -240,7 +208,7 @@ async def stop_calibration(
     if device.user_id != user.user_id:
         raise HTTPException(status_code=403, detail="Not your bridge")
 
-    success = await manager.stop_room_scan(body.device_id)
+    success = await manager.stop_scan(body.device_id)
     return {"status": "stopped" if success else "failed", "device_id": body.device_id}
 
 
@@ -263,7 +231,7 @@ async def get_calibration_progress(
 async def bridge_data_stream(websocket: WebSocket, device_id: str) -> None:
     """WebSocket for streaming bridge calibration data to the cloud.
 
-    The bridge sends camera frames, audio samples, and CSI data.
+    The bridge sends audio samples and CSI data.
     The cloud AI engine processes this data and pushes results back
     to the Echo Vue web interface.
 
@@ -321,7 +289,6 @@ def _device_to_out(device) -> BridgeOut:
         status=device.status.name.lower(),
         is_bound=device.is_bound,
         ip_address=device.ip_address,
-        has_camera=device.has_camera,
         has_mic=device.has_mic,
         has_speaker=device.has_speaker,
         has_lcd=device.has_lcd,

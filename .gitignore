@@ -38,3 +38,4 @@ Thumbs.db
 *.pem
 *.key
 credentials.json
+firmware/src/secrets.h

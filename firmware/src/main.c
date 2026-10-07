@@ -2,15 +2,15 @@
  * Illy Bridge Firmware — Freenove ESP32-S3 FNK0086
  *
  * Portable calibration bridge for Echo Vue / Echo Maps.
- * Hardware: ESP32-S3 + OV2640 camera + I2S mic + I2S speaker + ST7789 LCD
+ * Hardware: ESP32-S3 + I2S mic + I2S speaker + ST7789 LCD
  *
  * Flow:
  *   1. Boot → WiFi provisioning (stored creds or SoftAP fallback)
  *   2. mDNS advertisement as "_illybridge._tcp" for local discovery
  *   3. HTTP API server for Echo Vue web app commands
  *   4. LCD UI for walk-through calibration mode
- *   5. Camera + Mic + CSI capture → streamed to cloud AI engine
- *   6. LED status: Blue=calibrating, Green=monitoring, Red=offline
+ *   5. Continuous WiFi CSI presence sensing (public areas) → HTTPS to Echo Maps API
+ *   6. LED status: Green=monitoring, Red=offline
  */
 
 #include <stdio.h>
@@ -24,7 +24,6 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
-#include "esp_tls.h"
 #include "esp_mac.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
@@ -34,15 +33,13 @@
 
 /* Local modules */
 #include "lcd_ui.h"
-#include "camera_capture.h"
+#include "presence_csi.h"
 #include "bridge_httpd.h"
 #include "audio_io.h"
 
 /* ── Configuration ── */
 #define ILLY_BRIDGE_VERSION       "2.0.0"
 #define CSI_DEFAULT_SAMPLE_RATE   100   /* Hz */
-#define CLOUD_HOST                "api.echomaps.illyrobotics.com"
-#define CLOUD_PORT                8443
 #define PACKET_MAGIC              0x494C  /* "IL" */
 #define WIFI_SOFTAP_SSID          "IllyBridge-Setup"
 #define WIFI_MAX_RETRY            10
@@ -50,7 +47,7 @@
 #define MDNS_SERVICE_PROTO        "_tcp"
 #define MDNS_SERVICE_PORT         80
 
-/* LED GPIO pins — avoid camera (4,5,6-13,15-18), I2S (2,40-42), LCD (0,20,21)
+/* LED GPIO pins — avoid I2S (2,40-42), LCD (0,20,21)
  * NOTE: GPIO1 conflicts with FT6336U touch SCL — reassign if touch is wired */
 #define LED_BLUE_PIN   GPIO_NUM_1
 #define LED_GREEN_PIN  GPIO_NUM_3
@@ -74,7 +71,7 @@ typedef enum {
 /* ── Calibration mode ── */
 typedef enum {
     CAL_MODE_IDLE = 0,
-    CAL_MODE_ROOM_SCAN,       /* Camera + mic + CSI capture */
+    CAL_MODE_CALIBRATE,        /* legacy manual calibration */
     CAL_MODE_PRESENCE_DETECT, /* CSI + mic for presence */
     CAL_MODE_UPLOADING,       /* Sending data to cloud */
 } calibration_mode_t;
@@ -90,32 +87,12 @@ char current_room_name[64] = {0};
 static char bound_user_id[128] = {0};
 static bool is_user_bound = false;
 
-/* Cloud connection state */
-static esp_tls_t *cloud_tls = NULL;
-static bool cloud_connected = false;
-
-/* CSI frame queue for streaming */
-static QueueHandle_t csi_queue = NULL;
-#define CSI_QUEUE_SIZE 32
-
-typedef struct {
-    int64_t timestamp_us;
-    int8_t  rssi;
-    uint8_t n_sub;
-    uint8_t antenna_config;
-    int8_t  csi_data[512]; /* max 256 subcarriers × 2 antennas */
-    uint16_t data_len;
-} csi_frame_t;
-
 /* ── Forward declarations ── */
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data);
 static void wifi_init_sta(const char *ssid, const char *pass);
 static void wifi_init_softap(void);
 static void init_mdns(void);
 static void generate_device_id(void);
-static void cloud_connect_task(void *arg);
-static void csi_stream_task(void *arg);
-static void calibration_task(void *arg);
 
 /* ── LED Control ── */
 static void set_led_status(bridge_status_t status) {
@@ -135,25 +112,6 @@ static void init_leds(void) {
     };
     gpio_config(&io_conf);
     set_led_status(BRIDGE_OFFLINE);
-}
-
-/* ── CSI Callback ── */
-static void wifi_csi_cb(void *ctx, wifi_csi_info_t *info) {
-    if (info == NULL || info->buf == NULL) return;
-    if (current_status != BRIDGE_CALIBRATING && current_status != BRIDGE_MONITORING) return;
-
-    csi_frame_t frame = {0};
-    frame.timestamp_us = esp_timer_get_time();
-    frame.rssi = info->rx_ctrl.rssi;
-    frame.n_sub = info->len / 2;  /* I/Q pairs */
-    frame.antenna_config = 0x22;  /* 2x2 MIMO */
-    frame.data_len = info->len > (int)sizeof(frame.csi_data) ? (int)sizeof(frame.csi_data) : info->len;
-    memcpy(frame.csi_data, info->buf, frame.data_len);
-
-    /* Non-blocking enqueue — drop oldest if full */
-    if (csi_queue != NULL) {
-        xQueueSend(csi_queue, &frame, 0);
-    }
 }
 
 /* ── WiFi ── */
@@ -195,20 +153,6 @@ static void wifi_init_sta(const char *ssid, const char *pass) {
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
 
-    /* Enable CSI collection */
-    wifi_csi_config_t csi_config = {
-        .lltf_en = true,
-        .htltf_en = true,
-        .stbc_htltf2_en = true,
-        .ltf_merge_en = true,
-        .channel_filter_en = false,
-        .manu_scale = false,
-        .shift = false,
-    };
-    esp_wifi_set_csi_config(&csi_config);
-    esp_wifi_set_csi_rx_cb(wifi_csi_cb, NULL);
-    esp_wifi_set_csi(true);
-
     esp_wifi_start();
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
@@ -216,7 +160,7 @@ static void wifi_init_sta(const char *ssid, const char *pass) {
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "WiFi connected to %s", ssid);
-        set_led_status(BRIDGE_IDLE);
+        set_led_status(BRIDGE_MONITORING);
 
         /* Get IP for LCD display */
         esp_netif_ip_info_t ip_info;
@@ -227,6 +171,9 @@ static void wifi_init_sta(const char *ssid, const char *pass) {
         }
         lcd_set_wifi_status(true, ssid, ip_str);
         lcd_show_status("WiFi Connected", ssid);
+
+        /* Always-on CSI presence sensing: no manual scan needed. */
+        presence_csi_start();
     } else {
         ESP_LOGW(TAG, "WiFi failed — entering SoftAP + WiFi Setup");
         wifi_init_softap();
@@ -276,12 +223,11 @@ static void init_mdns(void) {
     mdns_txt_item_t txt[] = {
         {"version", ILLY_BRIDGE_VERSION},
         {"device_id", bridge_device_id},
-        {"has_camera", "true"},
         {"has_mic", "true"},
         {"has_speaker", "true"},
         {"has_lcd", "true"},
     };
-    mdns_service_txt_set(MDNS_SERVICE_TYPE, MDNS_SERVICE_PROTO, txt, 6);
+    mdns_service_txt_set(MDNS_SERVICE_TYPE, MDNS_SERVICE_PROTO, txt, 5);
 
     ESP_LOGI(TAG, "mDNS: advertising as illy-bridge.local (%s._illybridge._tcp)", bridge_device_id);
 }
@@ -294,114 +240,6 @@ static void generate_device_id(void) {
              "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     ESP_LOGI(TAG, "Bridge Device ID: %s", bridge_device_id);
-}
-
-/* ── Cloud TLS connection task ── */
-static void cloud_connect_task(void *arg) {
-    while (1) {
-        if (current_status == BRIDGE_OFFLINE || current_status == BRIDGE_PROVISIONING) {
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            continue;
-        }
-
-        if (!cloud_connected) {
-            ESP_LOGI(TAG, "Connecting to cloud: %s:%d", CLOUD_HOST, CLOUD_PORT);
-            esp_tls_cfg_t cfg = {
-                .skip_common_name = false,
-            };
-            cloud_tls = esp_tls_init();
-            if (esp_tls_conn_new_sync(CLOUD_HOST, strlen(CLOUD_HOST), CLOUD_PORT, &cfg, cloud_tls) == 1) {
-                cloud_connected = true;
-                ESP_LOGI(TAG, "Cloud TLS connected");
-                lcd_show_status("Cloud Connected", CLOUD_HOST);
-            } else {
-                ESP_LOGW(TAG, "Cloud connection failed, retrying in 10s");
-                esp_tls_conn_destroy(cloud_tls);
-                cloud_tls = NULL;
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(10000));
-    }
-}
-
-/* ── CSI streaming task — forwards queued frames to cloud ── */
-static void csi_stream_task(void *arg) {
-    csi_frame_t frame;
-    while (1) {
-        if (xQueueReceive(csi_queue, &frame, pdMS_TO_TICKS(100)) == pdTRUE) {
-            if (cloud_connected && cloud_tls != NULL) {
-                /* Build IL packet header */
-                uint8_t header[16];
-                header[0] = 0x49; header[1] = 0x4C; /* "IL" magic */
-                header[2] = 0x02; /* version 2 */
-                header[3] = 0x01; /* CSI_FRAME event */
-                /* sequence number (simplified) */
-                static uint32_t seq = 0;
-                seq++;
-                header[4] = (seq >> 24) & 0xFF;
-                header[5] = (seq >> 16) & 0xFF;
-                header[6] = (seq >> 8)  & 0xFF;
-                header[7] = seq & 0xFF;
-                /* payload length */
-                uint32_t plen = 12 + frame.data_len;
-                header[8]  = (plen >> 24) & 0xFF;
-                header[9]  = (plen >> 16) & 0xFF;
-                header[10] = (plen >> 8)  & 0xFF;
-                header[11] = plen & 0xFF;
-
-                esp_tls_conn_write(cloud_tls, header, 12);
-                esp_tls_conn_write(cloud_tls, (uint8_t *)&frame, 12 + frame.data_len);
-            }
-        }
-    }
-}
-
-/* ── Calibration task — orchestrates room scan ── */
-static void calibration_task(void *arg) {
-    while (1) {
-        if (cal_mode == CAL_MODE_ROOM_SCAN && current_status == BRIDGE_CALIBRATING) {
-            /* Capture camera frame */
-            camera_frame_t *cam_frame = camera_capture_frame();
-            if (cam_frame != NULL) {
-                /* Capture audio snippet (200ms) for room acoustics */
-                audio_sample_t *audio = audio_capture_snippet(200);
-
-                /* Package and send to cloud:
-                 * Camera frame for visual calibration (skeleton extraction)
-                 * Audio for room acoustic fingerprinting
-                 * CSI frames arrive via csi_stream_task
-                 */
-                if (cloud_connected && cloud_tls != NULL) {
-                    /* Camera payload: event 0x10 (CAMERA_FRAME) */
-                    bridge_send_camera_frame(cloud_tls, cam_frame, current_room_name);
-                    if (audio != NULL) {
-                        bridge_send_audio_sample(cloud_tls, audio, current_room_name);
-                        audio_free_sample(audio);
-                    }
-                }
-                camera_free_frame(cam_frame);
-            }
-
-            /* Update LCD with calibration progress */
-            lcd_show_calibrating(current_room_name, cal_mode);
-
-            /* ~10 fps for camera during calibration */
-            vTaskDelay(pdMS_TO_TICKS(100));
-
-        } else if (cal_mode == CAL_MODE_PRESENCE_DETECT) {
-            /* Presence detection: CSI + mic only (no camera) */
-            audio_sample_t *audio = audio_capture_snippet(500);
-            if (audio != NULL && cloud_connected) {
-                bridge_send_audio_sample(cloud_tls, audio, current_room_name);
-                audio_free_sample(audio);
-            }
-            lcd_show_presence_scan(current_room_name);
-            vTaskDelay(pdMS_TO_TICKS(500));
-
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(200));
-        }
-    }
 }
 
 /* ── NVS helpers for WiFi credentials ── */
@@ -446,9 +284,9 @@ void bridge_unbind_user(void) {
 
 void bridge_start_room_calibration(const char *room_name) {
     strncpy(current_room_name, room_name, sizeof(current_room_name) - 1);
-    cal_mode = CAL_MODE_ROOM_SCAN;
+    cal_mode = CAL_MODE_CALIBRATE;
     set_led_status(BRIDGE_CALIBRATING);
-    lcd_show_calibrating(room_name, CAL_MODE_ROOM_SCAN);
+    lcd_show_calibrating(room_name, CAL_MODE_CALIBRATE);
     ESP_LOGI(TAG, "Room calibration started: %s", room_name);
 }
 
@@ -481,17 +319,12 @@ void app_main(void) {
     /* Generate device ID from MAC */
     generate_device_id();
 
-    /* Initialize hardware — camera FIRST so it grabs its GDMA channel
-       before SPI LCD init (avoids DMA channel conflict on ESP32-S3) */
+    /* Initialize hardware */
     init_leds();
-    camera_init();
     audio_init();
 
     lcd_init();
     lcd_show_boot(ILLY_BRIDGE_VERSION, bridge_device_id);
-
-    /* Create CSI queue */
-    csi_queue = xQueueCreate(CSI_QUEUE_SIZE, sizeof(csi_frame_t));
 
     /* Common network / WiFi init — must happen before either STA or AP path */
     ESP_ERROR_CHECK(esp_netif_init());
@@ -520,11 +353,6 @@ void app_main(void) {
 
     /* Start HTTP server for Echo Vue local communication */
     bridge_httpd_start();
-
-    /* Start background tasks */
-    xTaskCreatePinnedToCore(cloud_connect_task, "cloud_conn", 4096, NULL, 3, NULL, 0);
-    xTaskCreatePinnedToCore(csi_stream_task, "csi_stream", 4096, NULL, 5, NULL, 1);
-    xTaskCreatePinnedToCore(calibration_task, "cal_task", 8192, NULL, 4, NULL, 1);
 
     ESP_LOGI(TAG, "Bridge ready. Device ID: %s", bridge_device_id);
 

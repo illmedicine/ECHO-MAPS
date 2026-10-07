@@ -9,8 +9,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from echo_maps.api.routes import auth, bridge, calibration, environments, health, live
-from echo_maps.api.routes import room_scan
+from echo_maps.api.routes import auth, bridge, environments, health, presence
 from echo_maps.api.routes import settings as settings_routes
 from echo_maps.config import get_settings
 from echo_maps.db.session import init_db, close_db, create_tables, get_session
@@ -90,10 +89,8 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
     app.include_router(environments.router, prefix="/api/environments", tags=["environments"])
-    app.include_router(calibration.router, prefix="/api/calibration", tags=["calibration"])
     app.include_router(bridge.router, prefix="/api/bridge", tags=["bridge"])
-    app.include_router(live.router, prefix="/api/live", tags=["live"])
-    app.include_router(room_scan.router, prefix="/api/room-scan", tags=["room-scan"])
+    app.include_router(presence.router, prefix="/api/presence", tags=["presence"])
     app.include_router(settings_routes.router, prefix="/api", tags=["settings"])
 
     return app

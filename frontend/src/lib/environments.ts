@@ -466,62 +466,6 @@ export const ENV_TYPE_ICONS: Record<Environment["type"], string> = {
 };
 
 /* ══════════════════════════════════════════════
-   Camera Management
-   ══════════════════════════════════════════════ */
-
-export interface Camera {
-  id: string;
-  label: string;              // user-facing name, e.g. "OBS Virtual Camera"
-  deviceId: string;           // MediaDevices deviceId
-  roomId: string;             // linked Environment (room) id
-  environmentId: string;      // parent EchoEnvironment id
-  emoji?: string;             // custom emoji avatar
-  active: boolean;            // currently streaming / tuning
-  createdAt: string;
-}
-
-const CAMERA_STORAGE_KEY = "echo_vue_cameras";
-
-export function getCameras(): Camera[] {
-  if (typeof window === "undefined") return [];
-  const raw = _get(CAMERA_STORAGE_KEY);
-  return raw ? JSON.parse(raw) : [];
-}
-
-export function getCamerasForRoom(roomId: string): Camera[] {
-  return getCameras().filter((c) => c.roomId === roomId);
-}
-
-export function getCamerasForEnvironment(envId: string): Camera[] {
-  return getCameras().filter((c) => c.environmentId === envId);
-}
-
-export function addCamera(data: Omit<Camera, "id" | "createdAt">): Camera {
-  const cams = getCameras();
-  const cam: Camera = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-  cams.push(cam);
-  _set(CAMERA_STORAGE_KEY, JSON.stringify(cams));
-  return cam;
-}
-
-export function updateCamera(id: string, updates: Partial<Omit<Camera, "id" | "createdAt">>): Camera | null {
-  const cams = getCameras();
-  const idx = cams.findIndex((c) => c.id === id);
-  if (idx === -1) return null;
-  cams[idx] = { ...cams[idx], ...updates };
-  _set(CAMERA_STORAGE_KEY, JSON.stringify(cams));
-  return cams[idx];
-}
-
-export function removeCamera(id: string): boolean {
-  const cams = getCameras();
-  const filtered = cams.filter((c) => c.id !== id);
-  if (filtered.length === cams.length) return false;
-  _set(CAMERA_STORAGE_KEY, JSON.stringify(filtered));
-  return true;
-}
-
-/* ══════════════════════════════════════════════
    Device Corrections & MAC Prefix Database
    ══════════════════════════════════════════════ */
 

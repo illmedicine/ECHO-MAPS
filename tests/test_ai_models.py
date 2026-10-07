@@ -56,37 +56,3 @@ def test_activity_classifier():
     features = wf(x)
     logits = head(features)
     assert logits.shape == (2, 8)
-
-
-def test_crossl_forward():
-    from echo_maps.ai.cross_modal import CroSSLFramework
-
-    model = CroSSLFramework(n_keypoints=33, csi_dim=128, latent_dim=128)
-    csi_emb = torch.randn(4, 128)
-    keypoints = torch.randn(4, 33, 3)
-    out = model(csi_emb, keypoints)
-    assert "loss" in out
-    assert "accuracy" in out
-    assert out["loss"].requires_grad
-
-
-def test_pose_regressor():
-    from echo_maps.ai.cross_modal import PoseRegressor
-
-    model = PoseRegressor(csi_dim=128, n_keypoints=33)
-    z = torch.randn(2, 128)
-    pose = model(z)
-    assert pose.shape == (2, 33, 3)
-
-
-def test_calibration_gan_step():
-    from echo_maps.ai.calibration_gan import CalibrationGAN
-
-    gan = CalibrationGAN(latent_dim=128, n_keypoints=33, device="cpu")
-    latents = torch.randn(4, 128)
-    poses = torch.randn(4, 33, 3)
-    metrics = gan.train_step(latents, poses)
-    assert "d_loss" in metrics
-    assert "g_loss" in metrics
-    assert "pose_match_accuracy" in metrics
-    assert 0.0 <= metrics["pose_match_accuracy"] <= 1.0

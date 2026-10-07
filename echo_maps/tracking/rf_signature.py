@@ -1,6 +1,6 @@
 """RF Signature extraction — gait periodicity, breathing baseline, vector embedding.
 
-Phase 2: Anchor Extraction.  Before the camera turns off, the system extracts
+Phase 2: Anchor Extraction.  The system extracts
 unique trackable "anchors" from the RF data and compresses them into a secure
 mathematical vector (the user's RF Signature).
 """

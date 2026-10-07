@@ -8,17 +8,18 @@ All the insight of cameras — with none of the cameras.
 
 ## Overview
 
-Echo Maps transforms WiFi Channel State Information (CSI) into real-time 3D environmental awareness. After a brief camera-assisted calibration phase, the system monitors human activity, breathing patterns, and heart rate using only WiFi signals — no cameras required.
+Echo Maps transforms WiFi Channel State Information (CSI) into real-time presence awareness for public and common areas. A small Illy Bridge sensor on the property WiFi captures CSI continuously, learns each space's empty baseline on its own, and reports occupancy. There are no cameras and no manual scan step.
 
 ### How It Works
 
-| Step | User Action | What Happens |
-|:-----|:------------|:-------------|
-| **1. Setup** | Sign in via Google; name your Place ("Home Office") | Provisions storage + blank environment vector |
-| **2. Trace** | Run "2D3D Map Trace" (webcam ON + WiFi ON) | Vision-CSI pairing: skeletal keypoints stamped onto CSI signals |
-| **3. Training** | Perform movements (walk, sit, stand) | GAN trains to predict pose from CSI alone, using video as ground truth |
-| **4. Confidence** | AI reaches ~95% pose-match accuracy | UI notifies: *"Environment Synced. Camera no longer required."* |
-| **5. Live Mode** | Camera OFF | CSI-to-Latent-Diffusion pipeline renders 3D scene in real-time |
+| Step | What Happens |
+|:-----|:-------------|
+| **1. Place** | Plug an Illy Bridge into a hallway, lobby or other public area and join it to the property WiFi |
+| **2. Sense** | The bridge keeps WiFi frames flowing and reduces each second of real CSI to motion features |
+| **3. Learn** | The backend learns the space's empty-room baseline automatically (~30 s of quiet) |
+| **4. Detect** | Motion that departs from the baseline marks the zone as occupied, live in the dashboard |
+
+Private guest rooms are never sensed. The backend rejects ingest for zone names that look like guest rooms.
 
 ---
 
@@ -32,8 +33,8 @@ Echo Maps transforms WiFi Channel State Information (CSI) into real-time 3D envi
                                 │  ┌────────────┐  │     ┌────────────────┐
    ┌──────────┐   WebSocket     │  │ LatentCSI  │  │────▶│  PostgreSQL    │
    │ Frontend │◀───────────────▶│  │ WaveFormer │  │     │  Users/Envs    │
-   │ (Next.js)│   Pose+Vitals   │  │ CroSSL     │  │     └────────────────┘
-   └──────────┘                 │  │ GAN        │  │
+   │ (Next.js)│  Live presence  │  │ Presence   │  │     └────────────────┘
+   └──────────┘                 │  │ detector   │  │
                                 │  └────────────┘  │     ┌────────────────┐
                                 │                  │────▶│  Federated LoRA│
                                 └──────────────────┘     │  (Flower)      │
@@ -44,8 +45,6 @@ Echo Maps transforms WiFi Channel State Information (CSI) into real-time 3D envi
 
 - **LatentCSI** — VAE encoder mapping CSI amplitude/phase into generative latent space → 3D point clouds
 - **WaveFormer** — Temporal transformer for CSI sequences → activity recognition + vital sign extraction
-- **CroSSL** — Cross-modal self-supervised contrastive learning (CLIP-style) aligning CSI ↔ skeletal keypoints
-- **CalibrationGAN** — Adversarial training for camera-free pose prediction confidence scoring
 
 ### Hardware: Illy Bridge
 
@@ -55,7 +54,7 @@ Echo Maps transforms WiFi Channel State Information (CSI) into real-time 3D envi
 - **CSI Rate:** Configurable up to 100 Hz
 - **Edge AI:** TinyML noise filter (human vs pet vs background)
 - **Security:** TLS 1.3, Google OAuth 2.0 hardware handshake
-- **LED Ring:** Blue (calibrating) / Green (CSI-only) / Red (offline)
+- **LED Ring:** Green (sensing) / Red (offline)
 
 ---
 
@@ -66,16 +65,12 @@ echo_maps/
 ├── ai/                     # Core AI models
 │   ├── latent_csi.py       #   CSI → latent → 3D point cloud (VAE)
 │   ├── wave_former.py      #   Temporal transformer + vital sign heads
-│   ├── cross_modal.py      #   CroSSL contrastive alignment
-│   ├── calibration_gan.py  #   Adversarial pose confidence training
 │   └── losses.py           #   Training loss functions
 ├── csi/                    # CSI signal processing
 │   ├── parser.py           #   ESP32 / WiFi6 packet parsing
 │   ├── filters.py          #   Bandpass, hampel, phase sanitization
+│   ├── presence.py         #   Adaptive-baseline presence detector
 │   └── pointcloud.py       #   CSI → 3D point cloud conversion
-├── vision/                 # Camera-phase processing
-│   └── skeletal.py         #   MediaPipe 3D pose extraction
-├── calibration/            # 5-step calibration workflow engine
 ├── api/                    # FastAPI backend
 │   ├── app.py              #   Application factory
 │   ├── deps.py             #   Auth / JWT dependencies
@@ -156,7 +151,7 @@ npm run dev
 
 ## Privacy & Security
 
-- **No visual data stored** — Camera is only used during the brief calibration phase, then permanently disabled
+- **No cameras, no visual data** — sensing uses WiFi CSI only; public areas only
 - **Federated Learning** — Global model improves without accessing individual user data
 - **TLS 1.3** — All bridge-to-cloud communication encrypted
 - **Vector DB isolation** — Each environment's RF signatures stored in separate embeddings

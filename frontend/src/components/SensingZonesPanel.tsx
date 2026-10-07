@@ -4,52 +4,44 @@
  * SensingZonesPanel — shows where CSI sensing is permitted.
  *
  * Public/common areas (lobby, front desk, pool, hallways, …) are sensing-
- * enabled; private guest rooms are excluded. A networked camera marks a space
- * as public. This mirrors the privacy-first policy: no sensing in private rooms.
+ * enabled; private guest rooms are excluded. This mirrors the privacy-first
+ * policy: no sensing in private rooms. Live presence comes from LivePresencePanel.
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { getEnvironments, getCameras, getEntities, type Environment } from "@/lib/environments";
+import { getEnvironments, type Environment } from "@/lib/environments";
+import { useLivePresence } from "@/lib/useLivePresence";
 import { classifyRoom, isPublicOnlySensing, setPublicOnlySensing } from "@/lib/sensingZones";
 
 export default function SensingZonesPanel() {
   const [rooms, setRooms] = useState<Environment[]>([]);
-  const [cameraRoomIds, setCameraRoomIds] = useState<Set<string>>(new Set());
   const [publicOnly, setPublicOnly] = useState(true);
-  const [tick, setTick] = useState(0);
+  const live = useLivePresence(3000);
 
   useEffect(() => {
     setRooms(getEnvironments());
-    setCameraRoomIds(new Set(getCameras().map((c) => c.roomId)));
     setPublicOnly(isPublicOnlySensing());
-    const iv = setInterval(() => setTick((t) => t + 1), 3000);
-    return () => clearInterval(iv);
   }, []);
-
-  const entities = useMemo(() => getEntities(), [tick]);
 
   const classified = useMemo(() => {
     const pub: Environment[] = [];
     const priv: Environment[] = [];
     for (const r of rooms) {
-      const kind = classifyRoom({ id: r.id, name: r.name, type: r.type, hasNetworkedCamera: cameraRoomIds.has(r.id) });
+      const kind = classifyRoom({ id: r.id, name: r.name, type: r.type });
       (kind === "public" ? pub : priv).push(r);
     }
     pub.sort((a, b) => a.name.localeCompare(b.name));
     return { pub, priv };
-  }, [rooms, cameraRoomIds]);
+  }, [rooms]);
 
-  const publicIds = useMemo(() => new Set(classified.pub.map((r) => r.id)), [classified.pub]);
-  const activePublic = useMemo(
-    () => entities.filter((e) => publicIds.has(e.roomId) && e.status === "active" && !e.isBeacon),
-    [entities, publicIds],
-  );
-  // People occupancy per public area (public spaces — location is fine to show).
-  const peopleFor = (roomId: string) =>
-    activePublic.filter((e) => e.roomId === roomId && e.type === "person").length;
-  const totalPublicPeople = activePublic.filter((e) => e.type === "person").length;
-  // Pets: AGGREGATE count only, no per-room/location breakdown.
-  const totalPublicPets = activePublic.filter((e) => e.type === "pet").length;
+  // Occupancy comes from live CSI only. A sensor zone maps to a room by name.
+  const liveFor = (roomName: string) =>
+    live.zones.find((z) => z.zone.trim().toLowerCase() === roomName.trim().toLowerCase());
+  const totalOccupied = classified.pub.filter((r) => liveFor(r.name)?.present).length;
+  const reporting = classified.pub.filter((r) => {
+    const z = liveFor(r.name);
+    return z && z.state !== "offline";
+  }).length;
 
   const toggle = () => {
     const next = !publicOnly;
@@ -92,33 +84,27 @@ export default function SensingZonesPanel() {
           <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Private rooms excluded</p>
         </div>
         <div className="p-3 rounded-xl text-center" style={{ backgroundColor: "rgba(66,133,244,0.1)" }}>
-          <p className="text-xl font-bold" style={{ color: "var(--gh-blue)" }}>{totalPublicPeople}</p>
-          <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>People in public areas</p>
+          <p className="text-xl font-bold" style={{ color: "var(--gh-blue)" }}>{totalOccupied}</p>
+          <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Areas with presence (live CSI)</p>
         </div>
         <div className="p-3 rounded-xl text-center" style={{ backgroundColor: "rgba(251,188,5,0.12)" }}>
-          <p className="text-xl font-bold" style={{ color: "#B8860B" }}>{totalPublicPets}</p>
-          <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Pets (est.) 🐾</p>
+          <p className="text-xl font-bold" style={{ color: "#B8860B" }}>{reporting}</p>
+          <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>Areas with a live sensor</p>
         </div>
       </div>
 
-      <p className="text-[10px] mb-3 -mt-1" style={{ color: "var(--gh-text-muted)" }}>
-        Pet count is an aggregate estimate across public areas only — no room or location is shown.
-        Pets in private guest rooms are not sensed; use guest registration for in-room pet compliance.
-      </p>
-
       {/* Public areas list */}
-      <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Sensing Active</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Public areas</p>
       <div className="space-y-1.5 mb-4">
         {classified.pub.map((r) => {
-          const occ = peopleFor(r.id);
-          const hasCam = cameraRoomIds.has(r.id);
+          const z = liveFor(r.name);
+          const status = !z || z.state === "offline" ? "No live sensor" : z.state === "learning" ? "Calibrating" : z.present ? "Presence detected" : "Clear";
+          const color = !z || z.state === "offline" ? "var(--gh-text-muted)" : z.present ? "#B3261E" : "var(--gh-green)";
           return (
             <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: "var(--gh-card)", border: "1px solid rgba(52,168,83,0.25)" }}>
-              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: "var(--gh-green)" }} />
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
               <span className="text-sm flex-1 min-w-0 truncate">{r.emoji ?? "📍"} {r.name}</span>
-              {hasCam && <span className="text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: "rgba(66,133,244,0.12)", color: "var(--gh-blue)" }}>📷 camera</span>}
-              <span className="text-[10px] flex-shrink-0" style={{ color: "var(--gh-green)" }}>CSI Active</span>
-              {occ > 0 && <span className="text-[10px] flex-shrink-0" style={{ color: "var(--gh-blue)" }}>· {occ} 👤</span>}
+              <span className="text-[10px] flex-shrink-0" style={{ color }}>{status}</span>
             </div>
           );
         })}

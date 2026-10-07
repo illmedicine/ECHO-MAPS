@@ -454,7 +454,6 @@ static void render_calibrating(void) {
     draw_text(44, 32, room_name, C_WHITE, 2);
     draw_text(8, 62, "Mode: Full Scan", C_GREEN, 1);
     draw_hline(8, 76, 224, C_MID);
-    draw_text(8, 86, "Camera:  Active", C_GREEN, 1);
     draw_text(8, 100, "CSI:     Capturing", C_GREEN, 1);
     draw_text(8, 114, "Audio:   Recording", C_GREEN, 1);
     draw_progress(8, 140, 224, 20, cal_progress, C_CYAN, C_MID);

@@ -311,11 +311,6 @@ export default function BridgeManager({ onBridgeSelect }: BridgeManagerProps) {
 
               {/* Hardware capabilities */}
               <div className="flex gap-2 mb-3">
-                {bridge.has_camera && (
-                  <span className="px-2 py-0.5 bg-blue-900/30 text-blue-300 text-xs rounded">
-                    Camera
-                  </span>
-                )}
                 {bridge.has_mic && (
                   <span className="px-2 py-0.5 bg-green-900/30 text-green-300 text-xs rounded">
                     Mic

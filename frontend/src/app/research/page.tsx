@@ -714,11 +714,11 @@ function ArchitectureInfographic() {
         <rect x="20" y="99" width="340" height="12" fill="url(#igPhase1)" />
         <text x="190" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="white" fontFamily="system-ui">Phase 1: Setup &amp; Fusion</text>
 
-        {/* Camera icon */}
+        {/* Existing WiFi infrastructure */}
         <circle cx="70" cy="148" r="22" fill="#eff6ff" stroke="#3b82f6" strokeWidth="1.5" />
-        <text x="70" y="153" textAnchor="middle" fontSize="18">📷</text>
-        <text x="70" y="178" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">DensePose /</text>
-        <text x="70" y="188" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">MediaPipe</text>
+        <text x="70" y="153" textAnchor="middle" fontSize="18">🛜</text>
+        <text x="70" y="178" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">Existing WiFi</text>
+        <text x="70" y="188" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">Access Point</text>
 
         {/* Arrow cam → router */}
         <line x1="95" y1="148" x2="130" y2="148" stroke="#64748b" strokeWidth="1.5" markerEnd="url(#igArrow)" />
@@ -760,7 +760,7 @@ function ArchitectureInfographic() {
 
         {/* Phase 1 bottom label */}
         <text x="190" y="383" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="system-ui" fontStyle="italic">
-          Camera captures ground truth pose. CSI &amp; BLE mapped to skeletal structure.
+          Continuous CSI from existing WiFi. No camera, no manual scan.
         </text>
 
         {/* ══ ARROW Phase 1 → 2 ══ */}
@@ -792,7 +792,7 @@ function ArchitectureInfographic() {
           { icon: "🔗", label: "CSI Anchor Protocol", desc: "Re-tethers rotating BLE MACs via spatial alignment" },
           { icon: "🧬", label: "LatentCSI Deep Embedding", desc: "512-dim biometric vector: gait, mass, bone density" },
           { icon: "📊", label: "SpatialAttentionGAN", desc: "Subcarrier attention for dominant motion features" },
-          { icon: "🎯", label: "95% Confidence Threshold", desc: "Camera deactivates once profile converges" },
+          { icon: "🎯", label: "95% Confidence Threshold", desc: "Empty-space baseline adapts automatically" },
         ].map((m, i) => (
           <g key={i}>
             <text x="425" y={280 + i * 22} fontSize="12">{m.icon}</text>
@@ -814,11 +814,11 @@ function ArchitectureInfographic() {
         <rect x="740" y="99" width="340" height="12" fill="url(#igPhase3)" />
         <text x="910" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="white" fontFamily="system-ui">Phase 3: Live No-Cam Mode</text>
 
-        {/* Camera off icon */}
+        {/* No-camera badge */}
         <circle cx="820" cy="148" r="20" fill="#f0fdf4" stroke="#10b981" strokeWidth="1.5" />
         <text x="820" y="153" textAnchor="middle" fontSize="14">📷</text>
         <line x1="806" y1="138" x2="834" y2="158" stroke="#ef4444" strokeWidth="2.5" />
-        <text x="820" y="178" textAnchor="middle" fontSize="8" fill="#059669" fontWeight="600" fontFamily="system-ui">Camera OFF</text>
+        <text x="820" y="178" textAnchor="middle" fontSize="8" fill="#059669" fontWeight="600" fontFamily="system-ui">No camera</text>
 
         {/* Digital twin */}
         <circle cx="910" cy="148" r="20" fill="#f0fdf4" stroke="#10b981" strokeWidth="1.5" />
@@ -893,10 +893,10 @@ function ArchitectureInfographic() {
         </text>
         {[
           { step: "1", label: "Place Illy Bridge", icon: "📡" },
-          { step: "2", label: "Camera Calibration", icon: "📷" },
-          { step: "3", label: "Walk the Room", icon: "🚶" },
+          { step: "2", label: "Auto Baseline", icon: "📊" },
+          { step: "3", label: "Power On", icon: "🔌" },
           { step: "4", label: "AI Learns You", icon: "🧠" },
-          { step: "5", label: "Camera Off Forever", icon: "✅" },
+          { step: "5", label: "No Camera, Ever", icon: "✅" },
           { step: "6", label: "Live Digital Twin", icon: "🏠" },
         ].map((s, i) => {
           const sx = 80 + i * 170;

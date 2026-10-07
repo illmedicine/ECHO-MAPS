@@ -13,6 +13,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 
 const WiFiSiteSurvey = dynamic(() => import("@/components/WiFiSiteSurvey"), { ssr: false });
+const LivePresencePanel = dynamic(() => import("@/components/LivePresencePanel"), { ssr: false });
 const SensingZonesPanel = dynamic(() => import("@/components/SensingZonesPanel"), { ssr: false });
 
 export default function SurveyPage() {
@@ -29,6 +30,10 @@ export default function SurveyPage() {
           <p className="mt-1 text-sm md:text-base" style={{ color: "var(--gh-text-muted)" }}>
             Map a property&apos;s WiFi coverage, repeaters and dead zones using CSI-aware RF sensing.
           </p>
+        </div>
+
+        <div className="mb-6">
+          <LivePresencePanel />
         </div>
 
         <div className="mb-6">

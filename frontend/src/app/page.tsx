@@ -70,9 +70,9 @@ export default function Home() {
         <p className="text-sm text-center mb-8" style={{ color: "var(--gh-text-muted)" }}>Set up in minutes, works quietly forever.</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
-            { step: "1", title: "Walk the Room", desc: "A quick camera scan teaches Echo Vue your space", icon: "🚶" },
-            { step: "2", title: "Camera Off", desc: "The camera turns off for good. WiFi takes over.", icon: "🔒" },
-            { step: "3", title: "Live Awareness", desc: "Know who's where, their activity, even vital signs", icon: "💡" },
+            { step: "1", title: "Place the Bridge", desc: "Plug a small WiFi sensor into a hallway, lobby or common area", icon: "📡" },
+            { step: "2", title: "It Learns Itself", desc: "It learns the empty-space baseline automatically. No scan, no camera.", icon: "🔒" },
+            { step: "3", title: "Live Awareness", desc: "See in real time when a public area is occupied", icon: "💡" },
             { step: "4", title: "Automate", desc: "Lights, locks, alerts — all hands-free", icon: "🎯" },
           ].map((s) => (
             <div key={s.step} className="text-center p-5 rounded-2xl shadow-sm" style={{ backgroundColor: "var(--gh-surface)" }}>

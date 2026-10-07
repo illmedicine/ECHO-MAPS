@@ -19,7 +19,6 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const SYNCABLE_KEYS = [
   "echo_vue_environments",
   "echo_maps_environments",
-  "echo_vue_cameras",
   "echo_vue_entities",
   "echo_vue_floor_plans",
   "echo_vue_household",

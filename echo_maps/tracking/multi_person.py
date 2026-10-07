@@ -1,9 +1,7 @@
-"""Multi-person RF tracker — the full handshake-to-handoff pipeline.
+"""Multi-person RF tracker — CSI-only tracking pipeline.
 
-Orchestrates all 5 phases of the Visual Handshake to RF Handoff:
-  Phase 1: Visual Handshake        — dual-data fusion & skeleton-RF blob pairing
+  Phase 1: Blob Registration       — a CSI-derived RF blob becomes a tracked person
   Phase 2: Anchor Extraction       — gait/breathing/mass RF Signature building
-  Phase 3: RF Handoff              — confidence threshold & camera termination
   Phase 4: Trajectory Tracking     — Kalman-filtered momentum tracking + collision
   Phase 5: Uncertainty Loop        — confidence decay, ghost tagging, re-acquisition
 """
@@ -33,7 +31,6 @@ logger = structlog.get_logger()
 
 # ── Constants ──
 
-CONFIDENCE_LIVE_THRESHOLD = 0.90     # Phase 3: RF-only must hit 90%+ accuracy
 CONFIDENCE_GHOST_THRESHOLD = 0.70    # Phase 5: below this → ghost tag
 CONFIDENCE_DECAY_RATE = 0.002        # per-frame decay when stationary behind obstacle
 CONFIDENCE_RECOVERY_BOOST = 0.15     # bump on gross-motor re-acquisition
@@ -43,10 +40,9 @@ MAX_FRAMES_NO_UPDATE = 300           # 3 seconds at 100 Hz → drop track
 
 
 class TrackingPhase(str, Enum):
-    """Current phase of the handshake-to-handoff pipeline."""
-    VISUAL_HANDSHAKE = "visual_handshake"
+    """Current phase of the CSI tracking pipeline."""
+    BLOB_REGISTRATION = "blob_registration"
     ANCHOR_EXTRACTION = "anchor_extraction"
-    RF_HANDOFF = "rf_handoff"
     ACTIVE_SONAR = "active_sonar"
 
 
@@ -69,7 +65,6 @@ class TrackedPerson:
     device_distance_m: Optional[float] = None      # estimated device distance
     breathing_rate: Optional[float] = None
     heart_rate: Optional[float] = None
-    skeleton_keypoints: Optional[np.ndarray] = None  # (33, 3) during visual phase
     frames_since_update: int = 0
     wifi_validated: bool = False                      # confirmed via WiFi CSI (not BLE-only)
     device_category: str = "unknown"                  # phone/laptop/accessory/hub/etc.
@@ -95,7 +90,7 @@ class MergeEvent:
 class MultiPersonTracker:
     """Full multi-person RF tracking engine.
 
-    Manages the lifecycle from visual handshake through RF-only
+    Manages the lifecycle from RF blob registration through
     tracking, handling collisions, ghost states, and re-acquisition.
     """
 
@@ -114,11 +109,7 @@ class MultiPersonTracker:
         self._tracks: dict[str, TrackedPerson] = {}
         self._next_tag_index: int = 0
         self._active_merges: dict[str, MergeEvent] = {}
-        self._phase: TrackingPhase = TrackingPhase.VISUAL_HANDSHAKE
-
-        # RF-only confidence tracking (Phase 3)
-        self._rf_only_correct_frames: int = 0
-        self._rf_only_required_frames: int = int(sample_rate_hz * 10)  # 10s sustained
+        self._phase: TrackingPhase = TrackingPhase.BLOB_REGISTRATION
 
         # CSI Anchor Protocol — BLE MAC tethering
         self.ble_tether = BLETetherEngine()
@@ -132,7 +123,7 @@ class MultiPersonTracker:
         return self._tracks
 
     # ──────────────────────────────────────────────────────────
-    # Phase 1: Visual Handshake
+    # Phase 1: RF Blob Registration
     # ──────────────────────────────────────────────────────────
 
     def _assign_tag(self) -> str:
@@ -141,18 +132,10 @@ class MultiPersonTracker:
         self._next_tag_index += 1
         return tag
 
-    def register_visual_handshake(
-        self,
-        skeleton_keypoints: np.ndarray,
-        rf_blob_centroid: np.ndarray,
-    ) -> TrackedPerson:
-        """Phase 1: Cross-Modal Fusion — pair a visual skeleton with an RF blob.
-
-        Maps the RF blob centroid to the chest/core of the skeleton
-        and creates a new tracked person.
+    def register_rf_blob(self, rf_blob_centroid: np.ndarray) -> TrackedPerson:
+        """Phase 1: register a CSI-derived RF blob as a new tracked person.
 
         Args:
-            skeleton_keypoints: (33, 3) 3D skeleton from MediaPipe
             rf_blob_centroid: (3,) centroid of the RF blob from CSI
 
         Returns:
@@ -161,33 +144,22 @@ class MultiPersonTracker:
         tag = self._assign_tag()
         track_id = f"track_{tag}_{int(time.time() * 1000)}"
 
-        # The chest/core is the midpoint of shoulders (joints 11, 12)
-        left_shoulder = skeleton_keypoints[11]
-        right_shoulder = skeleton_keypoints[12]
-        chest_center = (left_shoulder + right_shoulder) / 2.0
-
-        # Verify spatial alignment — RF blob should be near chest center
-        alignment_dist = float(np.linalg.norm(rf_blob_centroid - chest_center))
-
         person = TrackedPerson(
             track_id=track_id,
             user_tag=tag,
             position=rf_blob_centroid.copy(),
             velocity=np.zeros(3, dtype=np.float32),
             confidence=1.0,
-            skeleton_keypoints=skeleton_keypoints.copy(),
-            wifi_validated=True,  # registered via visual handshake → WiFi-confirmed
+            wifi_validated=True,  # registered from a CSI blob
         )
 
         self._tracks[track_id] = person
         self.kalman.init_track(track_id, rf_blob_centroid)
 
         logger.info(
-            "visual_handshake_registered",
+            "rf_blob_registered",
             track_id=track_id,
             user_tag=tag,
-            alignment_dist=round(alignment_dist, 3),
-            chest_center=chest_center.tolist(),
             rf_centroid=rf_blob_centroid.tolist(),
         )
 
@@ -263,65 +235,6 @@ class MultiPersonTracker:
         )
 
         return signature
-
-    # ──────────────────────────────────────────────────────────
-    # Phase 3: RF Handoff
-    # ──────────────────────────────────────────────────────────
-
-    def evaluate_rf_handoff(
-        self,
-        track_id: str,
-        rf_predicted_position: np.ndarray,
-        rf_predicted_pose: np.ndarray,
-        vision_position: np.ndarray,
-        vision_pose: np.ndarray,
-    ) -> dict:
-        """Phase 3: Compare RF-only predictions against live video ground truth.
-
-        Checks whether CSI-only tracking has reached 90%+ accuracy
-        for a sustained duration, triggering "Environment Synced."
-
-        Returns dict with 'position_error', 'pose_accuracy', 'rf_ready', 'handoff_complete'.
-        """
-        position_error = float(np.linalg.norm(rf_predicted_position - vision_position))
-
-        # Per-joint accuracy (within 5cm threshold)
-        per_joint_dist = np.linalg.norm(rf_predicted_pose - vision_pose, axis=-1)
-        pose_accuracy = float((per_joint_dist < 0.05).mean())
-
-        rf_ready = pose_accuracy >= CONFIDENCE_LIVE_THRESHOLD
-
-        if rf_ready:
-            self._rf_only_correct_frames += 1
-        else:
-            self._rf_only_correct_frames = max(0, self._rf_only_correct_frames - 5)
-
-        handoff_complete = self._rf_only_correct_frames >= self._rf_only_required_frames
-
-        if handoff_complete and self._phase == TrackingPhase.VISUAL_HANDSHAKE:
-            self._phase = TrackingPhase.RF_HANDOFF
-            logger.info(
-                "rf_handoff_triggered",
-                track_id=track_id,
-                pose_accuracy=pose_accuracy,
-                sustained_frames=self._rf_only_correct_frames,
-            )
-
-        return {
-            "position_error": position_error,
-            "pose_accuracy": pose_accuracy,
-            "rf_ready": rf_ready,
-            "handoff_complete": handoff_complete,
-            "sustained_frames": self._rf_only_correct_frames,
-            "required_frames": self._rf_only_required_frames,
-        }
-
-    def complete_handoff(self) -> None:
-        """Transition to Active Sonar Mode — camera is terminated."""
-        self._phase = TrackingPhase.ACTIVE_SONAR
-        for person in self._tracks.values():
-            person.skeleton_keypoints = None  # no more visual data
-        logger.info("active_sonar_mode_engaged", n_tracks=len(self._tracks))
 
     # ──────────────────────────────────────────────────────────
     # Phase 4: Continuous Trajectory Tracking

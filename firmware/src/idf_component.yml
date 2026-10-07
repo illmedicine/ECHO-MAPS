@@ -1,5 +1,3 @@
 dependencies:
-  espressif/esp32-camera:
-    version: "*"
   espressif/mdns:
     version: "*"

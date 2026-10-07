@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://echo:echo@localhost:5432/echo_maps"
 
     # ── Milvus ──
+    # Shared secret the ESP32 bridge sends as X-Device-Key to /api/presence/ingest
+    presence_ingest_key: str = ""
+
     milvus_host: str = "localhost"
     milvus_port: int = 19530
     milvus_collection: str = "rf_signatures"
@@ -60,7 +63,6 @@ class Settings(BaseSettings):
     bridge_cloud_port: int = 8443
     bridge_max_devices: int = 20
     bridge_calibration_fps: int = 10
-    bridge_camera_quality: int = 12  # 0-63, lower = better JPEG quality
     bridge_audio_sample_rate: int = 16000
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}

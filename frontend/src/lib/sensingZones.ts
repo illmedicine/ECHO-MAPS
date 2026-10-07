@@ -40,24 +40,17 @@ export interface ClassifiableRoom {
   id: string;
   name: string;
   type?: string;
-  /** A networked camera is present in this space (a strong public-area signal). */
-  hasNetworkedCamera?: boolean;
 }
 
 /**
  * Decide whether a room is a public/common area or a private guest room.
  *
- * A networked camera is treated as a public-area signal (hotels place cameras
- * in lobbies and hallways). IMPORTANT: a camera can never flip a private guest
- * room to public — a camera in a guest room is a legal red flag, not a license
- * to sense. Guest-room classification always wins.
+ * Guest-room classification always wins over any public-looking signal.
  */
 export function classifyRoom(room: ClassifiableRoom): ZoneKind {
   if (PRIVATE_PATTERNS.some((re) => re.test(room.name))) return "private";
   if (room.type === "bedroom") return "private";
   if (PUBLIC_PATTERNS.some((re) => re.test(room.name))) return "public";
-  // Networked camera in a non-guest-room space → public.
-  if (room.hasNetworkedCamera) return "public";
   // Fall back to type: patios/kitchens/offices/common areas public.
   if (room.type === "patio" || room.type === "kitchen" || room.type === "office") return "public";
   // Unknown "other"-type spaces default to public (they're amenity spaces here).

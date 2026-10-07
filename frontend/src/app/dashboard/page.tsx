@@ -11,9 +11,6 @@ import {
   deleteEnvironment,
   healthCheck,
 } from "@/lib/api";
-import { estimatePose, preloadModel, isModelLoaded } from "@/lib/poseEstimator";
-import { storeFrame, getCollectionStats, type CollectedFrame } from "@/lib/collectedData";
-import { publishPose, clearPose } from "@/lib/poseBus";
 import {
   getEnvironments,
   createEnvironment as createLocalRoom,
@@ -22,12 +19,6 @@ import {
   createEchoEnvironment,
   deleteEchoEnvironment,
   getRoomsForEnvironment,
-  getCameras,
-  getCamerasForRoom,
-  getCamerasForEnvironment,
-  addCamera,
-  removeCamera,
-  updateCamera,
   getEntities,
   createEntity,
   updateEntity as updateEntityStorage,
@@ -35,7 +26,6 @@ import {
   EchoEnvironment,
   EnvCategory,
   Environment,
-  Camera,
   TrackedEntity,
   generateSimulatedSkeleton,
   generateSimulatedPointCloud,
@@ -63,15 +53,11 @@ import {
   estimateDistanceFromRouter,
 } from "@/lib/environments";
 import {
-  simulateRFPresences,
-  simulateBLEDevices,
-  resolvePresences,
   syncRealBeacons,
 } from "@/lib/presenceEngine";
 import { partitionBySensing, classifyRoom } from "@/lib/sensingZones";
 import { loadLiveSnapshot, surveyFromLiveSnapshot } from "@/lib/wifiSurvey";
 import EmojiPicker from "@/components/EmojiPicker";
-import { subscribePose, hasActivePose, getLatestPose } from "@/lib/poseBus";
 import {
   migrateToUserScope,
   syncPullFromCloud,
@@ -85,6 +71,7 @@ import dynamic from "next/dynamic";
 const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer"), { ssr: false });
 const FloorPlanEditor = dynamic(() => import("@/components/FloorPlanEditor"), { ssr: false });
 const LiveFloorPlanMap = dynamic(() => import("@/components/LiveFloorPlanMap"), { ssr: false });
+const LivePresencePanel = dynamic(() => import("@/components/LivePresencePanel"), { ssr: false });
 const HotelSetupModal = dynamic(() => import("@/components/HotelSetupModal"), { ssr: false });
 
 interface UserData {
@@ -128,7 +115,7 @@ const ENV_ICONS: Record<string, string> = {
   other: "📍",
 };
 
-type TabView = "spaces" | "cameras" | "automations" | "presence";
+type TabView = "spaces" | "automations" | "presence";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -140,8 +127,6 @@ export default function DashboardPage() {
   const [showNewEnvModal, setShowNewEnvModal] = useState(false);
   const [showNewRoomModal, setShowNewRoomModal] = useState(false);
   const [showHotelModal, setShowHotelModal] = useState(false);
-  const [showAddCameraModal, setShowAddCameraModal] = useState(false);
-  const [cameraVersion, setCameraVersion] = useState(0);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -342,7 +327,6 @@ export default function DashboardPage() {
         <nav className="flex-1 px-3 mt-2 space-y-0.5">
           {([
             { tab: "spaces" as const, label: "Rooms", icon: "🏠" },
-            { tab: "cameras" as const, label: "Cameras", icon: "📹" },
             { tab: "automations" as const, label: "Automations", icon: "⚡" },
             { tab: "presence" as const, label: "Presence", icon: "👤" },
           ]).map(({ tab, label, icon }) => (
@@ -402,7 +386,6 @@ export default function DashboardPage() {
             <div>
             <h1 className="text-lg md:text-xl font-semibold">
               {activeTab === "spaces" ? (selectedEnv ? `${selectedEnv.emoji ?? ENV_ICONS[selectedEnv.category] ?? "📍"} ${selectedEnv.name}` : "Select an Environment")
-                : activeTab === "cameras" ? "📹 Cameras"
                 : activeTab === "automations" ? "⚡ Automations"
                 : "👤 Presence Detection"}
             </h1>
@@ -429,12 +412,6 @@ export default function DashboardPage() {
                   <span className="hidden sm:inline">Add Room</span>
                 </button>
               </>
-            )}
-            {activeTab === "cameras" && (
-              <button onClick={() => setShowAddCameraModal(true)} className="btn-primary flex items-center gap-2">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                <span className="hidden sm:inline">Add Camera</span>
-              </button>
             )}
           </div>
         </header>
@@ -490,9 +467,6 @@ export default function DashboardPage() {
               />
             </div>
           )}
-          <div style={{ display: activeTab === "cameras" ? "block" : "none" }}>
-            <CamerasView version={cameraVersion} onAddCamera={() => setShowAddCameraModal(true)} />
-          </div>
           {activeTab === "automations" && (
             <AutomationsView />
           )}
@@ -503,7 +477,7 @@ export default function DashboardPage() {
       </main>
 
       {showNewEnvModal && <NewEnvironmentModal onClose={() => setShowNewEnvModal(false)} onCreate={handleCreateEnv} />}
-      {showNewRoomModal && <NewRoomModal onClose={() => { setShowNewRoomModal(false); setCameraVersion((v) => v + 1); }} onCreate={handleCreateRoom} />}
+      {showNewRoomModal && <NewRoomModal onClose={() => { setShowNewRoomModal(false); }} onCreate={handleCreateRoom} />}
       {showHotelModal && selectedEnvId && (
         <HotelSetupModal
           environmentId={selectedEnvId}
@@ -518,7 +492,6 @@ export default function DashboardPage() {
           }}
         />
       )}
-      {showAddCameraModal && <AddCameraModal rooms={rooms} selectedEnvId={selectedEnvId} onClose={() => { setShowAddCameraModal(false); setCameraVersion((v) => v + 1); }} onRoomCreated={reloadRooms} />}
     </div>
   );
 }
@@ -616,370 +589,6 @@ function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onD
         </div>
       ))}
     </>
-  );
-}
-
-/* ── Cameras View ── */
-function CamerasView({ onAddCamera, version }: { onAddCamera: () => void; version?: number }) {
-  const [cameras, setCameras] = useState<Camera[]>([]);
-  const [activeStreams, setActiveStreams] = useState<Record<string, MediaStream>>({});
-  const activeStreamsRef = useRef<Record<string, MediaStream>>({});
-  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
-  const poseLoopRefs = useRef<Record<string, number>>({});
-  const [poseStats, setPoseStats] = useState<Record<string, { fps: number; detected: boolean; confidence: number }>>({});
-  const [totalFrames, setTotalFrames] = useState(0);
-  const frameCountRef = useRef(0);
-
-  useEffect(() => { setCameras(getCameras()); }, [version]);
-  useEffect(() => {
-    // Load total collected frames count on mount
-    getCollectionStats().then((stats) => {
-      setTotalFrames(stats.totalFrames);
-      frameCountRef.current = stats.totalFrames;
-    }).catch(() => {});
-  }, []);
-  // Keep ref in sync for cleanup
-  useEffect(() => { activeStreamsRef.current = activeStreams; }, [activeStreams]);
-  // Only clean up streams on actual unmount, not on tab switch
-  useEffect(() => {
-    return () => {
-      Object.values(activeStreamsRef.current).forEach((s) => s.getTracks().forEach((t) => t.stop()));
-      Object.values(poseLoopRefs.current).forEach((id) => cancelAnimationFrame(id));
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Pose extraction loop for a specific camera
-  const startPoseLoop = useCallback((camId: string, roomId: string) => {
-    let lastTime = 0;
-    let framesSinceLastSec = 0;
-    let lastSecond = Date.now();
-    let storeCounter = 0;
-
-    const loop = async () => {
-      const video = videoRefs.current[camId];
-      if (!video || video.paused || video.ended || !video.videoWidth) {
-        poseLoopRefs.current[camId] = requestAnimationFrame(loop);
-        return;
-      }
-
-      const now = performance.now();
-      if (now - lastTime < 80) { // ~12fps cap to avoid overload
-        poseLoopRefs.current[camId] = requestAnimationFrame(loop);
-        return;
-      }
-      lastTime = now;
-
-      try {
-        const result = await estimatePose(video, { width: 5, length: 4, height: 2.7 });
-        if (result) {
-          framesSinceLastSec++;
-          const nowMs = Date.now();
-          if (nowMs - lastSecond >= 1000) {
-            setPoseStats((prev) => ({
-              ...prev,
-              [camId]: {
-                fps: framesSinceLastSec,
-                detected: result.isDetected,
-                confidence: result.confidence,
-              },
-            }));
-            framesSinceLastSec = 0;
-            lastSecond = nowMs;
-          }
-
-          // Publish to the global pose bus so the 3D view can use it
-          publishPose({
-            ...result,
-            cameraId: camId,
-            roomId,
-          });
-
-          // Store every 10th frame for the learning engine
-          storeCounter++;
-          if (result.isDetected && storeCounter % 10 === 0) {
-            const frame: CollectedFrame = {
-              id: `${camId}-${Date.now()}`,
-              envId: "", // camera may span environments
-              roomId,
-              timestamp: Date.now(),
-              keypoints3d: result.keypoints3d,
-              keypoints2d: result.keypoints2d,
-              confidence: result.confidence,
-              activity: "camera_tuning",
-              source: "camera",
-            };
-            storeFrame(frame).catch(() => {});
-            frameCountRef.current++;
-            if (storeCounter % 50 === 0) {
-              setTotalFrames(frameCountRef.current);
-            }
-          }
-        }
-      } catch {
-        // pose estimation error — skip frame
-      }
-
-      poseLoopRefs.current[camId] = requestAnimationFrame(loop);
-    };
-    poseLoopRefs.current[camId] = requestAnimationFrame(loop);
-  }, []);
-
-  const stopPoseLoop = useCallback((camId: string) => {
-    if (poseLoopRefs.current[camId]) {
-      cancelAnimationFrame(poseLoopRefs.current[camId]);
-      delete poseLoopRefs.current[camId];
-    }
-    clearPose(camId);
-    setPoseStats((prev) => { const copy = { ...prev }; delete copy[camId]; return copy; });
-  }, []);
-
-  const startStream = async (cam: Camera) => {
-    try {
-      // Pre-load pose model before starting the stream
-      preloadModel();
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: cam.deviceId } }, audio: false });
-      setActiveStreams((prev) => ({ ...prev, [cam.id]: stream }));
-      setTimeout(() => {
-        const el = videoRefs.current[cam.id];
-        if (el) { el.srcObject = stream; el.play(); }
-        // Start real pose extraction loop
-        startPoseLoop(cam.id, cam.roomId);
-      }, 50);
-      updateCamera(cam.id, { active: true });
-      setCameras(getCameras());
-    } catch (err) { alert(`Could not start camera: ${err instanceof Error ? err.message : err}`); }
-  };
-
-  const stopStream = (camId: string) => {
-    stopPoseLoop(camId);
-    const stream = activeStreams[camId];
-    if (stream) stream.getTracks().forEach((t) => t.stop());
-    setActiveStreams((prev) => { const copy = { ...prev }; delete copy[camId]; return copy; });
-    const el = videoRefs.current[camId];
-    if (el) el.srcObject = null;
-    updateCamera(camId, { active: false });
-    setCameras(getCameras());
-  };
-
-  const handleRemove = (camId: string) => {
-    if (!confirm("Remove this camera?")) return;
-    stopStream(camId);
-    removeCamera(camId);
-    setCameras(getCameras());
-  };
-
-  const allRooms = getEnvironments();
-  const roomMap = Object.fromEntries(allRooms.map((r) => [r.id, r]));
-
-  if (cameras.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20" style={{ color: "var(--gh-text-muted)" }}>
-        <div className="text-6xl mb-4 opacity-30">📹</div>
-        <p className="text-lg mb-2">No cameras added yet</p>
-        <p className="text-sm mb-4 text-center max-w-md">Add cameras from your device — including OBS Virtual Camera, DroidCam, or built-in webcams. Active cameras continuously improve Echo Vue&apos;s presence detection AI.</p>
-        <button onClick={onAddCamera} className="btn-primary">Add Camera</button>
-      </div>
-    );
-  }
-
-  const byRoom = cameras.reduce<Record<string, Camera[]>>((acc, c) => { (acc[c.roomId] = acc[c.roomId] || []).push(c); return acc; }, {});
-
-  return (
-    <div>
-      <p className="text-sm mb-6" style={{ color: "var(--gh-text-muted)" }}>
-        Live camera feeds continuously tune Echo Vue&apos;s CSI presence detection. The AI learns to correlate what the camera sees with WiFi signal patterns.
-      </p>
-      {Object.entries(byRoom).map(([roomId, cams]) => {
-        const room = roomMap[roomId];
-        return (
-          <div key={roomId} className="mb-8">
-            <h2 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: "var(--gh-text-muted)" }}>
-              <span>{ROOM_ICONS[room?.type ?? "other"] ?? "📍"}</span>{room?.name ?? "Unknown Room"}
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {cams.map((cam) => {
-                const isLive = !!activeStreams[cam.id];
-                return (
-                  <div key={cam.id} className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--gh-card)", border: `1px solid ${isLive ? "var(--gh-green)" : "var(--gh-border)"}` }}>
-                    <div className="relative bg-black" style={{ minHeight: 200 }}>
-                      <video ref={(el) => { videoRefs.current[cam.id] = el; }} autoPlay playsInline muted className="w-full h-[200px] object-cover" style={{ display: isLive ? "block" : "none" }} />
-                      {!isLive && (
-                        <div className="h-[200px] flex flex-col items-center justify-center" style={{ color: "var(--gh-text-muted)" }}>
-                          <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" className="opacity-30 mb-2"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
-                          <span className="text-xs">Camera offline</span>
-                        </div>
-                      )}
-                      {isLive && (
-                        <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-full" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
-                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                          <span className="text-[10px] text-white font-medium">LIVE</span>
-                        </div>
-                      )}
-                      {isLive && (
-                        <div className="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-[10px]" style={{ backgroundColor: "rgba(0,0,0,0.6)", color: poseStats[cam.id]?.detected ? "var(--gh-green)" : "var(--gh-yellow)" }}>
-                          🧠 {poseStats[cam.id]?.detected
-                            ? `Pose detected · ${(poseStats[cam.id].confidence * 100).toFixed(0)}% · ${poseStats[cam.id].fps}fps`
-                            : isModelLoaded() ? "Scanning for pose..." : "Loading AI model..."}
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-3 md:p-3 flex items-center justify-between">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{cam.label}</p>
-                        <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{isLive ? "Streaming · AI tuning" : "Inactive"}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => isLive ? stopStream(cam.id) : startStream(cam)}
-                          className="px-4 py-2 md:px-3 md:py-1.5 rounded-xl text-xs font-medium transition"
-                          style={isLive ? { backgroundColor: "rgba(232,104,90,0.15)", color: "var(--gh-red)" } : { backgroundColor: "rgba(91,156,246,0.15)", color: "var(--gh-blue)" }}>
-                          {isLive ? "■ Stop" : "▶ Start"}
-                        </button>
-                        <button onClick={() => handleRemove(cam.id)} className="p-2 md:p-1.5 rounded-lg hover:bg-white/10 transition" style={{ color: "var(--gh-text-muted)" }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-      <div className="mt-6 p-5 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
-        <div className="flex items-center gap-3 mb-3"><span className="text-xl">🧠</span><h3 className="font-semibold">CSI AI Learning Engine</h3></div>
-        <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>When cameras are active, Echo Vue correlates visual data with WiFi CSI signals to learn presence patterns — standing, sitting, walking, sleeping, device use, and more.</p>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "Active Cameras", value: `${Object.keys(activeStreams).length}`, color: "var(--gh-green)" },
-            { label: "Frames Collected", value: `${totalFrames}`, color: "var(--gh-blue)" },
-            { label: "Detection Model", value: isModelLoaded() ? "MoveNet Lightning" : "Loading...", color: "var(--gh-yellow)" },
-            { label: "Learning Mode", value: Object.keys(activeStreams).length > 0 ? "Active" : "Paused", color: Object.keys(activeStreams).length > 0 ? "var(--gh-green)" : "var(--gh-text-muted)" },
-          ].map((s) => (
-            <div key={s.label} className="p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)" }}>
-              <p className="text-[10px]" style={{ color: "var(--gh-text-muted)" }}>{s.label}</p>
-              <p className="text-sm font-bold mt-0.5" style={{ color: s.color }}>{s.value}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Add Camera Modal ── */
-function AddCameraModal({ rooms, selectedEnvId, onClose, onRoomCreated }: { rooms: RoomCard[]; selectedEnvId: string | null; onClose: () => void; onRoomCreated?: () => void }) {
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState("");
-  const [selectedRoom, setSelectedRoom] = useState("");
-  const [customLabel, setCustomLabel] = useState("");
-  const [cameraEmoji, setCameraEmoji] = useState("📹");
-  const [loading, setLoading] = useState(true);
-  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
-  const previewRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const allDevices = await navigator.mediaDevices.enumerateDevices();
-        tempStream.getTracks().forEach((t) => t.stop());
-        const videoDevices = allDevices.filter((d) => d.kind === "videoinput");
-        setDevices(videoDevices);
-        if (videoDevices.length > 0) { setSelectedDevice(videoDevices[0].deviceId); setCustomLabel(videoDevices[0].label || "Camera 1"); }
-      } catch (err) { console.error("Could not enumerate cameras:", err); }
-      setLoading(false);
-    })();
-    return () => { if (previewStream) previewStream.getTracks().forEach((t) => t.stop()); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const dev = devices.find((d) => d.deviceId === selectedDevice);
-    if (dev) setCustomLabel(dev.label || `Camera ${devices.indexOf(dev) + 1}`);
-  }, [selectedDevice, devices]);
-
-  useEffect(() => {
-    if (!selectedDevice) return;
-    let cancelled = false;
-    (async () => {
-      if (previewStream) previewStream.getTracks().forEach((t) => t.stop());
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: selectedDevice } } });
-        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
-        setPreviewStream(stream);
-        if (previewRef.current) { previewRef.current.srcObject = stream; previewRef.current.play(); }
-      } catch { /* ignore */ }
-    })();
-    return () => { cancelled = true; };
-  }, [selectedDevice]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const allRooms = rooms.length > 0 ? rooms : getRoomsForEnvironment(selectedEnvId ?? "").map((r) => ({
-    id: r.id, environmentId: r.environmentId, name: r.name, type: r.type,
-    isCalibrated: r.isCalibrated, calibrationConfidence: r.calibrationConfidence, createdAt: r.createdAt,
-  }));
-
-  const handleAdd = () => {
-    if (!selectedDevice || !selectedRoom || !selectedEnvId) return;
-    addCamera({ label: customLabel, deviceId: selectedDevice, roomId: selectedRoom, environmentId: selectedEnvId, emoji: cameraEmoji, active: false });
-    if (previewStream) previewStream.getTracks().forEach((t) => t.stop());
-    if (onRoomCreated) onRoomCreated();
-    onClose();
-  };
-
-  const cleanup = () => { if (previewStream) previewStream.getTracks().forEach((t) => t.stop()); onClose(); };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 mobile-modal-outer" onClick={cleanup}>
-      <div className="rounded-2xl w-full max-w-lg p-6 mobile-modal-inner" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold">Add Camera</h2>
-          <button onClick={cleanup} className="p-2 -mr-2 rounded-xl hover:bg-black/5" style={{ color: "var(--gh-text-muted)" }}>✕</button>
-        </div>
-        {loading ? (
-          <div className="py-12 text-center text-sm" style={{ color: "var(--gh-text-muted)" }}>Scanning for cameras...</div>
-        ) : devices.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-2xl mb-2">📹</p>
-            <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>No cameras found. Make sure a camera (webcam, DroidCam, or OBS Virtual Camera) is connected.</p>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            <div className="rounded-xl overflow-hidden bg-black">
-              <video ref={previewRef} autoPlay playsInline muted className="w-full h-[180px] object-cover" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Select Camera</label>
-              <select value={selectedDevice} onChange={(e) => setSelectedDevice(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none"
-                style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text)" }}>
-                {devices.map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${i + 1}`}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Camera Name</label>
-              <input type="text" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none"
-                style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text)" }} maxLength={60} />
-            </div>
-            <EmojiPicker selected={cameraEmoji} onSelect={setCameraEmoji} label="Camera Icon" />
-            <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--gh-text-muted)" }}>Assign to Room</label>
-              {allRooms.length === 0 ? (
-                <p className="text-xs p-3 rounded-xl" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-yellow)" }}>No rooms yet — create a room first.</p>
-              ) : (
-                <select value={selectedRoom} onChange={(e) => setSelectedRoom(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none"
-                  style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text)" }}>
-                  <option value="">Choose a room...</option>
-                  {allRooms.map((r) => <option key={r.id} value={r.id}>{ROOM_ICONS[r.type] ?? "📍"} {r.name}</option>)}
-                </select>
-              )}
-            </div>
-            <button onClick={handleAdd} disabled={!selectedDevice || !selectedRoom} className="btn-primary w-full disabled:opacity-50">Add Camera</button>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -1169,13 +778,6 @@ function PresenceView() {
   const [activityHistory, setActivityHistory] = useState<string | null>(null);
   const [householdIds, setHouseholdIds] = useState<Set<string>>(new Set());
   const [visitors, setVisitors] = useState<VisitorRecord[]>([]);
-  const [scanning, setScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState(0);
-  const [scanTarget, setScanTarget] = useState<"all" | string>("all");
-  const [scanLog, setScanLog] = useState<string[]>([]);
-  const [showScanModal, setShowScanModal] = useState(false);
-  const [hasPose, setHasPose] = useState(false);
-  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Beacon editing state
   const [editingBeacon, setEditingBeacon] = useState<string | null>(null);
@@ -1269,10 +871,9 @@ function PresenceView() {
       const snap = await loadLiveSnapshot(basePath);
       if (cancelled || !snap) return;
       const ownAps = surveyFromLiveSnapshot(snap).aps.filter((a) => a.role !== "neighbor");
-      const cams = new Set(getCameras().map((c) => c.roomId));
       const publicRooms = getEchoEnvironments()
         .flatMap((e) => getRoomsForEnvironment(e.id))
-        .filter((r) => classifyRoom({ id: r.id, name: r.name, type: r.type, hasNetworkedCamera: cams.has(r.id) }) === "public")
+        .filter((r) => classifyRoom({ id: r.id, name: r.name, type: r.type }) === "public")
         .map((r) => ({ id: r.id, name: r.name }));
       if (publicRooms.length === 0) return;
       syncRealBeacons(ownAps, publicRooms);
@@ -1280,12 +881,6 @@ function PresenceView() {
     })();
     return () => { cancelled = true; };
   }, []);
-  // Subscribe to pose bus for live detection status
-  useEffect(() => {
-    const unsub = subscribePose(() => setHasPose(hasActivePose()));
-    return unsub;
-  }, []);
-
   const allEnvs = getEchoEnvironments();
   const allRooms = allEnvs.flatMap((env) => getRoomsForEnvironment(env.id));
 
@@ -1297,56 +892,6 @@ function PresenceView() {
   const roomNames: Record<string, string> = {};
   const roomEmojis: Record<string, string> = {};
   allRooms.forEach((r) => { roomNames[r.id] = r.name; roomEmojis[r.id] = r.emoji || ""; });
-
-  // Smart scan: uses presence engine to avoid duplicates for household members
-  const runScan = () => {
-    setScanning(true);
-    setScanProgress(0);
-    setScanLog(["Initializing smart presence detection scan..."]);
-    let progress = 0;
-
-    scanIntervalRef.current = setInterval(() => {
-      progress += Math.random() * 6 + 3;
-      if (progress > 100) progress = 100;
-      setScanProgress(Math.round(progress));
-
-      // Phased scan log messages
-      if (progress > 8 && progress < 12) setScanLog((prev) => prev.length < 3 ? [...prev, "Phase 1: WiFi CSI channel scanning — detecting RF body signatures..."] : prev);
-      if (progress > 15 && progress < 19) setScanLog((prev) => prev.length < 4 ? [...prev, "Analyzing breathing micro-motion patterns for body detection..."] : prev);
-      if (progress > 22 && progress < 26) setScanLog((prev) => prev.length < 5 ? [...prev, "RF micro-motion analysis — distinguishing human vs pet signatures..."] : prev);
-      if (progress > 30 && progress < 34) setScanLog((prev) => prev.length < 6 ? [...prev, "Phase 2: BLE passive scan — inventorying nearby devices..."] : prev);
-      if (progress > 38 && progress < 42) setScanLog((prev) => prev.length < 7 ? [...prev, "Classifying BLE devices: phones, laptops, accessories, hubs..."] : prev);
-      if (progress > 50 && progress < 54) setScanLog((prev) => prev.length < 8 ? [...prev, "Phase 3: Checking household profile — identifying known members..."] : prev);
-      if (progress > 60 && progress < 64) setScanLog((prev) => prev.length < 9 ? [...prev, "Phase 4: Correlating new BLE devices with new RF presences..."] : prev);
-      if (progress > 72 && progress < 76) setScanLog((prev) => prev.length < 10 ? [...prev, "Phase 5: Checking visitor registry for recurring devices..."] : prev);
-      if (progress > 85 && progress < 89) setScanLog((prev) => prev.length < 11 ? [...prev, "Deduplicating via household-aware CSI Anchor Protocol..."] : prev);
-
-      if (progress >= 100) {
-        if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-
-        const targetRooms = scanTarget === "all" ? allRooms : allRooms.filter((r) => r.id === scanTarget);
-        // Privacy scope: when public-only sensing is on, exclude private guest rooms entirely.
-        // A networked camera marks a space as public (hotels camera lobbies/hallways, never guest rooms).
-        const cameraRoomIds = new Set(getCameras().map((c) => c.roomId));
-        const { sensed, excluded } = partitionBySensing(
-          targetRooms.map((r) => ({ id: r.id, name: r.name, type: r.type, hasNetworkedCamera: cameraRoomIds.has(r.id) }))
-        );
-        const roomData = sensed.map((r) => ({ id: r.id, name: r.name }));
-
-        const rfPresences = simulateRFPresences(roomData);
-        const bleDevices = simulateBLEDevices(roomData);
-        const result = resolvePresences(rfPresences, bleDevices);
-
-        if (excluded.length > 0) {
-          result.log.unshift(`🔒 Public-area sensing only — skipped ${excluded.length} private guest room(s). No CSI collected in private rooms.`);
-        }
-        setScanLog((prev) => [...prev, ...result.log]);
-        setEntities(getEntities());
-        setVisitors(getVisitors());
-        setScanning(false);
-      }
-    }, 250);
-  };
 
   const handleToggleHousehold = (entityId: string) => {
     if (householdIds.has(entityId)) {
@@ -1489,35 +1034,22 @@ function PresenceView() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <p className="text-sm" style={{ color: "var(--gh-text-muted)" }}>Scan environments to detect entities via RF signatures and camera data. Edit detected entity profiles below.</p>
-        <button onClick={() => setShowScanModal(true)} className="btn-primary px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2">
-          <span>\ud83d\udce1</span> Run Presence Scan
-        </button>
+      {/* Live CSI presence — continuous, public areas only, no manual scan */}
+      <div className="mb-6">
+        <LivePresencePanel />
       </div>
 
-      {/* Live Detection Status */}
-      <div className="mb-6 p-4 rounded-2xl flex items-center gap-4" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
-        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: hasPose ? "var(--gh-green)" : "var(--gh-text-muted)", boxShadow: hasPose ? "0 0 8px rgba(94,187,127,0.5)" : "none" }} />
-        <div>
-          <p className="text-sm font-medium">{hasPose ? "Live Detection Active" : "No Live Feed"}</p>
-          <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{hasPose ? "Camera + MoveNet skeletal tracking is running" : "Start a camera stream in the Cameras tab to enable live detection"}</p>
-        </div>
-        <div className="ml-auto text-xs font-mono px-2 py-1 rounded" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>
-          {entities.length} entities stored
-        </div>
-      </div>
+      <p className="text-xs mb-3" style={{ color: "var(--gh-text-muted)" }}>
+        Registered beacons and household profiles ({entities.length} stored). Live presence above comes straight from the CSI sensor.
+      </p>
 
       {entities.length === 0 ? (
         <div className="rounded-2xl p-12 text-center" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
           <div className="text-5xl mb-4 opacity-40">\ud83d\udce1</div>
-          <h3 className="text-lg font-semibold mb-2">No Entities Detected</h3>
-          <p className="text-sm mb-6 max-w-md mx-auto" style={{ color: "var(--gh-text-muted)" }}>
-            Run a presence detection scan to discover people and pets in your environments using WiFi CSI RF signatures and camera-based skeletal tracking.
+          <h3 className="text-lg font-semibold mb-2">No stored profiles</h3>
+          <p className="text-sm max-w-md mx-auto" style={{ color: "var(--gh-text-muted)" }}>
+            Presence is detected continuously from WiFi CSI (see above). Profiles and beacons appear here once registered.
           </p>
-          <button onClick={() => setShowScanModal(true)} className="btn-primary px-6 py-2.5 rounded-xl text-sm font-medium inline-flex items-center gap-2">
-            <span>\ud83d\udce1</span> Scan Now
-          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
@@ -1980,89 +1512,6 @@ function PresenceView() {
           ))}
         </div>
       </div>
-
-      {/* Run Presence Scan Modal */}
-      {showScanModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 mobile-modal-outer" onClick={() => { if (!scanning) setShowScanModal(false); }}>
-          <div className="rounded-2xl p-6 w-full max-w-lg max-h-[85vh] flex flex-col mobile-modal-inner" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-1">
-              <span className="text-2xl">\ud83d\udce1</span>
-              <h3 className="text-lg font-semibold">Presence Detection Scan</h3>
-            </div>
-            <p className="text-xs mb-4" style={{ color: "var(--gh-text-muted)" }}>Scan your environment to auto-detect people and pets using WiFi CSI RF signatures{hasPose ? " and live camera skeletal tracking" : ""}.</p>
-
-            {!scanning && scanProgress === 0 && (
-              <div className="space-y-3 mb-4">
-                <label className="text-xs font-medium block" style={{ color: "var(--gh-text-muted)" }}>Scan Target</label>
-                <select value={scanTarget} onChange={(e) => setScanTarget(e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm bg-transparent border outline-none" style={{ borderColor: "var(--gh-border)", color: "var(--gh-text)" }}>
-                  <option value="all">All Environments & Rooms</option>
-                  {allRooms.map((r) => (
-                    <option key={r.id} value={r.id}>{roomEmojis[r.id]} {r.name}</option>
-                  ))}
-                </select>
-                <div className="p-3 rounded-xl text-xs space-y-1" style={{ backgroundColor: "var(--gh-card)" }}>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-green)" }} />
-                    <span>WiFi CSI RF body detection <span style={{ color: "var(--gh-text-muted)" }}>\u2014 primary (always active)</span></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-blue)" }} />
-                    <span>Breathing micro-motion analysis <span style={{ color: "var(--gh-text-muted)" }}>\u2014 human vs pet classification</span></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-green)" }} />
-                    <span>BLE phone-only correlation <span style={{ color: "var(--gh-text-muted)" }}>\u2014 phones only (laptops/hubs/accessories filtered)</span></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: hasPose ? "var(--gh-green)" : "var(--gh-text-muted)" }} />
-                    <span>Camera skeletal tracking <span style={{ color: "var(--gh-text-muted)" }}>\u2014 {hasPose ? "active" : "no feed"}</span></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--gh-yellow)" }} />
-                    <span>BLE beacon registration <span style={{ color: "var(--gh-text-muted)" }}>\u2014 accessories as location hubs</span></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: householdIds.size > 0 ? "var(--gh-green)" : "var(--gh-text-muted)" }} />
-                    <span>Household-aware dedup <span style={{ color: "var(--gh-text-muted)" }}>\u2014 {householdIds.size > 0 ? `${householdIds.size} member(s) locked` : "no household set"}</span></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: visitors.length > 0 ? "var(--gh-accent)" : "var(--gh-text-muted)" }} />
-                    <span>Visitor recognition <span style={{ color: "var(--gh-text-muted)" }}>\u2014 {visitors.length > 0 ? `${visitors.length} known visitor(s)` : "no visitor history"}</span></span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {(scanning || scanProgress > 0) && (
-              <div className="space-y-3 mb-4">
-                <div className="p-4 rounded-xl" style={{ backgroundColor: "var(--gh-card)" }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium">{scanning ? "Scanning..." : "Scan Complete"}</span>
-                    <span className="text-xs font-mono" style={{ color: "var(--gh-text-muted)" }}>{scanProgress}%</span>
-                  </div>
-                  <div className="w-full rounded-full h-2 mb-3" style={{ backgroundColor: "var(--gh-border)" }}>
-                    <div className="h-2 rounded-full transition-all duration-300" style={{ width: `${scanProgress}%`, backgroundColor: scanProgress >= 100 ? "var(--gh-green)" : "var(--gh-accent)" }} />
-                  </div>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {scanLog.map((msg, i) => (
-                      <p key={i} className="text-[11px] font-mono" style={{ color: msg.startsWith("\u2713") ? "var(--gh-green)" : "var(--gh-text-muted)" }}>{msg}</p>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-2 mt-auto">
-              <button onClick={() => { setShowScanModal(false); setScanProgress(0); setScanLog([]); }} className="flex-1 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: "var(--gh-border)" }} disabled={scanning}>{scanProgress >= 100 ? "Done" : "Cancel"}</button>
-              {scanProgress < 100 && (
-                <button onClick={runScan} className="flex-1 py-2 rounded-xl text-sm font-medium btn-primary" disabled={scanning}>
-                  {scanning ? "Scanning\u2026" : "Start Scan"}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Edit Profile Modal */}
       {editingProfile && (() => {

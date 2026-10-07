@@ -21,6 +21,8 @@ services:
         value: "10000"
       - key: PORT
         value: "10000"
+      - key: PRESENCE_INGEST_KEY
+        sync: false  # set to the PRESENCE_DEVICE_KEY value in firmware/src/secrets.h
       - key: GOOGLE_CLIENT_ID
         sync: false  # Set manually after deploy
       - key: GOOGLE_CLIENT_SECRET

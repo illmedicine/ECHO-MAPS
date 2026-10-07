@@ -197,7 +197,6 @@ export interface BridgeDevice {
   status: string;
   is_bound: boolean;
   ip_address: string;
-  has_camera: boolean;
   has_mic: boolean;
   has_speaker: boolean;
   has_lcd: boolean;
@@ -256,22 +255,6 @@ export async function listBridges(): Promise<BridgeDevice[]> {
 /** Get a specific bridge device */
 export async function getBridge(deviceId: string): Promise<BridgeDevice> {
   return request<BridgeDevice>(`/api/bridge/devices/${deviceId}`);
-}
-
-/** Start room calibration scan (camera + mic + CSI) */
-export async function startRoomCalibration(
-  deviceId: string,
-  environmentId: string,
-  roomName: string
-): Promise<BridgeCalibrationProgress> {
-  return request<BridgeCalibrationProgress>("/api/bridge/calibrate/start", {
-    method: "POST",
-    body: JSON.stringify({
-      device_id: deviceId,
-      environment_id: environmentId,
-      room_name: roomName,
-    }),
-  });
 }
 
 /** Start presence detection scan (CSI + mic) */
@@ -359,16 +342,36 @@ export async function discoverLocalBridges(): Promise<
   return found;
 }
 
-// ── Room Scan (re-export from roomScanApi for convenience) ──
+// ── Live CSI presence (public areas) ──
 
-export {
-  startRoomScan,
-  getScanStatus,
-  submitDetections as submitRoomScanDetections,
-  finaliseScan as finaliseRoomScan,
-  getGeneratedFloorPlan,
-} from "./roomScanApi";
-export type {
-  ScanStatus as RoomScanStatus,
-  GeneratedFloorPlan as RoomScanFloorPlan,
-} from "./roomScanApi";
+export interface LiveZone {
+  zone: string;
+  device_id: string;
+  /** offline = no data from the sensor; learning = building the empty-room baseline */
+  state: "offline" | "learning" | "empty" | "present";
+  present: boolean;
+  confidence: number;
+  activity: "none" | "low" | "moderate" | "high";
+  score: number;
+  baseline: number;
+  threshold: number;
+  rssi: number;
+  last_seen: number;
+  last_present: number;
+  age_s: number | null;
+  windows: number;
+  frames: number;
+  learning_progress: number;
+  history: { t: number; score: number; present: boolean }[];
+}
+
+export interface LivePresenceResponse {
+  server_time: number;
+  zones: LiveZone[];
+  people_zones: number;
+}
+
+/** Current CSI presence for every sensing zone, straight from the bridge sensors. */
+export function getLivePresence(): Promise<LivePresenceResponse> {
+  return request<LivePresenceResponse>("/api/presence/zones");
+}

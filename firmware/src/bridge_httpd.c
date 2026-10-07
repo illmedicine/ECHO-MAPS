@@ -11,8 +11,6 @@
  *   GET  /api/bridge/status       — current calibration status
  *   POST /api/bridge/wifi         — configure WiFi credentials
  *   GET  /api/bridge/wifi/scan    — scan for available WiFi networks
- *   POST /api/bridge/camera/start — start camera for remote calibration
- *   POST /api/bridge/camera/stop  — stop camera/calibration remotely
  *
  * All responses are JSON. CORS headers included for web app access.
  */
@@ -79,7 +77,6 @@ static esp_err_t info_handler(httpd_req_t *req) {
 
     /* Hardware capabilities */
     cJSON *hw = cJSON_CreateObject();
-    cJSON_AddBoolToObject(hw, "camera", true);
     cJSON_AddBoolToObject(hw, "microphone", true);
     cJSON_AddBoolToObject(hw, "speaker", true);
     cJSON_AddBoolToObject(hw, "lcd", true);
@@ -179,7 +176,7 @@ static esp_err_t calibrate_handler(httpd_req_t *req) {
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddBoolToObject(resp, "success", true);
     cJSON_AddStringToObject(resp, "room_name", room_name);
-    cJSON_AddStringToObject(resp, "mode", "room_scan");
+    cJSON_AddStringToObject(resp, "mode", "calibrate");
     char *json = cJSON_PrintUnformatted(resp);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json);
@@ -374,58 +371,6 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* ── POST /api/bridge/camera/start ── Start camera streaming remotely */
-static esp_err_t camera_start_handler(httpd_req_t *req) {
-    set_cors_headers(req);
-
-    if (!get_bridge_bound()) {
-        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Bridge not bound");
-        return ESP_FAIL;
-    }
-
-    /* Read optional room name from body */
-    char buf[256] = {0};
-    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
-    char room[64] = "Default Room";
-    if (len > 0) {
-        cJSON *body = cJSON_Parse(buf);
-        if (body) {
-            cJSON *r = cJSON_GetObjectItem(body, "room_name");
-            if (r && cJSON_IsString(r)) strncpy(room, r->valuestring, sizeof(room) - 1);
-            cJSON_Delete(body);
-        }
-    }
-
-    bridge_start_room_calibration(room);
-
-    cJSON *resp = cJSON_CreateObject();
-    cJSON_AddBoolToObject(resp, "success", true);
-    cJSON_AddStringToObject(resp, "message", "Camera started for calibration");
-    cJSON_AddStringToObject(resp, "room_name", room);
-    char *json = cJSON_PrintUnformatted(resp);
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, json);
-    free(json);
-    cJSON_Delete(resp);
-    return ESP_OK;
-}
-
-/* ── POST /api/bridge/camera/stop ── Stop camera/calibration remotely */
-static esp_err_t camera_stop_handler(httpd_req_t *req) {
-    set_cors_headers(req);
-    bridge_stop_calibration();
-
-    cJSON *resp = cJSON_CreateObject();
-    cJSON_AddBoolToObject(resp, "success", true);
-    cJSON_AddStringToObject(resp, "message", "Camera stopped");
-    char *json = cJSON_PrintUnformatted(resp);
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, json);
-    free(json);
-    cJSON_Delete(resp);
-    return ESP_OK;
-}
-
 /* ── Register all routes ── */
 void bridge_httpd_start(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -457,8 +402,6 @@ void bridge_httpd_start(void) {
         {"/api/bridge/status",       HTTP_GET,  status_handler,       NULL},
         {"/api/bridge/wifi",         HTTP_POST, wifi_handler,         NULL},
         {"/api/bridge/wifi/scan",    HTTP_GET,  wifi_scan_handler,    NULL},
-        {"/api/bridge/camera/start", HTTP_POST, camera_start_handler, NULL},
-        {"/api/bridge/camera/stop",  HTTP_POST, camera_stop_handler,  NULL},
     };
 
     for (int i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) {

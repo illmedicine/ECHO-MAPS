@@ -50,7 +50,7 @@ interface SkeletonProps {
   keypoints: number[][]; // 33 × [x, y, z]
   opacity?: number;
   color?: string;
-  sourceType?: "csi" | "camera" | "simulated" | "disconnected";
+  sourceType?: "csi" | "simulated" | "disconnected";
 }
 
 /* Full MediaPipe Pose 33-keypoint connections with body-part grouping */
@@ -204,7 +204,7 @@ function LiveSkeleton({ keypoints, opacity = 1.0, color, sourceType = "simulated
 
   const useGroupColors = !color;
   const baseOpacity = opacity;
-  const sourceGlow = sourceType === "csi" ? "#00ff88" : sourceType === "camera" ? "#ffcc00" : "#0066ff";
+  const sourceGlow = sourceType === "csi" ? "#00ff88" : "#0066ff";
 
   return (
     <group ref={groupRef}>
@@ -337,7 +337,7 @@ interface EnvironmentViewerProps {
   skeletonGhosted?: boolean;
   trackedPersons?: TrackedPerson[];
   roomBounds?: [number, number, number];
-  sourceType?: "csi" | "camera" | "simulated" | "disconnected";
+  sourceType?: "csi" | "simulated" | "disconnected";
   isLive?: boolean;
   /** Compact mode: smaller canvas & lower GPU usage (used during calibration) */
   compact?: boolean;
@@ -469,7 +469,7 @@ export default function EnvironmentViewer({
         {isLive && (
           <pointLight
             position={[roomBounds[0] / 2, roomBounds[2], roomBounds[1] / 2]}
-            color={sourceType === "csi" ? "#00ff88" : sourceType === "camera" ? "#ffcc00" : "#0066ff"}
+            color={sourceType === "csi" ? "#00ff88" : "#0066ff"}
             intensity={0.3}
             distance={15}
           />
