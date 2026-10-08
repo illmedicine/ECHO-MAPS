@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "nvs.h"
 #include "ping/ping_sock.h"
 
 #if __has_include("secrets.h")
@@ -168,13 +169,76 @@ static void start_ping(void) {
     }
 }
 
+/* ── Zone name (runtime-settable, persisted) ── */
+#define ZONE_MAX 48
+static char s_zone[ZONE_MAX] = PRESENCE_ZONE_NAME;
+static bool s_zone_loaded;
+
+static void zone_ensure_loaded(void) {
+    if (s_zone_loaded) return;
+    char tmp[ZONE_MAX];
+    size_t len = sizeof(tmp);
+    nvs_handle_t h;
+    if (nvs_open("presence", NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_str(h, "zone", tmp, &len) == ESP_OK && tmp[0]) {
+            taskENTER_CRITICAL(&s_mux);
+            memcpy(s_zone, tmp, sizeof(s_zone));
+            taskEXIT_CRITICAL(&s_mux);
+        }
+        nvs_close(h);
+    }
+    s_zone_loaded = true;
+}
+
+void presence_zone_get(char *out, size_t n) {
+    zone_ensure_loaded();
+    taskENTER_CRITICAL(&s_mux);
+    strlcpy(out, s_zone, n);
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+/* Keep names JSON-safe: letters, digits, space and  - _ . , ' / # ( ) only. */
+bool presence_zone_set(const char *name) {
+    if (!name) return false;
+    char clean[ZONE_MAX];
+    int n = 0;
+    for (const char *p = name; *p && n < ZONE_MAX - 1; p++) {
+        unsigned char c = (unsigned char)*p;
+        bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                  strchr(" -_.,'/#()", c);
+        if (!ok) return false;
+        if (c == ' ' && (n == 0 || clean[n - 1] == ' ')) continue;   /* trim / collapse */
+        clean[n++] = (char)c;
+    }
+    while (n > 0 && clean[n - 1] == ' ') n--;
+    if (n == 0) return false;
+    clean[n] = 0;
+
+    nvs_handle_t h;
+    if (nvs_open("presence", NVS_READWRITE, &h) != ESP_OK) return false;
+    esp_err_t e = nvs_set_str(h, "zone", clean);
+    if (e == ESP_OK) e = nvs_commit(h);
+    nvs_close(h);
+    if (e != ESP_OK) return false;
+
+    taskENTER_CRITICAL(&s_mux);
+    memset(s_zone, 0, sizeof(s_zone));
+    memcpy(s_zone, clean, n + 1);
+    taskEXIT_CRITICAL(&s_mux);
+    s_zone_loaded = true;
+    ESP_LOGI(TAG, "Zone set to '%s'", clean);
+    return true;
+}
+
 /* POST pending windows to the backend. */
 static bool post_pending(void) {
     if (s_pending_n == 0) return true;
     static char body[1400];
+    char zone[ZONE_MAX];
+    presence_zone_get(zone, sizeof(zone));
     int off = snprintf(body, sizeof(body),
                        "{\"device_id\":\"%s\",\"zone\":\"%s\",\"windows\":[",
-                       get_bridge_device_id(), PRESENCE_ZONE_NAME);
+                       get_bridge_device_id(), zone);
     for (int i = 0; i < s_pending_n && off < (int)sizeof(body) - 160; i++) {
         const window_t *w = &s_pending[i];
         off += snprintf(body + off, sizeof(body) - off,
@@ -261,5 +325,7 @@ void presence_csi_start(void) {
 
     start_ping();
     xTaskCreatePinnedToCore(window_task, "csi_window", 8192, NULL, 4, NULL, 1);
-    ESP_LOGI(TAG, "Continuous CSI presence sensing started, zone '%s'", PRESENCE_ZONE_NAME);
+    char zone[ZONE_MAX];
+    presence_zone_get(zone, sizeof(zone));
+    ESP_LOGI(TAG, "Continuous CSI presence sensing started, zone '%s'", zone);
 }

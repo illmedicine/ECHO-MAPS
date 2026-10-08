@@ -13,6 +13,12 @@
 
 void presence_csi_start(void);
 
+/* Runtime zone name (public area this unit monitors), persisted in NVS.
+ * Falls back to PRESENCE_ZONE_NAME from secrets.h until one is set. */
+#include <stddef.h>
+void presence_zone_get(char *out, size_t n);
+bool presence_zone_set(const char *name);   /* false if name invalid */
+
 /* Live counters for the LCD / status endpoint. */
 typedef struct {
     uint32_t frames_total;     /* CSI frames received since boot            */

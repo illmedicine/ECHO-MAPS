@@ -11,11 +11,15 @@
  *   GET  /api/bridge/status       — current calibration status
  *   POST /api/bridge/wifi         — configure WiFi credentials
  *   GET  /api/bridge/wifi/scan    — scan for available WiFi networks
+ *   GET  /api/bridge/zone         — current presence zone name
+ *   POST /api/bridge/zone         — set zone name {"zone":"Pool Terrace"}
+ *   GET  /zone                    — small web form to set the zone name
  *
  * All responses are JSON. CORS headers included for web app access.
  */
 
 #include "bridge_httpd.h"
+#include "presence_csi.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -371,6 +375,63 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+/* ── GET/POST /api/bridge/zone ── */
+static esp_err_t zone_get_handler(httpd_req_t *req) {
+    set_cors_headers(req);
+    char zone[64];
+    presence_zone_get(zone, sizeof(zone));
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddStringToObject(resp, "zone", zone);
+    cJSON_AddStringToObject(resp, "device_id", get_bridge_device_id());
+    char *json = cJSON_PrintUnformatted(resp);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json);
+    free(json);
+    cJSON_Delete(resp);
+    return ESP_OK;
+}
+
+static esp_err_t zone_post_handler(httpd_req_t *req) {
+    set_cors_headers(req);
+    char buf[160];
+    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (len <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
+        return ESP_FAIL;
+    }
+    buf[len] = 0;
+    cJSON *body = cJSON_Parse(buf);
+    cJSON *zone = body ? cJSON_GetObjectItem(body, "zone") : NULL;
+    if (!zone || !cJSON_IsString(zone) || !presence_zone_set(zone->valuestring)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                            "zone must be 1-47 chars: letters, digits, space - _ . , ' / # ( )");
+        return ESP_FAIL;
+    }
+    cJSON_Delete(body);
+    return zone_get_handler(req);
+}
+
+static const char ZONE_PAGE[] =
+    "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>Illy Bridge zone</title>"
+    "<body style='font-family:sans-serif;max-width:420px;margin:2rem auto;padding:0 1rem'>"
+    "<h2>Illy Bridge zone</h2><p>Public area this unit monitors "
+    "(e.g. Hallway Floor 2, Pool Terrace, Front Desk Lobby).</p>"
+    "<input id=z style='width:100%;padding:.6rem;font-size:1rem' maxlength=47>"
+    "<button style='margin-top:.8rem;padding:.6rem 1.2rem;font-size:1rem' onclick=save()>Save</button>"
+    "<p id=m></p><script>"
+    "fetch('/api/bridge/zone').then(r=>r.json()).then(j=>z.value=j.zone);"
+    "function save(){fetch('/api/bridge/zone',{method:'POST',body:JSON.stringify({zone:z.value})})"
+    ".then(r=>r.ok?r.json():Promise.reject()).then(j=>m.textContent='Saved: '+j.zone)"
+    ".catch(()=>m.textContent='Invalid name (letters, digits, space - _ . , / # ( ) only)')}"
+    "</script>";
+
+static esp_err_t zone_page_handler(httpd_req_t *req) {
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, ZONE_PAGE, HTTPD_RESP_USE_STRLEN);
+}
+
 /* ── Register all routes ── */
 void bridge_httpd_start(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -402,6 +463,9 @@ void bridge_httpd_start(void) {
         {"/api/bridge/status",       HTTP_GET,  status_handler,       NULL},
         {"/api/bridge/wifi",         HTTP_POST, wifi_handler,         NULL},
         {"/api/bridge/wifi/scan",    HTTP_GET,  wifi_scan_handler,    NULL},
+        {"/api/bridge/zone",         HTTP_GET,  zone_get_handler,     NULL},
+        {"/api/bridge/zone",         HTTP_POST, zone_post_handler,    NULL},
+        {"/zone",                    HTTP_GET,  zone_page_handler,    NULL},
     };
 
     for (int i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) {
