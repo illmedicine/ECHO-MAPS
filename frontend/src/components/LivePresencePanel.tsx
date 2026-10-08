@@ -13,6 +13,7 @@ import { useLivePresence } from "@/lib/useLivePresence";
 import { isBackendConfigured, publishPublicAreas, type LiveZone } from "@/lib/api";
 import { getEnvironments } from "@/lib/environments";
 import { publicAreaNames } from "@/lib/sensingZones";
+import PresenceSpark from "./PresenceSpark";
 
 const STATE_STYLE: Record<LiveZone["state"], { label: string; color: string; bg: string }> = {
   present: { label: "Presence detected", color: "#B3261E", bg: "rgba(234,67,53,0.10)" },
@@ -20,20 +21,6 @@ const STATE_STYLE: Record<LiveZone["state"], { label: string; color: string; bg:
   learning: { label: "Learning baseline", color: "#B8860B", bg: "rgba(251,188,5,0.12)" },
   offline: { label: "Sensor offline", color: "var(--gh-text-muted)", bg: "var(--gh-card)" },
 };
-
-function Spark({ zone }: { zone: LiveZone }) {
-  const h = zone.history;
-  if (h.length < 2) return null;
-  const max = Math.max(zone.threshold * 2, ...h.map((p) => p.score), 1e-6);
-  const pts = h.map((p, i) => `${(i / (h.length - 1)) * 100},${30 - (p.score / max) * 28}`).join(" ");
-  const ty = 30 - (zone.threshold / max) * 28;
-  return (
-    <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-8" aria-label="CSI motion score">
-      <line x1="0" x2="100" y1={ty} y2={ty} stroke="currentColor" strokeOpacity="0.3" strokeDasharray="2 2" strokeWidth="0.6" />
-      <polyline points={pts} fill="none" stroke={zone.present ? "#B3261E" : "var(--gh-green)"} strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
 
 export default function LivePresencePanel({ compact = false }: { compact?: boolean }) {
   const { zones, link, error, occupied } = useLivePresence(2000);
@@ -119,7 +106,7 @@ export default function LivePresencePanel({ compact = false }: { compact?: boole
                     <span>{z.frames.toLocaleString()} CSI frames</span>
                     {z.age_s !== null && <span>updated {z.age_s}s ago</span>}
                   </div>
-                  <Spark zone={z} />
+                  <PresenceSpark zone={z} />
                 </>
               )}
               {z.state === "offline" && z.age_s !== null && (

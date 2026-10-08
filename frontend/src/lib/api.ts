@@ -350,6 +350,8 @@ export interface LiveZone {
   device_id: string;
   /** Label of the bridge device itself (e.g. "Illy Bridge 1"); empty on older firmware. */
   bridge_name?: string;
+  /** The bridge's LAN address, when it reports one. */
+  ip?: string;
   /** offline = no data from the sensor; learning = building the empty-room baseline */
   state: "offline" | "learning" | "empty" | "present";
   present: boolean;
@@ -379,6 +381,36 @@ export function publishPublicAreas(areas: string[]): Promise<{ areas: string[] }
   return request<{ areas: string[] }>("/api/presence/areas", {
     method: "PUT",
     body: JSON.stringify({ areas }),
+  });
+}
+
+export interface BridgeConfig {
+  bridge_name?: string;
+  area?: string;
+}
+
+export interface BridgeInfo {
+  device_id: string;
+  bridge_name: string;
+  /** The public area the bridge currently reports under ("Unassigned" until one is chosen). */
+  area: string;
+  ip: string;
+  state: LiveZone["state"];
+  age_s: number | null;
+  /** Configuration sent from the dashboard that the bridge has not applied yet. */
+  pending: BridgeConfig | null;
+}
+
+/** Every Illy Bridge that has reported, with any configuration still waiting to be applied. */
+export function getBridges(): Promise<{ server_time: number; bridges: BridgeInfo[] }> {
+  return request<{ server_time: number; bridges: BridgeInfo[] }>("/api/presence/bridges");
+}
+
+/** Set a bridge's name and/or area. The bridge adopts it on its next upload (a few seconds). */
+export function configureBridge(deviceId: string, config: BridgeConfig): Promise<{ device_id: string; pending: BridgeConfig }> {
+  return request(`/api/presence/bridges/${encodeURIComponent(deviceId)}/config`, {
+    method: "PUT",
+    body: JSON.stringify(config),
   });
 }
 

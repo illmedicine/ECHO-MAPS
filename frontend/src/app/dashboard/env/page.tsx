@@ -2,20 +2,11 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { getEnvironment as getLocalEnv } from "@/lib/environments";
 import { classifyRoom, isSensingAllowed } from "@/lib/sensingZones";
 import { useLivePresence } from "@/lib/useLivePresence";
-
-const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer"), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full rounded-2xl flex items-center justify-center" style={{ backgroundColor: "var(--gh-surface)", color: "var(--gh-text-muted)", height: "400px" }}>
-      Loading 3D viewer...
-    </div>
-  ),
-});
+import PresenceSpark from "@/components/PresenceSpark";
 
 const DEFAULT_DIMS = { width: 5, length: 4, height: 2.7 };
 
@@ -97,11 +88,40 @@ function EnvironmentViewContent() {
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         <div className="lg:col-span-2">
-          <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
-            <div className="px-4 py-2 text-xs font-medium" style={{ color: "var(--gh-text-muted)", borderBottom: "1px solid var(--gh-border)" }}>
-              Space Preview — {env.dims.width}m × {env.dims.length}m × {env.dims.height}m
+          <div className="rounded-2xl border p-4 md:p-5" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
+            <div className="flex items-baseline justify-between gap-3 mb-3">
+              <h3 className="font-semibold">Live signal</h3>
+              {sensed && zone && zone.state !== "offline" && (
+                <span className="text-xs" style={{ color: "var(--gh-text-muted)" }}>
+                  {zone.bridge_name ? `📡 ${zone.bridge_name} · ` : ""}updated {zone.age_s}s ago
+                </span>
+              )}
             </div>
-            <EnvironmentViewer roomBounds={[env.dims.width, env.dims.length, env.dims.height]} />
+            {sensed && zone && zone.state !== "offline" ? (
+              <>
+                <PresenceSpark zone={zone} height={140} />
+                <p className="text-[11px] mt-2" style={{ color: "var(--gh-text-muted)" }}>
+                  CSI motion score over the last minute. The dashed line is the detection threshold; above it for a few seconds counts as presence.
+                </p>
+                <dl className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mt-4">
+                  {[
+                    ["Confidence", zone.state === "learning" ? "—" : `${Math.round(zone.confidence * 100)}%`],
+                    ["Activity", zone.present ? zone.activity : "none"],
+                    ["Signal (RSSI)", `${zone.rssi} dBm`],
+                    ["CSI frames", zone.frames.toLocaleString()],
+                  ].map(([k, v]) => (
+                    <div key={k} className="rounded-lg px-3 py-2" style={{ backgroundColor: "var(--gh-card)" }}>
+                      <dt style={{ color: "var(--gh-text-muted)" }}>{k}</dt>
+                      <dd className="font-medium">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </>
+            ) : (
+              <p className="text-sm py-10 text-center" style={{ color: "var(--gh-text-muted)" }}>
+                {sensed ? "Waiting for a bridge to report for this area." : "Sensing is disabled for private rooms."}
+              </p>
+            )}
           </div>
         </div>
 
@@ -116,14 +136,14 @@ function EnvironmentViewContent() {
             )}
             {sensed && !zone && live.link === "ok" && (
               <p className="text-xs mt-1" style={{ color: "var(--gh-text-muted)" }}>
-                No bridge is reporting for a zone named &ldquo;{env.name}&rdquo;. Set the bridge&apos;s zone name to match.
+                No bridge is reporting for a zone named &ldquo;{env.name}&rdquo;. Choose this area on the bridge&apos;s setup page.
               </p>
             )}
             {live.link === "error" && <p className="text-xs mt-1" style={{ color: "#B3261E" }}>{live.error}</p>}
           </div>
 
           <div className="rounded-2xl border p-4" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
-            <h3 className="font-semibold mb-3">Space</h3>
+            <h3 className="font-semibold mb-3">Area</h3>
             <div className="space-y-2 text-sm" style={{ color: "var(--gh-text-muted)" }}>
               <div className="flex justify-between"><span>Dimensions</span><span>{env.dims.width}m × {env.dims.length}m</span></div>
               <div className="flex justify-between"><span>Height</span><span>{env.dims.height}m</span></div>

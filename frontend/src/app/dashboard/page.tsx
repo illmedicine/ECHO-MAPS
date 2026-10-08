@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -27,8 +27,6 @@ import {
   EnvCategory,
   Environment,
   TrackedEntity,
-  generateSimulatedSkeleton,
-  generateSimulatedPointCloud,
   getFloorPlan,
   saveFloorPlan,
   deleteFloorPlan,
@@ -68,9 +66,8 @@ import {
 import { updateEchoEnvironment } from "@/lib/environments";
 import dynamic from "next/dynamic";
 
-const EnvironmentViewer = dynamic(() => import("@/components/EnvironmentViewer"), { ssr: false });
 const FloorPlanEditor = dynamic(() => import("@/components/FloorPlanEditor"), { ssr: false });
-const LiveFloorPlanMap = dynamic(() => import("@/components/LiveFloorPlanMap"), { ssr: false });
+const PublicAreasView = dynamic(() => import("@/components/PublicAreasView"), { ssr: false });
 const LivePresencePanel = dynamic(() => import("@/components/LivePresencePanel"), { ssr: false });
 const HotelSetupModal = dynamic(() => import("@/components/HotelSetupModal"), { ssr: false });
 
@@ -136,9 +133,6 @@ export default function DashboardPage() {
   const initDone = useRef(false);
   const [showFloorPlan, setShowFloorPlan] = useState(false);
   const [currentFloorPlan, setCurrentFloorPlan] = useState<FloorPlan | null>(null);
-  const [liveMapRoomId, setLiveMapRoomId] = useState<string | null>(null);
-  const [liveEntities, setLiveEntities] = useState<TrackedEntity[]>([]);
-  const [routerAnchor, setRouterAnchorState] = useState<RouterAnchor | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Single initialization effect — reads user, migrates data, loads environments
@@ -204,14 +198,6 @@ export default function DashboardPage() {
     }
     setShowFloorPlan(false);
   }, [selectedEnvId]);
-
-  // Poll live entities for the floor plan map (2s interval)
-  useEffect(() => {
-    setLiveEntities(getEntities());
-    setRouterAnchorState(getRouterAnchor());
-    const iv = setInterval(() => setLiveEntities(getEntities()), 2000);
-    return () => clearInterval(iv);
-  }, []);
 
   const handleSaveFloorPlan = (width: number, height: number, fpRooms: FloorPlanRoom[]) => {
     if (!selectedEnvId) return;
@@ -341,7 +327,7 @@ export default function DashboardPage() {
             <span className="text-lg">🛰️</span>WiFi Site Survey
           </Link>
           <Link href="/dashboard/bridge" className="sidebar-item w-full">
-            <span className="text-lg">📡</span>Illy Bridge
+            <span className="text-lg">📡</span>Illy Bridge Config
           </Link>
           <Link href="/research" className="sidebar-item w-full">
             <span className="text-lg">📄</span>Research
@@ -389,11 +375,14 @@ export default function DashboardPage() {
                 : activeTab === "automations" ? "⚡ Automations"
                 : "👤 Presence Detection"}
             </h1>
-            {activeTab === "spaces" && selectedEnv && (
-              <p className="text-xs mt-0.5" style={{ color: "var(--gh-text-muted)" }}>
-                {rooms.length} room{rooms.length !== 1 ? "s" : ""} · {rooms.filter((r) => r.isCalibrated).length} calibrated
-              </p>
-            )}
+            {activeTab === "spaces" && selectedEnv && (() => {
+              const publicCount = rooms.filter((r) => classifyRoom({ id: r.id, name: r.name, type: r.type }) === "public").length;
+              return (
+                <p className="text-xs mt-0.5" style={{ color: "var(--gh-text-muted)" }}>
+                  {publicCount} public area{publicCount !== 1 ? "s" : ""} · {rooms.length - publicCount} private room{rooms.length - publicCount !== 1 ? "s" : ""} not sensed
+                </p>
+              );
+            })()}
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
@@ -409,7 +398,7 @@ export default function DashboardPage() {
                 </button>
                 <button onClick={() => setShowNewRoomModal(true)} className="btn-primary flex items-center gap-2">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                  <span className="hidden sm:inline">Add Room</span>
+                  <span className="hidden sm:inline">Add Area</span>
                 </button>
               </>
             )}
@@ -425,32 +414,15 @@ export default function DashboardPage() {
 
         <div className="p-4 md:p-8">
           {activeTab === "spaces" && !showFloorPlan && (
-            <>
-              {currentFloorPlan && selectedEnvId && (
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--gh-text-muted)" }}>🗺️ Live Floor Plan</h2>
-                    <div className="flex items-center gap-2">
-                      {liveMapRoomId && (
-                        <button onClick={() => setLiveMapRoomId(null)} className="text-[10px] px-2 py-1 rounded-lg" style={{ backgroundColor: "var(--gh-card)", color: "var(--gh-text-muted)" }}>Clear Selection</button>
-                      )}
-                    </div>
-                  </div>
-                  <LiveFloorPlanMap
-                    floorPlan={currentFloorPlan}
-                    rooms={rooms.map((r) => getRoomsForEnvironment(selectedEnvId).find((e) => e.id === r.id)!).filter(Boolean)}
-                    entities={liveEntities.filter((e) => {
-                      const envRoomIds = rooms.map((r) => r.id);
-                      return envRoomIds.includes(e.roomId);
-                    })}
-                    selectedRoomId={liveMapRoomId}
-                    onSelectRoom={setLiveMapRoomId}
-                    routerAnchor={routerAnchor}
-                  />
-                </div>
-              )}
-              <RoomsView rooms={rooms} selectedEnvId={selectedEnvId} selectedEnv={selectedEnv ?? null} onAddEnv={() => setShowNewEnvModal(true)} onAddRoom={() => setShowNewRoomModal(true)} onDeleteRoom={handleDeleteRoom} currentFloorPlan={currentFloorPlan} onEditFloorPlan={() => setShowFloorPlan(true)} onAutoSetup={() => setShowHotelModal(true)} />
-            </>
+            <AreasTab
+              selectedEnvId={selectedEnvId}
+              selectedEnv={selectedEnv ?? null}
+              onAddEnv={() => setShowNewEnvModal(true)}
+              onAddArea={() => setShowNewRoomModal(true)}
+              onDeleteRoom={handleDeleteRoom}
+              onAutoSetup={() => setShowHotelModal(true)}
+              roomsKey={rooms.map((r) => r.id).join(",")}
+            />
           )}
           {activeTab === "spaces" && showFloorPlan && selectedEnvId && (
             <div>
@@ -496,99 +468,38 @@ export default function DashboardPage() {
   );
 }
 
-/* ── Rooms View ── */
-function RoomsView({ rooms, selectedEnvId, selectedEnv, onAddEnv, onAddRoom, onDeleteRoom, currentFloorPlan, onEditFloorPlan, onAutoSetup }: {
-  rooms: RoomCard[];
+/* ── Public Areas tab ── */
+function AreasTab({ selectedEnvId, selectedEnv, onAddEnv, onAddArea, onDeleteRoom, onAutoSetup, roomsKey }: {
   selectedEnvId: string | null;
   selectedEnv: EchoEnvironment | null;
   onAddEnv: () => void;
-  onAddRoom: () => void;
+  onAddArea: () => void;
   onDeleteRoom: (id: string) => void;
-  currentFloorPlan: FloorPlan | null;
-  onEditFloorPlan: () => void;
   onAutoSetup: () => void;
+  roomsKey: string;
 }) {
+  // roomsKey changes whenever the room set does, so the memo re-reads storage.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const envRooms = useMemo(() => (selectedEnvId ? getRoomsForEnvironment(selectedEnvId) : []), [selectedEnvId, roomsKey]);
+
   if (!selectedEnvId) {
     return (
       <div className="flex flex-col items-center justify-center py-20" style={{ color: "var(--gh-text-muted)" }}>
         <div className="text-6xl mb-4 opacity-30">🏠</div>
         <p className="text-lg mb-2">No environments yet</p>
-        <p className="text-sm mb-6">Create your first environment to start mapping rooms</p>
+        <p className="text-sm mb-6">Create your first environment to start monitoring its public areas</p>
         <button onClick={onAddEnv} className="btn-primary">Create Environment</button>
       </div>
     );
   }
-  if (rooms.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20" style={{ color: "var(--gh-text-muted)" }}>
-        <div className="text-6xl mb-4 opacity-30">🚪</div>
-        <p className="text-lg mb-2">No rooms in {selectedEnv?.name}</p>
-        <p className="text-sm mb-6">Add rooms individually or create a floor plan to define all rooms at once</p>
-        <div className="flex gap-3 flex-wrap justify-center">
-          <button onClick={onAutoSetup} className="px-5 py-2.5 rounded-xl text-sm font-medium transition" style={{ backgroundColor: "rgba(66,133,244,0.1)", border: "1px solid var(--gh-border)", color: "var(--gh-blue)" }}>
-            🏨 Auto-Setup Hotel
-          </button>
-          <button onClick={onEditFloorPlan} className="px-5 py-2.5 rounded-xl text-sm font-medium transition" style={{ backgroundColor: "var(--gh-card)", border: "1px solid var(--gh-border)", color: "var(--gh-text-muted)" }}>
-            🏗️ Create Floor Plan
-          </button>
-          <button onClick={onAddRoom} className="btn-primary">Add Room</button>
-        </div>
-      </div>
-    );
-  }
-  const grouped = rooms.reduce<Record<string, RoomCard[]>>((acc, r) => {
-    const key = r.type || "other";
-    (acc[key] = acc[key] || []).push(r);
-    return acc;
-  }, {});
   return (
-    <>
-      {currentFloorPlan && (
-        <div className="mb-6 p-4 rounded-xl flex items-center justify-between" style={{ backgroundColor: "rgba(52,168,83,0.08)", border: "1px solid rgba(52,168,83,0.2)" }}>
-          <div className="flex items-center gap-3">
-            <span className="text-xl">🏗️</span>
-            <div>
-              <p className="text-sm font-medium" style={{ color: "var(--gh-green)" }}>Floor Plan Active</p>
-              <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{currentFloorPlan.width}×{currentFloorPlan.height}m · {currentFloorPlan.rooms.length} rooms defined</p>
-            </div>
-          </div>
-          <button onClick={onEditFloorPlan} className="px-3 py-1.5 rounded-lg text-xs font-medium transition" style={{ backgroundColor: "rgba(52,168,83,0.15)", color: "var(--gh-green)" }}>
-            Edit Floor Plan
-          </button>
-        </div>
-      )}
-      {Object.entries(grouped).map(([type, items]) => (
-        <div key={type} className="mb-8">
-          <h2 className="text-sm font-medium mb-3 capitalize" style={{ color: "var(--gh-text-muted)" }}>{type.replace("_", " ")}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {items.map((room) => (
-              <div key={room.id} className="device-card group relative">
-                <button onClick={(e) => { e.stopPropagation(); onDeleteRoom(room.id); }}
-                  className="absolute top-2 right-2 w-7 h-7 md:w-6 md:h-6 rounded-full flex items-center justify-center opacity-100 md:opacity-0 group-hover:opacity-100 transition hover:bg-white/10"
-                  style={{ color: "var(--gh-text-muted)" }}>✕</button>
-                <Link href={`/dashboard/env?id=${room.id}`} className="block">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{ROOM_ICONS[room.type] ?? "📍"}</span>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm truncate">{room.name}</h3>
-                      <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>{room.isCalibrated ? "Active" : "Setup required"}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ backgroundColor: "var(--gh-border)" }}>
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(5, room.calibrationConfidence * 100)}%`, backgroundColor: room.isCalibrated ? "var(--gh-green)" : "var(--gh-blue)" }} />
-                    </div>
-                    <span className="text-[10px] font-medium" style={{ color: room.isCalibrated ? "var(--gh-green)" : "var(--gh-text-muted)" }}>
-                      {room.isCalibrated ? "Live" : `${(room.calibrationConfidence * 100).toFixed(0)}%`}
-                    </span>
-                  </div>
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </>
+    <PublicAreasView
+      rooms={envRooms}
+      environmentName={selectedEnv?.name ?? "this property"}
+      onAddArea={onAddArea}
+      onAutoSetup={onAutoSetup}
+      onDeleteRoom={onDeleteRoom}
+    />
   );
 }
 
@@ -800,59 +711,6 @@ function PresenceView() {
   const [routerFrequency, setRouterFrequency] = useState(5.8);
   const [routerAntennas, setRouterAntennas] = useState(4);
 
-  // Per-entity skeleton animation for live 3D rendering
-  const [pointCloud, setPointCloud] = useState<number[][]>([]);
-  const [animatedPersons, setAnimatedPersons] = useState<Array<{
-    track_id: string; user_tag: string; position: number[];
-    velocity: number[]; speed: number; confidence: number;
-    is_registered: boolean; is_ghosted: boolean; last_activity: string;
-    skeleton: number[][]; device_tether_status: string;
-  }>>([]);
-  const skelTimeRef = useRef(0);
-  const prevPosRef = useRef<Record<string, number[]>>({});
-
-  // Animate each active entity with its own skeleton and derive position from it
-  useEffect(() => {
-    const dims = { width: 5, length: 4, height: 2.7 };
-    setPointCloud(generateSimulatedPointCloud(dims, 200));
-    const iv = setInterval(() => {
-      skelTimeRef.current += 0.1;
-      const active = entities.filter((e) => e.status === "active");
-      if (active.length === 0) {
-        setAnimatedPersons([]);
-        return;
-      }
-      const dt = 0.1;
-      const newPersons = active.map((e, i) => {
-        // Each entity gets a unique time offset for distinct walking paths
-        const phaseOffset = i * 4.2;
-        const speedMult = 0.8 + (i % 3) * 0.15; // vary walk speed per entity
-        const skel = generateSimulatedSkeleton(
-          { width: dims.width, length: dims.length, height: dims.height },
-          skelTimeRef.current * speedMult + phaseOffset
-        );
-        // Derive precise position from hip midpoint (keypoints 23=left hip, 24=right hip)
-        const hipL = skel[23] || [2.5, 0.9, 2];
-        const hipR = skel[24] || [2.5, 0.9, 2];
-        const pos = [(hipL[0] + hipR[0]) / 2, (hipL[1] + hipR[1]) / 2, (hipL[2] + hipR[2]) / 2];
-        // Compute velocity from previous position
-        const prev = prevPosRef.current[e.id] || pos;
-        const vel = [(pos[0] - prev[0]) / dt, (pos[1] - prev[1]) / dt, (pos[2] - prev[2]) / dt];
-        const spd = Math.sqrt(vel[0] ** 2 + vel[1] ** 2 + vel[2] ** 2);
-        prevPosRef.current[e.id] = pos;
-        return {
-          track_id: e.id, user_tag: e.name, position: pos,
-          velocity: vel, speed: spd, confidence: e.confidence,
-          is_registered: true, is_ghosted: false,
-          last_activity: e.activity, skeleton: skel,
-          device_tether_status: e.deviceTetherStatus ?? "none",
-        };
-      });
-      setAnimatedPersons(newPersons);
-    }, 100); // ~10fps
-    return () => clearInterval(iv);
-  }, [entities]);
-
   // Load entities, household, visitors, and router anchor from localStorage
   useEffect(() => {
     setEntities(getEntities());
@@ -1054,16 +912,6 @@ function PresenceView() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           <div className="lg:col-span-2 space-y-4 md:space-y-6">
-            {/* 3D Viewer — shows tracked entities as dots */}
-            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)", height: 260 }}>
-              <EnvironmentViewer
-                pointCloud={pointCloud}
-                trackedPersons={animatedPersons}
-                sourceType={animatedPersons.length > 0 ? "csi" : "simulated"}
-                isLive={animatedPersons.length > 0}
-              />
-            </div>
-
             <div>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <span>\ud83d\udc64</span> People <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(91,156,246,0.12)", color: "var(--gh-blue)" }}>{people.length}</span>

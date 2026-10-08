@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * Bridge Management Dashboard Page
+ * Illy Bridge Config
  *
- * Discover and bind Illy Bridge devices (FNK0086). Bridges sense WiFi CSI
- * continuously in public areas; there is no manual scan or calibration step.
+ * Name each Illy Bridge (FNK0086) and choose the public area it monitors. Bridges
+ * sense WiFi CSI continuously; configuration is relayed through the backend, so any
+ * number of bridges can be set up here at once.
  */
 
 import dynamic from "next/dynamic";
-import BridgeManager from "@/components/BridgeManager";
+import BridgeConfigPanel from "@/components/BridgeConfigPanel";
 
 const LivePresencePanel = dynamic(() => import("@/components/LivePresencePanel"), { ssr: false });
 
@@ -22,21 +23,23 @@ export default function BridgePage() {
               Dashboard
             </a>
             <span>/</span>
-            <span className="text-white">Illy Bridge</span>
+            <span className="text-white">Illy Bridge Config</span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold">
-            <span className="text-cyan-400">Illy</span> Bridge
+            <span className="text-cyan-400">Illy</span> Bridge Config
           </h1>
           <p className="text-zinc-400 mt-1 text-sm md:text-base">
-            Continuous WiFi CSI presence sensing in public areas (Freenove ESP32-S3 FNK0086)
+            Name each bridge and assign it to a public area (Freenove ESP32-S3 FNK0086)
           </p>
+        </div>
+
+        <div className="mb-6">
+          <BridgeConfigPanel />
         </div>
 
         <div className="mb-6">
           <LivePresencePanel />
         </div>
-
-        <BridgeManager onBridgeSelect={() => {}} />
       </div>
     </div>
   );
