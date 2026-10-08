@@ -345,8 +345,11 @@ export async function discoverLocalBridges(): Promise<
 // ── Live CSI presence (public areas) ──
 
 export interface LiveZone {
+  /** Public area this bridge monitors (e.g. "Floor 3 Hallway"). */
   zone: string;
   device_id: string;
+  /** Label of the bridge device itself (e.g. "Illy Bridge 1"); empty on older firmware. */
+  bridge_name?: string;
   /** offline = no data from the sensor; learning = building the empty-room baseline */
   state: "offline" | "learning" | "empty" | "present";
   present: boolean;

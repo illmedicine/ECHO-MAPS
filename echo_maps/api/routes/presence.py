@@ -40,7 +40,8 @@ class CSIWindow(BaseModel):
 
 class IngestBody(BaseModel):
     device_id: str = Field(min_length=1, max_length=64)
-    zone: str = Field(min_length=1, max_length=63)
+    zone: str = Field(min_length=1, max_length=63)  # the public area this bridge monitors
+    bridge_name: str = Field(default="", max_length=63)  # label for the device itself
     windows: list[CSIWindow] = Field(min_length=1, max_length=MAX_WINDOWS_PER_POST)
 
 
@@ -58,6 +59,7 @@ async def ingest(body: IngestBody, x_device_key: str | None = Header(default=Non
     if _PRIVATE.search(body.zone):
         raise HTTPException(status_code=403, detail="Sensing is restricted to public areas")
     zone = _registry.zone(body.device_id, body.zone)
+    zone.bridge_name = body.bridge_name
     now = time.time()
     for w in body.windows:
         ts = w.ts if w.ts and abs(w.ts - now) < 3600 else now  # ESP32 may have no RTC

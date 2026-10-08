@@ -82,7 +82,14 @@ export default function LivePresencePanel({ compact = false }: { compact?: boole
           return (
             <div key={`${z.device_id}-${z.zone}`} className="px-3 py-2.5 rounded-xl" style={{ backgroundColor: st.bg, border: "1px solid var(--gh-border)" }}>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium flex-1 min-w-0 truncate">{z.zone}</span>
+                <span className="text-sm font-medium flex-1 min-w-0 truncate">
+                  {z.zone}
+                  {z.bridge_name && (
+                    <span className="ml-2 text-[10px] font-normal" style={{ color: "var(--gh-text-muted)" }}>
+                      via {z.bridge_name}
+                    </span>
+                  )}
+                </span>
                 <span className="text-xs font-semibold flex-shrink-0" style={{ color: st.color }}>
                   {z.state === "present" ? `👤 ${st.label}` : st.label}
                 </span>

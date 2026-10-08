@@ -44,6 +44,17 @@ def test_offline_when_no_data():
     assert z.snapshot()["state"] == "offline"
 
 
+def test_device_zone_rename_drops_stale_zone():
+    from echo_maps.csi.presence import PresenceRegistry
+    r = PresenceRegistry()
+    r.zone("esp1", "Hallway").bridge_name = "Illy Bridge 1"
+    r.zone("esp2", "Outdoor Pool")
+    r.zone("esp1", "Floor 3 Hallway").bridge_name = "Illy Bridge 1"
+    zones = {(s["device_id"], s["zone"]): s for s in r.snapshots()}
+    assert set(zones) == {("esp1", "Floor 3 Hallway"), ("esp2", "Outdoor Pool")}
+    assert zones[("esp1", "Floor 3 Hallway")]["bridge_name"] == "Illy Bridge 1"
+
+
 def test_ingest_endpoint(monkeypatch):
     monkeypatch.setenv("PRESENCE_INGEST_KEY", "k" * 20)
     from echo_maps.config import get_settings

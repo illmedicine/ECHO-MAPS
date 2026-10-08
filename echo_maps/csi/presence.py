@@ -51,6 +51,7 @@ def window_score(amp_cv: float, decorr: float, rssi_std: float) -> float:
 class ZoneState:
     zone: str
     device_id: str
+    bridge_name: str = ""
     present: bool = False
     state: str = "offline"  # offline | learning | empty | present
     confidence: float = 0.0
@@ -127,6 +128,7 @@ class ZoneState:
         return {
             "zone": self.zone,
             "device_id": self.device_id,
+            "bridge_name": self.bridge_name,
             "state": "offline" if offline else self.state,
             "present": False if offline else self.present,
             "confidence": 0.0 if offline else round(self.confidence, 3),
@@ -154,6 +156,10 @@ class PresenceRegistry:
     def zone(self, device_id: str, zone: str) -> ZoneState:
         key = (device_id, zone)
         if key not in self._zones:
+            # A bridge senses one place at a time: when it reports under a new
+            # zone name, its earlier zone entries are stale and are dropped.
+            for old in [k for k in self._zones if k[0] == device_id]:
+                del self._zones[old]
             self._zones[key] = ZoneState(zone=zone, device_id=device_id)
         return self._zones[key]
 
