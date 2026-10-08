@@ -52,6 +52,7 @@ class ZoneState:
     zone: str
     device_id: str
     bridge_name: str = ""
+    ip: str = ""
     present: bool = False
     state: str = "offline"  # offline | learning | empty | present
     confidence: float = 0.0
@@ -130,6 +131,7 @@ class ZoneState:
             "zone": self.zone,
             "device_id": self.device_id,
             "bridge_name": self.bridge_name,
+            "ip": self.ip,
             "state": "offline" if offline else self.state,
             "present": False if offline else self.present,
             "confidence": 0.0 if offline else round(self.confidence, 3),

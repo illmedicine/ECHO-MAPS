@@ -73,6 +73,47 @@ def test_facility_areas_publish_and_read(monkeypatch):
         "Floor 1 Hallway", "Floor 2 Hallway", "Front Desk / Lobby"]
 
 
+def test_dashboard_configures_a_bridge_remotely(monkeypatch):
+    monkeypatch.setenv("PRESENCE_INGEST_KEY", "k" * 20)
+    import echo_maps.config as cfg
+    cfg._settings = None
+    from echo_maps.api.app import create_app
+    from echo_maps.api.deps import get_current_user
+    from echo_maps.api.routes import presence as routes
+    routes._registry.__init__()
+    routes._desired.clear()
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: object()
+    c = TestClient(app)
+    h = {"X-Device-Key": "k" * 20}
+    win = [{"n": 40, "amp_cv": 0.03, "decorr": 0.02}]
+    report = lambda zone, name: c.post("/api/presence/ingest", headers=h, json={  # noqa: E731
+        "device_id": "bridge-1", "zone": zone, "bridge_name": name, "ip": "10.0.0.7", "windows": win}).json()
+
+    c.put("/api/presence/areas", json={"areas": ["Floor 1 Hallway", "Floor 3 Hallway", "Outdoor Pool"]})
+    cfg_url = "/api/presence/bridges/bridge-1/config"
+    assert c.put(cfg_url, json={"area": "Outdoor Pool"}).status_code == 404  # never reported
+
+    assert "config" not in report("Unassigned", "Illy Bridge")
+    b = c.get("/api/presence/bridges").json()["bridges"][0]
+    assert (b["device_id"], b["area"], b["ip"], b["pending"]) == ("bridge-1", "Unassigned", "10.0.0.7", None)
+
+    assert c.put(cfg_url, json={"area": "Floor 4 Hallway"}).status_code == 422   # not in this facility
+    assert c.put(cfg_url, json={"area": "Room 304"}).status_code == 403          # private
+    assert c.put(cfg_url, json={"bridge_name": "bad<name>"}).status_code == 422
+    assert c.put(cfg_url, json={}).status_code == 422
+
+    assert c.put(cfg_url, json={"bridge_name": "Illy Bridge 1", "area": "Floor 3 Hallway"}).status_code == 200
+    assert c.get("/api/presence/bridges").json()["bridges"][0]["pending"]["area"] == "Floor 3 Hallway"
+    # the bridge is told on its next upload, and keeps being told until it reports the change
+    assert report("Unassigned", "Illy Bridge")["config"] == {"bridge_name": "Illy Bridge 1", "area": "Floor 3 Hallway"}
+    assert "config" in report("Unassigned", "Illy Bridge")
+    assert "config" not in report("Floor 3 Hallway", "Illy Bridge 1")
+    b = c.get("/api/presence/bridges").json()["bridges"][0]
+    assert (b["area"], b["bridge_name"], b["pending"]) == ("Floor 3 Hallway", "Illy Bridge 1", None)
+    assert [z["zone"] for z in routes._registry.snapshots()] == ["Floor 3 Hallway"]  # old zone dropped
+
+
 def test_ingest_endpoint(monkeypatch):
     monkeypatch.setenv("PRESENCE_INGEST_KEY", "k" * 20)
     from echo_maps.config import get_settings
