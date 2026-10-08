@@ -303,7 +303,7 @@ static TaskHandle_t s_areas_task;
 static char s_abuf[2048];
 static int s_alen;
 
-static esp_err_t areas_evt(esp_http_client_event_t *e) {
+static esp_err_t resp_evt(esp_http_client_event_t *e) {
     if (e->event_id == HTTP_EVENT_ON_DATA && e->data_len > 0 && s_alen + e->data_len < (int)sizeof(s_abuf) - 1) {
         memcpy(s_abuf + s_alen, e->data, e->data_len);
         s_alen += e->data_len;
@@ -323,6 +323,21 @@ static bool areas_name_ok(const char *a) {
     return true;
 }
 
+/* An area sent by the dashboard through the authenticated config reply was already
+ * validated by the backend, so the bridge adopts it even if its cached list is
+ * stale or empty (for example after the backend restarted), and remembers it. */
+static bool area_adopt_from_server(const char *area) {
+    if (!areas_name_ok(area)) return false;
+    if (!area_listed(area)) {
+        bool added = false;
+        taskENTER_CRITICAL(&s_mux);
+        if (s_area_n < MAX_AREAS) { strlcpy(s_areas[s_area_n++], area, ID_MAX); added = true; }
+        taskEXIT_CRITICAL(&s_mux);
+        if (!added) return false;
+    }
+    return presence_area_set(area);
+}
+
 static bool areas_fetch(void) {
     char url[160];
     strlcpy(url, PRESENCE_API_URL, sizeof(url));
@@ -330,25 +345,25 @@ static bool areas_fetch(void) {
     if (!p) return false;
     strcpy(p, "/areas");
 
-    s_alen = 0;
-    s_abuf[0] = 0;
     esp_http_client_config_t cfg = {
         .url = url,
-        .event_handler = areas_evt,
+        .event_handler = resp_evt,
         .timeout_ms = 20000,
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
     xSemaphoreTake(s_net_lock, portMAX_DELAY);
+    s_alen = 0;
+    s_abuf[0] = 0;
     esp_http_client_handle_t c = esp_http_client_init(&cfg);
     if (!c) { xSemaphoreGive(s_net_lock); return false; }
     esp_http_client_set_header(c, "X-Device-Key", PRESENCE_DEVICE_KEY);
     esp_err_t err = esp_http_client_perform(c);
     int status = err == ESP_OK ? esp_http_client_get_status_code(c) : -1;
     esp_http_client_cleanup(c);
+    cJSON *root = status == 200 ? cJSON_Parse(s_abuf) : NULL;
     xSemaphoreGive(s_net_lock);
     if (status != 200) { ESP_LOGW(TAG, "areas fetch failed: err=%s status=%d", esp_err_to_name(err), status); return false; }
 
-    cJSON *root = cJSON_Parse(s_abuf);
     cJSON *arr = root ? cJSON_GetObjectItem(root, "areas") : NULL;
     if (!cJSON_IsArray(arr)) { cJSON_Delete(root); return false; }
 
@@ -402,12 +417,15 @@ bool presence_areas_refresh(int timeout_ms) {
 static bool post_pending(void) {
     if (s_pending_n == 0) return true;
     static char body[1400];
-    char zone[ID_MAX], bname[ID_MAX];
+    char zone[ID_MAX], bname[ID_MAX], ip[16] = "";
     presence_zone_get(zone, sizeof(zone));
     presence_bridge_name_get(bname, sizeof(bname));
+    esp_netif_ip_info_t ipi;
+    esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta && esp_netif_get_ip_info(sta, &ipi) == ESP_OK) snprintf(ip, sizeof(ip), IPSTR, IP2STR(&ipi.ip));
     int off = snprintf(body, sizeof(body),
-                       "{\"device_id\":\"%s\",\"zone\":\"%s\",\"bridge_name\":\"%s\",\"windows\":[",
-                       get_bridge_device_id(), zone, bname);
+                       "{\"device_id\":\"%s\",\"zone\":\"%s\",\"bridge_name\":\"%s\",\"ip\":\"%s\",\"windows\":[",
+                       get_bridge_device_id(), zone, bname, ip);
     for (int i = 0; i < s_pending_n && off < (int)sizeof(body) - 160; i++) {
         const window_t *w = &s_pending[i];
         off += snprintf(body + off, sizeof(body) - off,
@@ -420,9 +438,12 @@ static bool post_pending(void) {
         .url = PRESENCE_API_URL,
         .method = HTTP_METHOD_POST,
         .timeout_ms = 20000,            /* Render free tier can take ~30 s to wake */
+        .event_handler = resp_evt,
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
     xSemaphoreTake(s_net_lock, portMAX_DELAY);
+    s_alen = 0;
+    s_abuf[0] = 0;
     esp_http_client_handle_t c = esp_http_client_init(&cfg);
     if (!c) { xSemaphoreGive(s_net_lock); return false; }
     esp_http_client_set_header(c, "Content-Type", "application/json");
@@ -431,7 +452,23 @@ static bool post_pending(void) {
     esp_err_t err = esp_http_client_perform(c);
     int status = err == ESP_OK ? esp_http_client_get_status_code(c) : -1;
     esp_http_client_cleanup(c);
+
+    /* The reply may carry configuration the dashboard wants this bridge to adopt. */
+    char want_area[ID_MAX] = "", want_name[ID_MAX] = "";
+    if (status == 200) {
+        cJSON *root = cJSON_Parse(s_abuf);
+        cJSON *conf = root ? cJSON_GetObjectItem(root, "config") : NULL;
+        cJSON *a = conf ? cJSON_GetObjectItem(conf, "area") : NULL;
+        cJSON *n = conf ? cJSON_GetObjectItem(conf, "bridge_name") : NULL;
+        if (cJSON_IsString(a) && strlen(a->valuestring) < ID_MAX) strlcpy(want_area, a->valuestring, ID_MAX);
+        if (cJSON_IsString(n) && strlen(n->valuestring) < ID_MAX) strlcpy(want_name, n->valuestring, ID_MAX);
+        cJSON_Delete(root);
+    }
     xSemaphoreGive(s_net_lock);
+    if (want_name[0] && strcmp(want_name, bname) != 0) presence_bridge_name_set(want_name);
+    if (want_area[0] && strcmp(want_area, zone) != 0 && !area_adopt_from_server(want_area))
+        xTaskNotifyGive(s_areas_task);   /* could not adopt it (list full?): refresh the list, the dashboard will resend */
+
     if (status == 200) return true;
     ESP_LOGW(TAG, "POST failed: err=%s status=%d", esp_err_to_name(err), status);
     return false;
