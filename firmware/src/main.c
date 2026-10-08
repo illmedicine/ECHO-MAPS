@@ -114,6 +114,83 @@ static void init_leds(void) {
     set_led_status(BRIDGE_OFFLINE);
 }
 
+/* ── Captive portal auto-login (Motel 6 access code) ── */
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "secrets.h"
+
+static char s_pbuf[1024];
+static int s_plen;
+static esp_err_t portal_evt(esp_http_client_event_t *e) {
+    if (e->event_id == HTTP_EVENT_ON_DATA && e->data_len > 0) {
+        int room = (int)sizeof(s_pbuf) - 1 - s_plen;
+        int n = e->data_len < room ? e->data_len : room;
+        memcpy(s_pbuf + s_plen, e->data, n);
+        s_plen += n;
+        s_pbuf[s_plen] = 0;
+    }
+    return ESP_OK;
+}
+
+/* Returns true if internet is reachable (generate_204 answers 204). */
+static bool portal_online(void) {
+    s_plen = 0; s_pbuf[0] = 0;
+    esp_http_client_config_t cfg = {
+        .url = "http://connectivitycheck.gstatic.com/generate_204",
+        .event_handler = portal_evt,
+        .disable_auto_redirect = true,
+        .timeout_ms = 8000,
+    };
+    esp_http_client_handle_t c = esp_http_client_init(&cfg);
+    esp_err_t err = esp_http_client_perform(c);
+    int status = esp_http_client_get_status_code(c);
+    esp_http_client_cleanup(c);
+    return err == ESP_OK && status == 204;
+}
+
+static void portal_login(void) {
+    /* The portal redirect carries the portal base URL, e.g. https://host:1112/web/... */
+    char base[96] = {0};
+    char *u = strstr(s_pbuf, "URL=");
+    if (u) {
+        u += 4;
+        char *end = strstr(u, "/web/");
+        if (end && (end - u) < (int)sizeof(base)) memcpy(base, u, end - u);
+    }
+    if (!base[0]) { ESP_LOGW("portal", "no portal redirect found"); return; }
+
+    char url[160];
+    snprintf(url, sizeof(url), "%s/usg/process?OS=http://www.motel6.com", base);
+    const char *body = "username=motel6&RLF=&password=" PORTAL_ACCESS_CODE "&submit=Submit";
+    esp_http_client_config_t cfg = {
+        .url = url,
+        .method = HTTP_METHOD_POST,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .disable_auto_redirect = true,
+        .timeout_ms = 10000,
+    };
+    esp_http_client_handle_t c = esp_http_client_init(&cfg);
+    esp_http_client_set_header(c, "Content-Type", "application/x-www-form-urlencoded");
+    esp_http_client_set_post_field(c, body, strlen(body));
+    esp_err_t err = esp_http_client_perform(c);
+    ESP_LOGI("portal", "login POST %s err=%s status=%d", base, esp_err_to_name(err),
+             esp_http_client_get_status_code(c));
+    esp_http_client_cleanup(c);
+}
+
+static void portal_task(void *arg) {
+    for (;;) {
+        if (!portal_online()) {
+            ESP_LOGI("portal", "no internet - signing in to captive portal");
+            portal_login();
+            vTaskDelay(pdMS_TO_TICKS(3000));
+            if (portal_online()) ESP_LOGI("portal", "ONLINE after login");
+            else ESP_LOGW("portal", "still offline after login");
+        }
+        vTaskDelay(pdMS_TO_TICKS(60000));
+    }
+}
+
 /* ── WiFi ── */
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data) {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
@@ -148,7 +225,7 @@ static void wifi_init_sta(const char *ssid, const char *pass) {
     wifi_config_t wifi_config = {0};
     strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
     strncpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password) - 1);
-    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    wifi_config.sta.threshold.authmode = pass[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
 
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
@@ -171,6 +248,8 @@ static void wifi_init_sta(const char *ssid, const char *pass) {
         }
         lcd_set_wifi_status(true, ssid, ip_str);
         lcd_show_status("WiFi Connected", ssid);
+
+        xTaskCreate(portal_task, "portal", 8192, NULL, 4, NULL);
 
         /* Always-on CSI presence sensing: no manual scan needed. */
         presence_csi_start();
@@ -335,15 +414,19 @@ void app_main(void) {
     wifi_init_config_t wifi_cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wifi_cfg));
 
-    /* Try stored WiFi credentials, fallback to SoftAP provisioning */
+    /* Try stored WiFi credentials, fallback to hardcoded Motel 6, then SoftAP provisioning */
     char ssid[33] = {0}, pass[65] = {0};
     if (load_wifi_creds(ssid, sizeof(ssid), pass, sizeof(pass))) {
         ESP_LOGI(TAG, "Found stored WiFi: %s", ssid);
         lcd_show_status("Connecting...", ssid);
         wifi_init_sta(ssid, pass);
     } else {
-        ESP_LOGI(TAG, "No WiFi credentials — starting WiFi Setup");
-        wifi_init_softap();
+        /* Hardcoded Motel 6 WiFi credentials as fallback */
+        strncpy(ssid, "Motel 6", sizeof(ssid) - 1);
+        strncpy(pass, "", sizeof(pass) - 1);  /* Open network - no password */
+        ESP_LOGI(TAG, "Using hardcoded Motel 6 WiFi: %s (open)", ssid);
+        lcd_show_status("Connecting...", ssid);
+        wifi_init_sta(ssid, pass);
     }
 
     /* Start mDNS for local network discovery */
