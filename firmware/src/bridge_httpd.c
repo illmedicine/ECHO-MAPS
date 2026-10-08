@@ -376,7 +376,7 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req) {
 }
 
 /* ── GET/POST /api/bridge/zone ── */
-static esp_err_t zone_get_handler(httpd_req_t *req) {
+static esp_err_t zone_send(httpd_req_t *req) {
     set_cors_headers(req);
     char area[64], name[64];
     presence_zone_get(area, sizeof(area));
@@ -386,14 +386,21 @@ static esp_err_t zone_get_handler(httpd_req_t *req) {
     cJSON_AddStringToObject(resp, "bridge_name", name);
     cJSON_AddStringToObject(resp, "area", area);
     cJSON *areas = cJSON_AddArrayToObject(resp, "areas");
-    for (int i = 0; i < presence_area_count(); i++)
-        cJSON_AddItemToArray(areas, cJSON_CreateString(presence_area_at(i)));
+    char a[64];
+    for (int i = 0; presence_area_at(i, a, sizeof(a)); i++)
+        cJSON_AddItemToArray(areas, cJSON_CreateString(a));
     char *json = cJSON_PrintUnformatted(resp);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json);
     free(json);
     cJSON_Delete(resp);
     return ESP_OK;
+}
+
+/* GET: pull the latest facility area list from the backend first (short wait), then answer. */
+static esp_err_t zone_get_handler(httpd_req_t *req) {
+    presence_areas_refresh(6000);
+    return zone_send(req);
 }
 
 static esp_err_t zone_post_handler(httpd_req_t *req) {
@@ -416,7 +423,7 @@ static esp_err_t zone_post_handler(httpd_req_t *req) {
     }
     if (have_area && !presence_area_set(area->valuestring)) {
         cJSON_Delete(body);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "area must be one of the listed public areas");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "area must be one of this facility's public areas (open the Echo Maps dashboard once to publish them)");
         return ESP_FAIL;
     }
     if (have_name && !presence_bridge_name_set(name->valuestring)) {
@@ -426,7 +433,7 @@ static esp_err_t zone_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
     cJSON_Delete(body);
-    return zone_get_handler(req);
+    return zone_send(req);
 }
 
 static const char ZONE_PAGE[] =
@@ -441,6 +448,7 @@ static const char ZONE_PAGE[] =
     "<button style='padding:.6rem 1.2rem;font-size:1rem' onclick=save()>Save</button>"
     "<p id=m></p><script>"
     "fetch('/api/bridge/zone').then(r=>r.json()).then(j=>{n.value=j.bridge_name;"
+    "if(!j.areas.length)m.textContent='No areas yet: open the Echo Maps dashboard once so it can publish this facility\\'s public areas, then reload.';"
     "if(j.areas.indexOf(j.area)<0)a.add(new Option('- choose an area -',''));"
     "j.areas.forEach(x=>a.add(new Option(x,x)));a.value=j.areas.indexOf(j.area)<0?'':j.area});"
     "function save(){if(!a.value){m.textContent='Choose an area first';return}"

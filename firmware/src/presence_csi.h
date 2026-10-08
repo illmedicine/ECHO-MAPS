@@ -20,10 +20,15 @@ void presence_csi_start(void);
 #include <stddef.h>
 void presence_zone_get(char *out, size_t n);          /* current area */
 void presence_bridge_name_get(char *out, size_t n);
-bool presence_area_set(const char *area);             /* false if not in the preset list */
+bool presence_area_set(const char *area);             /* false if not in the facility's area list */
 bool presence_bridge_name_set(const char *name);      /* false if empty/invalid chars */
+
+/* The selectable public areas come from the backend (published by the dashboard from
+ * the facility's real layout), cached in NVS. */
 int  presence_area_count(void);
-const char *presence_area_at(int i);
+bool presence_area_at(int i, char *out, size_t n);
+/* Re-fetch the list now; waits up to timeout_ms. Returns true if a fresh list arrived. */
+bool presence_areas_refresh(int timeout_ms);
 
 /* Live counters for the LCD / status endpoint. */
 typedef struct {
