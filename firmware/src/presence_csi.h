@@ -13,11 +13,17 @@
 
 void presence_csi_start(void);
 
-/* Runtime zone name (public area this unit monitors), persisted in NVS.
- * Falls back to PRESENCE_ZONE_NAME from secrets.h until one is set. */
+/* Runtime identity, persisted in NVS:
+ *   area        - public area this unit monitors (must be one of the preset list)
+ *   bridge name - free-text label for the unit itself (e.g. "Illy Bridge 1")
+ * The area is what the dashboard uses as the presence zone. */
 #include <stddef.h>
-void presence_zone_get(char *out, size_t n);
-bool presence_zone_set(const char *name);   /* false if name invalid */
+void presence_zone_get(char *out, size_t n);          /* current area */
+void presence_bridge_name_get(char *out, size_t n);
+bool presence_area_set(const char *area);             /* false if not in the preset list */
+bool presence_bridge_name_set(const char *name);      /* false if empty/invalid chars */
+int  presence_area_count(void);
+const char *presence_area_at(int i);
 
 /* Live counters for the LCD / status endpoint. */
 typedef struct {

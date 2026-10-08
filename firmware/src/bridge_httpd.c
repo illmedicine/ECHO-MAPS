@@ -11,9 +11,9 @@
  *   GET  /api/bridge/status       — current calibration status
  *   POST /api/bridge/wifi         — configure WiFi credentials
  *   GET  /api/bridge/wifi/scan    — scan for available WiFi networks
- *   GET  /api/bridge/zone         — current presence zone name
- *   POST /api/bridge/zone         — set zone name {"zone":"Pool Terrace"}
- *   GET  /zone                    — small web form to set the zone name
+ *   GET  /api/bridge/zone         — bridge name, area, and the list of selectable areas
+ *   POST /api/bridge/zone         — {"bridge_name":"Illy Bridge 1","area":"Outdoor Pool"}
+ *   GET  /zone                    — small web form: bridge name + area dropdown
  *
  * All responses are JSON. CORS headers included for web app access.
  */
@@ -378,11 +378,16 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req) {
 /* ── GET/POST /api/bridge/zone ── */
 static esp_err_t zone_get_handler(httpd_req_t *req) {
     set_cors_headers(req);
-    char zone[64];
-    presence_zone_get(zone, sizeof(zone));
+    char area[64], name[64];
+    presence_zone_get(area, sizeof(area));
+    presence_bridge_name_get(name, sizeof(name));
     cJSON *resp = cJSON_CreateObject();
-    cJSON_AddStringToObject(resp, "zone", zone);
     cJSON_AddStringToObject(resp, "device_id", get_bridge_device_id());
+    cJSON_AddStringToObject(resp, "bridge_name", name);
+    cJSON_AddStringToObject(resp, "area", area);
+    cJSON *areas = cJSON_AddArrayToObject(resp, "areas");
+    for (int i = 0; i < presence_area_count(); i++)
+        cJSON_AddItemToArray(areas, cJSON_CreateString(presence_area_at(i)));
     char *json = cJSON_PrintUnformatted(resp);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json);
@@ -393,7 +398,7 @@ static esp_err_t zone_get_handler(httpd_req_t *req) {
 
 static esp_err_t zone_post_handler(httpd_req_t *req) {
     set_cors_headers(req);
-    char buf[160];
+    char buf[200];
     int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (len <= 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
@@ -401,11 +406,23 @@ static esp_err_t zone_post_handler(httpd_req_t *req) {
     }
     buf[len] = 0;
     cJSON *body = cJSON_Parse(buf);
-    cJSON *zone = body ? cJSON_GetObjectItem(body, "zone") : NULL;
-    if (!zone || !cJSON_IsString(zone) || !presence_zone_set(zone->valuestring)) {
+    cJSON *area = body ? cJSON_GetObjectItem(body, "area") : NULL;
+    cJSON *name = body ? cJSON_GetObjectItem(body, "bridge_name") : NULL;
+    bool have_area = cJSON_IsString(area), have_name = cJSON_IsString(name);
+    if (!have_area && !have_name) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Send bridge_name and/or area");
+        return ESP_FAIL;
+    }
+    if (have_area && !presence_area_set(area->valuestring)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "area must be one of the listed public areas");
+        return ESP_FAIL;
+    }
+    if (have_name && !presence_bridge_name_set(name->valuestring)) {
         cJSON_Delete(body);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                            "zone must be 1-47 chars: letters, digits, space - _ . , ' / # ( )");
+                            "bridge_name must be 1-47 chars: letters, digits, space - _ . , ' / # ( )");
         return ESP_FAIL;
     }
     cJSON_Delete(body);
@@ -414,16 +431,21 @@ static esp_err_t zone_post_handler(httpd_req_t *req) {
 
 static const char ZONE_PAGE[] =
     "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
-    "<title>Illy Bridge zone</title>"
+    "<title>Illy Bridge setup</title>"
     "<body style='font-family:sans-serif;max-width:420px;margin:2rem auto;padding:0 1rem'>"
-    "<h2>Illy Bridge zone</h2><p>Public area this unit monitors "
-    "(e.g. Hallway Floor 2, Pool Terrace, Front Desk Lobby).</p>"
-    "<input id=z style='width:100%;padding:.6rem;font-size:1rem' maxlength=47>"
-    "<button style='margin-top:.8rem;padding:.6rem 1.2rem;font-size:1rem' onclick=save()>Save</button>"
+    "<h2>Illy Bridge setup</h2>"
+    "<label><b>Bridge name</b><br><small>A label for this device, e.g. Illy Bridge 1</small></label>"
+    "<input id=n style='width:100%;padding:.6rem;font-size:1rem;margin:.3rem 0 1rem' maxlength=47>"
+    "<label><b>Area</b><br><small>Public area this bridge monitors</small></label>"
+    "<select id=a style='width:100%;padding:.6rem;font-size:1rem;margin:.3rem 0 1rem'></select>"
+    "<button style='padding:.6rem 1.2rem;font-size:1rem' onclick=save()>Save</button>"
     "<p id=m></p><script>"
-    "fetch('/api/bridge/zone').then(r=>r.json()).then(j=>z.value=j.zone);"
-    "function save(){fetch('/api/bridge/zone',{method:'POST',body:JSON.stringify({zone:z.value})})"
-    ".then(r=>r.ok?r.json():Promise.reject()).then(j=>m.textContent='Saved: '+j.zone)"
+    "fetch('/api/bridge/zone').then(r=>r.json()).then(j=>{n.value=j.bridge_name;"
+    "if(j.areas.indexOf(j.area)<0)a.add(new Option('- choose an area -',''));"
+    "j.areas.forEach(x=>a.add(new Option(x,x)));a.value=j.areas.indexOf(j.area)<0?'':j.area});"
+    "function save(){if(!a.value){m.textContent='Choose an area first';return}"
+    "fetch('/api/bridge/zone',{method:'POST',body:JSON.stringify({bridge_name:n.value,area:a.value})})"
+    ".then(r=>r.ok?r.json():Promise.reject()).then(j=>m.textContent='Saved: '+j.bridge_name+' @ '+j.area)"
     ".catch(()=>m.textContent='Invalid name (letters, digits, space - _ . , / # ( ) only)')}"
     "</script>";
 
