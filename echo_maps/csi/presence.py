@@ -74,7 +74,8 @@ class ZoneState:
         self.last_seen = ts
         self.windows_total += 1
         self.frames_total += max(n, 0)
-        self.rssi = rssi_mean
+        if n > 0:  # an empty window carries no RSSI; don't let it read as 0 dBm
+            self.rssi = rssi_mean
         if n < MIN_FRAMES:
             return  # starved window: count liveness, don't judge
 

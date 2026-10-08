@@ -95,6 +95,14 @@ export function isSensingAllowed(room: ClassifiableRoom): boolean {
   return isPublicArea(room);
 }
 
+/** Names of the public areas in a room set, in natural order ("Floor 2" before "Floor 10"). */
+export function publicAreaNames(rooms: ClassifiableRoom[]): string[] {
+  return rooms
+    .filter(isPublicArea)
+    .map((r) => r.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
 /** Split rooms into the sensing-enabled (public) and excluded (private) sets. */
 export function partitionBySensing<T extends ClassifiableRoom>(rooms: T[]): { sensed: T[]; excluded: T[] } {
   const sensed: T[] = [];

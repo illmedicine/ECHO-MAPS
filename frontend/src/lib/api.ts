@@ -374,6 +374,14 @@ export interface LivePresenceResponse {
   people_zones: number;
 }
 
+/** Publish this facility's public areas so each bridge's Area dropdown matches the building. */
+export function publishPublicAreas(areas: string[]): Promise<{ areas: string[] }> {
+  return request<{ areas: string[] }>("/api/presence/areas", {
+    method: "PUT",
+    body: JSON.stringify({ areas }),
+  });
+}
+
 /** Current CSI presence for every sensing zone, straight from the bridge sensors. */
 export function getLivePresence(): Promise<LivePresenceResponse> {
   return request<LivePresenceResponse>("/api/presence/zones");

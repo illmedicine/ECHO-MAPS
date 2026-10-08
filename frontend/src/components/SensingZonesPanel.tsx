@@ -104,6 +104,9 @@ export default function SensingZonesPanel() {
             <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: "var(--gh-card)", border: "1px solid rgba(52,168,83,0.25)" }}>
               <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
               <span className="text-sm flex-1 min-w-0 truncate">{r.emoji ?? "📍"} {r.name}</span>
+              {z?.bridge_name && z.state !== "offline" && (
+                <span className="text-[10px] flex-shrink-0" style={{ color: "var(--gh-text-muted)" }}>{z.bridge_name}</span>
+              )}
               <span className="text-[10px] flex-shrink-0" style={{ color }}>{status}</span>
             </div>
           );

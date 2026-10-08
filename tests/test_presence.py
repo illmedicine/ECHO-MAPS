@@ -55,6 +55,24 @@ def test_device_zone_rename_drops_stale_zone():
     assert zones[("esp1", "Floor 3 Hallway")]["bridge_name"] == "Illy Bridge 1"
 
 
+def test_facility_areas_publish_and_read(monkeypatch):
+    monkeypatch.setenv("PRESENCE_INGEST_KEY", "k" * 20)
+    import echo_maps.config as cfg
+    cfg._settings = None
+    from echo_maps.api.app import create_app
+    from echo_maps.api.deps import get_current_user
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: object()
+    c = TestClient(app)
+    h = {"X-Device-Key": "k" * 20}
+    assert c.get("/api/presence/areas").status_code == 401  # bridges need the device key
+    published = ["Floor 1 Hallway", "Floor 2 Hallway", "Front Desk / Lobby", "Room 304", "Bad<name>", "Floor 1 Hallway"]
+    assert c.put("/api/presence/areas", json={"areas": published}).status_code == 200
+    # private rooms, unsafe names and duplicates never reach a bridge's dropdown
+    assert c.get("/api/presence/areas", headers=h).json()["areas"] == [
+        "Floor 1 Hallway", "Floor 2 Hallway", "Front Desk / Lobby"]
+
+
 def test_ingest_endpoint(monkeypatch):
     monkeypatch.setenv("PRESENCE_INGEST_KEY", "k" * 20)
     from echo_maps.config import get_settings

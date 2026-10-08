@@ -8,8 +8,11 @@
  * "Sensor offline", never "Empty".
  */
 
+import { useEffect } from "react";
 import { useLivePresence } from "@/lib/useLivePresence";
-import type { LiveZone } from "@/lib/api";
+import { isBackendConfigured, publishPublicAreas, type LiveZone } from "@/lib/api";
+import { getEnvironments } from "@/lib/environments";
+import { publicAreaNames } from "@/lib/sensingZones";
 
 const STATE_STYLE: Record<LiveZone["state"], { label: string; color: string; bg: string }> = {
   present: { label: "Presence detected", color: "#B3261E", bg: "rgba(234,67,53,0.10)" },
@@ -34,6 +37,13 @@ function Spark({ zone }: { zone: LiveZone }) {
 
 export default function LivePresencePanel({ compact = false }: { compact?: boolean }) {
   const { zones, link, error, occupied } = useLivePresence(2000);
+
+  // Tell the backend which public areas this facility has, so bridges offer exactly those.
+  useEffect(() => {
+    if (!isBackendConfigured()) return;
+    const areas = publicAreaNames(getEnvironments());
+    if (areas.length > 0) publishPublicAreas(areas).catch(() => {});
+  }, []);
 
   return (
     <div className="p-5 rounded-2xl" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
@@ -82,11 +92,11 @@ export default function LivePresencePanel({ compact = false }: { compact?: boole
           return (
             <div key={`${z.device_id}-${z.zone}`} className="px-3 py-2.5 rounded-xl" style={{ backgroundColor: st.bg, border: "1px solid var(--gh-border)" }}>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium flex-1 min-w-0 truncate">
-                  {z.zone}
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium truncate">{z.bridge_name || z.zone}</span>
                   {z.bridge_name && (
-                    <span className="ml-2 text-[10px] font-normal" style={{ color: "var(--gh-text-muted)" }}>
-                      via {z.bridge_name}
+                    <span className="block text-[11px] truncate" style={{ color: "var(--gh-text-muted)" }}>
+                      Location: {z.zone}
                     </span>
                   )}
                 </span>
