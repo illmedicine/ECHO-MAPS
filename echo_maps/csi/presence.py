@@ -35,6 +35,8 @@ ENTER_HITS, ENTER_OF = 2, 3
 HOLD_S = 12.0
 # Device is offline if no window arrived within this many seconds.
 OFFLINE_AFTER_S = 15.0
+# ...and forgotten entirely after this long without a window.
+GHOST_AFTER_S = 3600.0
 
 # Breathing: the bridge reports a spectral estimate every ~5 s. A rate is only shown once
 # several recent readings agree, so a single noisy peak never reads as a person breathing.
@@ -258,4 +260,8 @@ class PresenceRegistry:
 
     def snapshots(self) -> list[dict]:
         now = time.time()
+        # A zone silent for over an hour is a ghost (renamed, retired or test device), not an
+        # offline sensor worth showing; a bridge that comes back simply reappears.
+        for key in [k for k, z in self._zones.items() if z.last_seen and now - z.last_seen > GHOST_AFTER_S]:
+            del self._zones[key]
         return [z.snapshot(now) for z in self._zones.values()]

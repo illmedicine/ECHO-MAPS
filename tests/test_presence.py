@@ -139,6 +139,17 @@ def test_breathing_needs_agreeing_readings():
     assert z3.breathing_snapshot(now + 100)["state"] == "none"
 
 
+def test_long_silent_zones_are_forgotten():
+    from echo_maps.csi.presence import PresenceRegistry
+    r = PresenceRegistry()
+    now = time.time()
+    r.zone("old", "Probe").update(now - 7200, 40, -50, 1.0, 0.03, 0.02)       # silent for 2 h
+    r.zone("recent", "Lobby").update(now - 300, 40, -50, 1.0, 0.03, 0.02)     # offline, but only 5 min
+    r.zone("never", "Pool")                                                    # registered, no data yet
+    zones = {s["zone"]: s["state"] for s in r.snapshots()}
+    assert zones == {"Lobby": "offline", "Pool": "offline"}
+
+
 def test_breathing_signatures_count_distinct_steady_rates():
     z = ZoneState(zone="z", device_id="d")
     now = time.time()
