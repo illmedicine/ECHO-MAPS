@@ -79,6 +79,15 @@ static int64_t s_bin_t0;
 typedef struct { float bpm, snr; bool valid, fresh; } breath_t;
 static breath_t s_breath;
 
+/* Separate breathing signatures: spectral peaks that stand out and are well apart. A 30 s
+ * Hann window resolves rates about 6 breaths/min apart, so two people breathing at clearly
+ * different rates (or a person and a pet) show as two peaks; similar rates merge into one. */
+#define BR_MAXPEAKS  3
+#define BR_PEAK_SEP  6          /* bins (0.06 Hz = 3.6 breaths/min) */
+typedef struct { float bpm, snr; } peak_t;
+static peak_t s_peaks[BR_MAXPEAKS];
+static int s_npeaks;
+
 static void breath_reset_locked(void) {
     s_br_head = s_br_n = 0;
     s_bin_cnt = 0;
@@ -175,6 +184,26 @@ static void breathing_analyse(void) {
     float d = P[pk - 1] - 2 * P[pk] + P[pk + 1];
     float off = fabsf(d) > 1e-12f ? 0.5f * (P[pk - 1] - P[pk + 1]) / d : 0;
     float f = 0.10f + 0.01f * (pk + off);
+
+    s_npeaks = 0;
+    if (med > 1e-12f) {
+        int cand[BR_NB], nc = 0;
+        for (int j = 2; j < BR_NB - 2; j++)
+            if (P[j] >= P[j - 1] && P[j] > P[j + 1] && P[j] / med >= BR_MIN_SNR) cand[nc++] = j;
+        for (int pass = 0; pass < BR_MAXPEAKS; pass++) {
+            int best = -1;
+            for (int c = 0; c < nc; c++)
+                if (cand[c] >= 0 && (best < 0 || P[cand[c]] > P[cand[best]])) best = c;
+            if (best < 0) break;
+            int j = cand[best];
+            float dd = P[j - 1] - 2 * P[j] + P[j + 1];
+            float of = fabsf(dd) > 1e-12f ? 0.5f * (P[j - 1] - P[j + 1]) / dd : 0;
+            s_peaks[s_npeaks].bpm = (0.10f + 0.01f * (j + of)) * 60.0f;
+            s_peaks[s_npeaks].snr = P[j] / med;
+            s_npeaks++;
+            for (int c = 0; c < nc; c++) if (cand[c] >= 0 && abs(cand[c] - j) < BR_PEAK_SEP) cand[c] = -1;
+        }
+    }
 
     s_breath.snr = snr;
     s_breath.bpm = f * 60.0f;
@@ -560,8 +589,11 @@ static bool post_pending(void) {
     int xo = 0;
     extra[0] = 0;
     if (s_breath.fresh) {
-        xo += snprintf(extra + xo, sizeof(extra) - xo, "\"breathing\":{\"bpm\":%.1f,\"snr\":%.1f,\"ok\":%d},",
+        xo += snprintf(extra + xo, sizeof(extra) - xo, "\"breathing\":{\"bpm\":%.1f,\"snr\":%.1f,\"ok\":%d,\"peaks\":[",
                        s_breath.valid ? s_breath.bpm : 0.0f, s_breath.snr, s_breath.valid ? 1 : 0);
+        for (int i = 0; i < s_npeaks; i++)
+            xo += snprintf(extra + xo, sizeof(extra) - xo, "%s{\"bpm\":%.1f,\"snr\":%.1f}", i ? "," : "", s_peaks[i].bpm, s_peaks[i].snr);
+        xo += snprintf(extra + xo, sizeof(extra) - xo, "]},");
         s_breath.fresh = false;
     }
     char ble[700];
