@@ -8,6 +8,7 @@
  */
 
 const EFFECTIVE_DATE = "October 7, 2026";
+import { CompanyFooter } from "@/components/CompanyLink";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -146,6 +147,7 @@ export default function PrivacyPolicyPage() {
           health-data, and landlord-tenant laws, and ensure the technical system actually enforces the opt-in,
           de-identification, minimization, and deletion commitments stated above.
         </div>
+        <CompanyFooter />
       </div>
     </main>
   );

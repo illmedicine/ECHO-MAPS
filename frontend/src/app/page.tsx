@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { CompanyLink, LogoLink } from "@/components/CompanyLink";
 
 export default function Home() {
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -12,7 +13,7 @@ export default function Home() {
       <div className="text-center max-w-3xl">
         {/* Logo */}
         <div className="flex justify-center mb-6">
-          <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={340} height={340} unoptimized style={{ background: "transparent" }} />
+          <LogoLink><Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={340} height={340} unoptimized style={{ background: "transparent" }} /></LogoLink>
         </div>
         <p className="text-lg md:text-xl mb-8 max-w-xl mx-auto leading-relaxed">
           Your home, understood. <span style={{ color: "var(--gh-text-muted)" }}>Sense every room with WiFi — no cameras, no wearables.</span>
@@ -100,7 +101,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="mt-20 text-center text-xs text-[var(--gh-text-muted)] pb-8">
-        <p>&copy; {new Date().getFullYear()} Illy Robotics. Echo Vue — Privacy-first smart environment sensing.</p>
+        <p>&copy; {new Date().getFullYear()} <CompanyLink />. Echo Vue — Privacy-first smart environment sensing.</p>
         <a href="/privacy" className="hover:underline mt-1 inline-block" style={{ color: "var(--gh-blue)" }}>Privacy &amp; Sensing Policy</a>
       </footer>
     </main>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { isBackendConfigured, verifyGoogleToken } from "@/lib/api";
+import { CompanyFooter, LogoLink } from "@/components/CompanyLink";
+import { hasValidSession, isBackendConfigured, verifyGoogleToken } from "@/lib/api";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
@@ -41,10 +42,13 @@ function parseJwt(token: string): Record<string, string> {
 export default function SignInPage() {
   const router = useRouter();
 
-  // If already authenticated, redirect to dashboard immediately
+  const [expired, setExpired] = useState(false);
+
+  // Already signed in with a session the API still accepts: go straight to the dashboard.
+  // An expired session stays here so the user can sign in again.
   useEffect(() => {
-    const stored = localStorage.getItem("echo_maps_user");
-    if (stored) {
+    setExpired(new URLSearchParams(window.location.search).has("expired"));
+    if (hasValidSession()) {
       router.replace("/dashboard");
     }
   }, [router]);
@@ -127,11 +131,16 @@ export default function SignInPage() {
       <div className="max-w-md w-full text-center">
         {/* Logo */}
         <div className="flex justify-center mb-8">
-          <Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={374} height={374} unoptimized style={{ background: "transparent" }} />
+          <LogoLink><Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={374} height={374} unoptimized style={{ background: "transparent" }} /></LogoLink>
         </div>
 
         <div className="p-8 rounded-2xl shadow-sm" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
           <h2 className="text-xl font-semibold mb-6">Sign in to continue</h2>
+          {expired && (
+            <p className="text-sm mb-5 p-3 rounded-lg" style={{ backgroundColor: "rgba(251,188,5,0.12)", color: "#8a6d00" }} role="status">
+              Your session expired. Sign in again to reload live data. Your rooms and settings are kept.
+            </p>
+          )}
 
           {!GOOGLE_CLIENT_ID ? (
             <div className="text-sm p-4 rounded-xl" style={{ backgroundColor: "rgba(245,197,66,0.08)", color: "var(--gh-yellow)" }}>
@@ -159,6 +168,7 @@ export default function SignInPage() {
         >
           &larr; Back to home
         </a>
+        <CompanyFooter />
       </div>
     </main>
   );

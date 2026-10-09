@@ -7,6 +7,7 @@ import { getEnvironment as getLocalEnv } from "@/lib/environments";
 import { classifyRoom, isSensingAllowed } from "@/lib/sensingZones";
 import { useLivePresence } from "@/lib/useLivePresence";
 import PresenceSpark from "@/components/PresenceSpark";
+import { CompanyFooter } from "@/components/CompanyLink";
 
 const DEFAULT_DIMS = { width: 5, length: 4, height: 2.7 };
 
@@ -152,6 +153,7 @@ function EnvironmentViewContent() {
           </div>
         </div>
       </div>
+      <CompanyFooter />
     </main>
   );
 }

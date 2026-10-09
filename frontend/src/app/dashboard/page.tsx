@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { CompanyFooter, LogoLink } from "@/components/CompanyLink";
 import {
   isBackendConfigured,
   isBackendUnreachable,
@@ -278,7 +279,7 @@ export default function DashboardPage() {
       {/* Sidebar — always visible on md+, slide-out drawer on mobile */}
       <aside className={`w-72 md:w-64 border-r flex flex-col fixed md:static inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`} style={{ borderColor: "var(--gh-border)", backgroundColor: "var(--gh-surface)" }}>
         <div className="p-4 flex items-center justify-center">
-          <Image src={`${basePath}/logo.png`} alt="Echo Vue" width={306} height={306} unoptimized style={{ background: "transparent" }} />
+          <LogoLink><Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotic Instruments" width={306} height={306} unoptimized style={{ background: "transparent" }} /></LogoLink>
         </div>
 
         {/* Environments list */}
@@ -446,6 +447,7 @@ export default function DashboardPage() {
             <PresenceView />
           )}
         </div>
+        <CompanyFooter />
       </main>
 
       {showNewEnvModal && <NewEnvironmentModal onClose={() => setShowNewEnvModal(false)} onCreate={handleCreateEnv} />}

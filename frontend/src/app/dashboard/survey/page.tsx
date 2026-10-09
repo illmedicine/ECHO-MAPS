@@ -11,6 +11,7 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { CompanyFooter } from "@/components/CompanyLink";
 
 const WiFiSiteSurvey = dynamic(() => import("@/components/WiFiSiteSurvey"), { ssr: false });
 const LivePresencePanel = dynamic(() => import("@/components/LivePresencePanel"), { ssr: false });
@@ -41,6 +42,7 @@ export default function SurveyPage() {
         </div>
 
         <WiFiSiteSurvey />
+        <CompanyFooter />
       </div>
     </main>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { COMPANY_URL, CompanyLink } from "@/components/CompanyLink";
 import Image from "next/image";
 
 export default function ResearchPage() {
@@ -118,7 +119,7 @@ export default function ResearchPage() {
                 <p className="font-semibold" style={{ color: "#f1f5f9" }}>
                   DeMarkus Wilson
                 </p>
-                <p className="text-xs">Illy Robotic Instruments</p>
+                <p className="text-xs"><CompanyLink /></p>
               </div>
             </div>
             <span style={{ color: "#334155" }}>|</span>
@@ -467,10 +468,10 @@ export default function ResearchPage() {
               </p>
               <h3 className="font-bold text-lg mb-1">DeMarkus Wilson</h3>
               <p className="text-sm mb-3" style={{ color: "var(--gh-text-muted)" }}>
-                Founder &amp; CEO, Illy Robotic Instruments
+                Founder &amp; CEO, <CompanyLink />
               </p>
               <p className="text-sm leading-relaxed" style={{ color: "var(--gh-text-muted)" }}>
-                DeMarkus Wilson is the founder of Illy Robotic Instruments and
+                DeMarkus Wilson is the founder of <CompanyLink /> and
                 the architect of the Echo Vue platform. His work focuses on
                 cross-modal AI systems that fuse ambient radio frequency data
                 with generative rendering to create privacy-first spatial
@@ -520,10 +521,8 @@ export default function ResearchPage() {
         style={{ borderColor: "var(--gh-border)" }}
       >
         <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>
-          &copy; {new Date().getFullYear()} Illy Robotic Instruments &middot;{" "}
-          <Link href="/" className="underline hover:no-underline">
-            illyrobotics.com
-          </Link>{" "}
+          &copy; {new Date().getFullYear()} <CompanyLink /> &middot;{" "}
+          <CompanyLink>illyrobotic-ai.com</CompanyLink>{" "}
           &middot; Echo Vue — Future-Proof Perception.
         </p>
       </footer>
@@ -613,7 +612,7 @@ function PullQuote({ children }: { children: React.ReactNode }) {
         className="block mt-4 text-xs not-italic font-semibold"
         style={{ color: "var(--gh-text-muted)" }}
       >
-        — DeMarkus Wilson, Illy Robotic Instruments
+        — DeMarkus Wilson, <CompanyLink />
       </cite>
     </blockquote>
   );
@@ -702,7 +701,7 @@ function ArchitectureInfographic() {
 
         {/* ── Title ── */}
         <text x="550" y="34" textAnchor="middle" fontSize="20" fontWeight="800" fill="#1e293b" fontFamily="system-ui, sans-serif">
-          Echo Vue by Illy Robotics
+          <a href={COMPANY_URL} target="_blank" rel="noopener noreferrer">Echo Vue by Illy Robotic Instruments</a>
         </text>
         <text x="550" y="54" textAnchor="middle" fontSize="12" fill="#64748b" fontFamily="system-ui, sans-serif">
           Ambient RF Perception &amp; Generative Digital Twins — Frictionless Pipeline
@@ -910,7 +909,7 @@ function ArchitectureInfographic() {
         })}
 
         {/* Footer */}
-        <text x="20" y="748" fontSize="8" fill="#94a3b8" fontFamily="system-ui">www.illyrobotics.com</text>
+        <text x="20" y="748" fontSize="8" fill="#94a3b8" fontFamily="system-ui"><a href={COMPANY_URL} target="_blank" rel="noopener noreferrer">www.illyrobotic-ai.com</a></text>
         <text x="1080" y="748" textAnchor="end" fontSize="8" fontWeight="700" fill="#64748b" fontFamily="system-ui">FUTURE-PROOF PERCEPTION.</text>
       </svg>
     </div>

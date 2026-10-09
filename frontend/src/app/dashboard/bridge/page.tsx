@@ -10,6 +10,7 @@
 
 import dynamic from "next/dynamic";
 import BridgeConfigPanel from "@/components/BridgeConfigPanel";
+import { CompanyFooter } from "@/components/CompanyLink";
 
 const LivePresencePanel = dynamic(() => import("@/components/LivePresencePanel"), { ssr: false });
 
@@ -40,6 +41,7 @@ export default function BridgePage() {
         <div className="mb-6">
           <LivePresencePanel />
         </div>
+        <CompanyFooter tone="dark" />
       </div>
     </div>
   );
