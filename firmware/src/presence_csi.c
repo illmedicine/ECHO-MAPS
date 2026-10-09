@@ -11,6 +11,8 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_timer.h"
+#include "presence_ble.h"
 #include "esp_wifi.h"
 #include "nvs.h"
 #include "cJSON.h"
@@ -53,6 +55,134 @@ static window_t s_pending[MAX_PENDING];
 static int s_pending_n;
 static presence_stats_t s_stats;
 
+/* ── Breathing-rate estimate ──
+ * People who stay still modulate the channel at their breathing rate (0.1-0.5 Hz).
+ * CSI amplitude is averaged over 8 groups of subcarriers into 5 Hz bins (30 s ring),
+ * and a spectrum over 6-30 breaths/min is compared with the background spectrum.
+ * It only reports a rate when the peak clearly stands out (snr), which in practice means
+ * one person staying roughly still near the link; walking or several people smear it. */
+#define BR_GROUPS   8
+#define BR_BIN_US   200000      /* 5 Hz */
+#define BR_LEN      150         /* 30 s */
+#define BR_MIN      100         /* need >= 20 s of samples */
+#define BR_FS       5.0f
+#define BR_NB       41          /* 0.10 .. 0.50 Hz, step 0.01 */
+#define BR_NN       29          /* background: 0.60 .. 2.00 Hz, step 0.05 */
+#define BR_MIN_SNR  3.5f
+
+static float s_br[BR_GROUPS][BR_LEN];
+static int s_br_head, s_br_n;
+static float s_bin_sum[BR_GROUPS];
+static int s_bin_cnt;
+static int64_t s_bin_t0;
+
+typedef struct { float bpm, snr; bool valid, fresh; } breath_t;
+static breath_t s_breath;
+
+static void breath_reset_locked(void) {
+    s_br_head = s_br_n = 0;
+    s_bin_cnt = 0;
+    s_bin_t0 = 0;
+    memset(s_bin_sum, 0, sizeof(s_bin_sum));
+}
+
+/* Called from csi_cb inside the critical section. */
+static void breath_feed_locked(const float *a, int nsub) {
+    for (int g = 0; g < BR_GROUPS; g++) {
+        int k0 = g * nsub / BR_GROUPS, k1 = (g + 1) * nsub / BR_GROUPS;
+        float gs = 0;
+        for (int k = k0; k < k1; k++) gs += a[k];
+        s_bin_sum[g] += k1 > k0 ? gs / (k1 - k0) : 1.0f;
+    }
+    s_bin_cnt++;
+    int64_t t = esp_timer_get_time();
+    if (s_bin_t0 == 0) s_bin_t0 = t;
+    if (t - s_bin_t0 > 4 * BR_BIN_US) {          /* frames stopped for a while: timing is broken */
+        breath_reset_locked();
+        return;
+    }
+    if (t - s_bin_t0 >= BR_BIN_US) {
+        for (int g = 0; g < BR_GROUPS; g++) {
+            s_br[g][s_br_head] = s_bin_sum[g] / s_bin_cnt;
+            s_bin_sum[g] = 0;
+        }
+        s_br_head = (s_br_head + 1) % BR_LEN;
+        if (s_br_n < BR_LEN) s_br_n++;
+        s_bin_cnt = 0;
+        s_bin_t0 = t;
+    }
+}
+
+static float goertzel_power(const float *x, int n, float f) {
+    float coeff = 2.0f * cosf(2.0f * (float)M_PI * f / BR_FS);
+    float s1 = 0, s2 = 0;
+    for (int i = 0; i < n; i++) {
+        float s0 = x[i] + coeff * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+    }
+    return s1 * s1 + s2 * s2 - coeff * s1 * s2;
+}
+
+static void breathing_analyse(void) {
+    static float buf[BR_GROUPS][BR_LEN];
+    static float x[BR_LEN];
+    static float P[BR_NB + BR_NN];
+    int n;
+
+    taskENTER_CRITICAL(&s_mux);
+    n = s_br_n;
+    for (int g = 0; g < BR_GROUPS; g++)
+        for (int i = 0; i < n; i++) buf[g][i] = s_br[g][(s_br_head - n + i + BR_LEN) % BR_LEN];
+    taskEXIT_CRITICAL(&s_mux);
+
+    s_breath.valid = false;
+    if (n < BR_MIN) return;
+
+    memset(P, 0, sizeof(P));
+    for (int g = 0; g < BR_GROUPS; g++) {
+        /* remove mean and linear drift (AGC / thermal), then window */
+        float sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (int i = 0; i < n; i++) { sx += i; sy += buf[g][i]; sxx += (float)i * i; sxy += i * buf[g][i]; }
+        float den = n * sxx - sx * sx;
+        float slope = den > 1e-9f ? (n * sxy - sx * sy) / den : 0;
+        float icpt = (sy - slope * sx) / n;
+        for (int i = 0; i < n; i++) {
+            float w = 0.5f - 0.5f * cosf(2.0f * (float)M_PI * i / (n - 1));
+            x[i] = (buf[g][i] - (icpt + slope * i)) * w;
+        }
+        for (int j = 0; j < BR_NB; j++) P[j] += goertzel_power(x, n, 0.10f + 0.01f * j);
+        for (int j = 0; j < BR_NN; j++) P[BR_NB + j] += goertzel_power(x, n, 0.60f + 0.05f * j);
+    }
+
+    /* strongest bin away from the band edges */
+    int pk = 2;
+    for (int j = 2; j < BR_NB - 2; j++) if (P[j] > P[pk]) pk = j;
+
+    /* median of the whole spectrum as the background level */
+    static float sorted[BR_NB + BR_NN];
+    memcpy(sorted, P, sizeof(P));
+    for (int i = 1; i < BR_NB + BR_NN; i++) {
+        float v = sorted[i];
+        int j = i - 1;
+        while (j >= 0 && sorted[j] > v) { sorted[j + 1] = sorted[j]; j--; }
+        sorted[j + 1] = v;
+    }
+    float med = sorted[(BR_NB + BR_NN) / 2];
+    float snr = med > 1e-12f ? P[pk] / med : 0;
+
+    /* parabolic interpolation for a sub-bin frequency */
+    float d = P[pk - 1] - 2 * P[pk] + P[pk + 1];
+    float off = fabsf(d) > 1e-12f ? 0.5f * (P[pk - 1] - P[pk + 1]) / d : 0;
+    float f = 0.10f + 0.01f * (pk + off);
+
+    s_breath.snr = snr;
+    s_breath.bpm = f * 60.0f;
+    s_breath.valid = snr >= BR_MIN_SNR;
+    s_breath.fresh = true;
+}
+
+
 static void csi_cb(void *ctx, wifi_csi_info_t *info) {
     if (!info || !info->buf || info->len < 8) return;
     int nsub = info->len / 2;
@@ -82,7 +212,9 @@ static void csi_cb(void *ctx, wifi_csi_info_t *info) {
         s_rssi_sum = s_rssi_sumsq = s_decorr_sum = 0;
         memset(s_sum, 0, sizeof(s_sum));
         memset(s_sumsq, 0, sizeof(s_sumsq));
+        breath_reset_locked();
     }
+    breath_feed_locked(a, nsub);
     for (int k = 0; k < nsub; k++) {
         s_sum[k] += a[k];
         s_sumsq[k] += a[k] * a[k];
@@ -416,16 +548,27 @@ bool presence_areas_refresh(int timeout_ms) {
 /* POST pending windows to the backend. */
 static bool post_pending(void) {
     if (s_pending_n == 0) return true;
-    static char body[1400];
+    static char body[2400];
+    static char extra[900];
     char zone[ID_MAX], bname[ID_MAX], ip[16] = "";
     presence_zone_get(zone, sizeof(zone));
     presence_bridge_name_get(bname, sizeof(bname));
     esp_netif_ip_info_t ipi;
     esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (sta && esp_netif_get_ip_info(sta, &ipi) == ESP_OK) snprintf(ip, sizeof(ip), IPSTR, IP2STR(&ipi.ip));
+    /* Optional extras: a new breathing reading (once per analysis) and the BLE summary. */
+    int xo = 0;
+    extra[0] = 0;
+    if (s_breath.fresh) {
+        xo += snprintf(extra + xo, sizeof(extra) - xo, "\"breathing\":{\"bpm\":%.1f,\"snr\":%.1f,\"ok\":%d},",
+                       s_breath.valid ? s_breath.bpm : 0.0f, s_breath.snr, s_breath.valid ? 1 : 0);
+        s_breath.fresh = false;
+    }
+    char ble[700];
+    if (presence_ble_json(ble, sizeof(ble)) > 0) xo += snprintf(extra + xo, sizeof(extra) - xo, "\"ble\":%s,", ble);
     int off = snprintf(body, sizeof(body),
-                       "{\"device_id\":\"%s\",\"zone\":\"%s\",\"bridge_name\":\"%s\",\"ip\":\"%s\",\"windows\":[",
-                       get_bridge_device_id(), zone, bname, ip);
+                       "{\"device_id\":\"%s\",\"zone\":\"%s\",\"bridge_name\":\"%s\",\"ip\":\"%s\",%s\"windows\":[",
+                       get_bridge_device_id(), zone, bname, ip, extra);
     for (int i = 0; i < s_pending_n && off < (int)sizeof(body) - 160; i++) {
         const window_t *w = &s_pending[i];
         off += snprintf(body + off, sizeof(body) - off,
@@ -476,8 +619,16 @@ static bool post_pending(void) {
 
 static void window_task(void *arg) {
     TickType_t last = xTaskGetTickCount();
+    int tick = 0;
     for (;;) {
         vTaskDelayUntil(&last, pdMS_TO_TICKS(WINDOW_MS));
+        if (++tick % 5 == 0) {
+            breathing_analyse();
+            char ble[700];
+            int bl = presence_ble_json(ble, sizeof(ble));
+            ESP_LOGI(TAG, "breathing: %s bpm=%.1f snr=%.1f | ble: %.90s", s_breath.valid ? "yes" : "no",
+                     s_breath.bpm, s_breath.snr, bl > 0 ? ble : "off");
+        }
         window_t w;
         if (take_window(&w)) {
             if (s_pending_n == MAX_PENDING) {          /* drop oldest */
@@ -536,6 +687,7 @@ void presence_csi_start(void) {
     xTaskCreate(areas_task, "areas_sync", 8192, NULL, 3, &s_areas_task);
 
     start_ping();
+    presence_ble_start();
     xTaskCreatePinnedToCore(window_task, "csi_window", 8192, NULL, 4, NULL, 1);
     char zone[ID_MAX], bname[ID_MAX];
     presence_zone_get(zone, sizeof(zone));
