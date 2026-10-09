@@ -411,6 +411,17 @@ export interface LiveZone {
     snr: number;
     readings: number;
     pattern: "steady" | "variable" | null;
+    /** Distinct steady breathing rates (one per occupant). "faster" = above ~20/min. */
+    signatures?: {
+      bpm: number;
+      snr: number;
+      readings: number;
+      kind: "slower" | "faster";
+      min: number;
+      max: number;
+      /** Recent rates for this signature, oldest first. */
+      series: number[];
+    }[];
   };
   /** Anonymised nearby BLE devices (ids are salted hashes that rotate daily); null when not reported. */
   ble?: {

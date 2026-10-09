@@ -129,6 +129,9 @@ export function InsightChips({ zone }: { zone: LiveZone }) {
   if (zone.breathing && zone.breathing.state !== "none" && zone.breathing.bpm !== null) {
     chips.push(`🫁 ${zone.breathing.state === "good" ? "" : "≈"}${Math.round(zone.breathing.bpm)}/min`);
   }
+  const sigs = zone.breathing?.signatures ?? [];
+  const nPets = sigs.filter((s) => s.kind === "faster").length;
+  if (sigs.length > 0) chips.push(`👤 ${sigs.length - nPets}${nPets > 0 ? ` · 🐾 ${nPets}` : ""}`);
   if (zone.ble) chips.push(`📶 ${zone.ble.count}`);
   if (zone.present && zone.activity !== "none") chips.push(`↯ ${zone.activity}`);
   if (chips.length === 0) return null;
