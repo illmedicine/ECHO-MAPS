@@ -24,7 +24,7 @@ class TokenPayload(BaseModel):
 def create_access_token(
     user_id: str,
     email: str,
-    expires_delta: timedelta = timedelta(hours=24),
+    expires_delta: timedelta = timedelta(days=30),
 ) -> str:
     settings = get_settings()
     now = datetime.now(timezone.utc)

@@ -44,6 +44,12 @@ BREATH_WINDOW_S = 40.0
 BREATH_GOOD_READINGS = 4
 BREATH_SPREAD_BPM = 3.0         # readings must sit within this of their median to count as steady
 BREATH_STEADY_BPM = 1.5
+# A breathing "signature" is a peak that keeps showing up at about the same rate. Peaks within
+# SIG_TOL_BPM are one signature; it must persist for SIG_MIN_READINGS analyses (~5 s each).
+SIG_TOL_BPM = 2.0
+SIG_MIN_READINGS = 4
+SIG_MAX = 3
+SIG_FAST_BPM = 20.0   # above this is "faster": typical of small animals or an active person
 # Nearby-BLE summary is stale (and hidden) after this long.
 BLE_STALE_S = 30.0
 
@@ -82,6 +88,7 @@ class ZoneState:
     ble: dict | None = None
     ble_ts: float = 0.0
     _breath: Deque[tuple[float, float, float]] = field(default_factory=lambda: deque(maxlen=24))  # (ts, bpm, snr)
+    _peaks: Deque[tuple[float, float, float]] = field(default_factory=lambda: deque(maxlen=150))  # every peak: (ts, bpm, snr)
 
     # internals
     _baseline: Deque[float] = field(default_factory=lambda: deque(maxlen=BASELINE_WINDOWS))
@@ -141,8 +148,12 @@ class ZoneState:
         )
         self.history.append((ts, score, self.present))
 
-    def update_breathing(self, ts: float, bpm: float, snr: float, ok: bool) -> None:
+    def update_breathing(self, ts: float, bpm: float, snr: float, ok: bool, peaks: tuple = ()) -> None:
         self.breath_snr = snr
+        lo, hi = BREATH_RANGE_BPM
+        for pbpm, psnr in peaks:
+            if psnr >= BREATH_MIN_SNR and lo <= pbpm <= hi:
+                self._peaks.append((ts, pbpm, psnr))
         lo, hi = BREATH_RANGE_BPM
         if ok and snr >= BREATH_MIN_SNR and lo <= bpm <= hi:
             self._breath.append((ts, bpm, snr))
@@ -151,10 +162,39 @@ class ZoneState:
         self.ble = summary
         self.ble_ts = ts
 
+    def signatures(self, now: float) -> list[dict]:
+        """Distinct breathing rates that have persisted, strongest first (at most SIG_MAX)."""
+        clusters: list[dict] = []
+        for t, b, s in sorted((p for p in self._peaks if now - p[0] <= BREATH_WINDOW_S), key=lambda p: p[1]):
+            for c in clusters:
+                if abs(b - c["sum_b"] / c["n"]) <= SIG_TOL_BPM:
+                    c["sum_b"] += b; c["sum_s"] += s; c["n"] += 1; c["ts"].add(t); c["pts"].append((t, b))
+                    break
+            else:
+                clusters.append({"sum_b": b, "sum_s": s, "n": 1, "ts": {t}, "pts": [(t, b)]})
+        sigs = []
+        for c in clusters:
+            if len(c["ts"]) < SIG_MIN_READINGS:
+                continue
+            series = [round(b, 1) for _, b in sorted(c["pts"])][-12:]  # oldest first
+            sigs.append({
+                "bpm": round(c["sum_b"] / c["n"], 1),
+                "snr": round(c["sum_s"] / c["n"], 1),
+                "readings": len(c["ts"]),
+                "min": min(series),
+                "max": max(series),
+                "series": series,
+            })
+        sigs.sort(key=lambda g: g["snr"] * g["readings"], reverse=True)
+        for g in sigs:
+            g["kind"] = "faster" if g["bpm"] > SIG_FAST_BPM else "slower"
+        return sigs[:SIG_MAX]
+
     def breathing_snapshot(self, now: float) -> dict:
         recent = [(t, b) for t, b, _ in self._breath if now - t <= BREATH_WINDOW_S]
+        sigs = self.signatures(now)
         if len(recent) < 2:
-            return {"state": "none", "bpm": None, "snr": round(self.breath_snr, 1), "readings": len(recent), "pattern": None}
+            return {"state": "none", "bpm": None, "snr": round(self.breath_snr, 1), "readings": len(recent), "pattern": None, "signatures": sigs}
         bpms = [b for _, b in recent]
         med = median(bpms)
         spread = max(abs(b - med) for b in bpms)
@@ -163,7 +203,7 @@ class ZoneState:
             state = "good"
         else:
             pattern, state = None, "weak"
-        return {"state": state, "bpm": round(med, 1), "snr": round(self.breath_snr, 1), "readings": len(recent), "pattern": pattern}
+        return {"state": state, "bpm": round(med, 1), "snr": round(self.breath_snr, 1), "readings": len(recent), "pattern": pattern, "signatures": sigs}
 
     def snapshot(self, now: float | None = None) -> dict:
         now = time.time() if now is None else now
@@ -179,7 +219,7 @@ class ZoneState:
             "activity": "none" if offline else self.activity,
             "activity_ratio": 0.0 if offline else round(max(self.ratio, 0.0), 2),
             "breathing": (
-                {"state": "none", "bpm": None, "snr": 0.0, "readings": 0, "pattern": None}
+                {"state": "none", "bpm": None, "snr": 0.0, "readings": 0, "pattern": None, "signatures": []}
                 if offline else self.breathing_snapshot(now)
             ),
             "ble": (

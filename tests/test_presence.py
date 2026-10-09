@@ -139,6 +139,29 @@ def test_breathing_needs_agreeing_readings():
     assert z3.breathing_snapshot(now + 100)["state"] == "none"
 
 
+def test_breathing_signatures_count_distinct_steady_rates():
+    z = ZoneState(zone="z", device_id="d")
+    now = time.time()
+    # six analyses (~5 s apart): a steady ~14/min, a steady ~24/min, and one stray blip at 9/min
+    for i in range(6):
+        t = now - 30 + 5 * i
+        peaks = [(14.0 + 0.3 * (i % 2), 9.0), (24.0 - 0.4 * (i % 3), 6.0)]
+        if i == 2:
+            peaks.append((9.0, 4.0))
+        z.update_breathing(t, peaks[0][0], peaks[0][1], True, tuple(peaks))
+    sigs = z.breathing_snapshot(now)["signatures"]
+    assert [(round(g["bpm"]), g["kind"]) for g in sigs] == [(14, "slower"), (24, "faster")]   # strongest first
+    assert all(g["readings"] >= 4 for g in sigs)                       # the 9/min blip never persisted
+    assert all(g["min"] <= g["bpm"] <= g["max"] and len(g["series"]) >= 4 for g in sigs)  # history for the trend chart
+    # peaks that are weak or implausible never become signatures
+    z2 = ZoneState(zone="z", device_id="d")
+    for i in range(6):
+        z2.update_breathing(now - 30 + 5 * i, 0, 2.0, False, ((14.0, 2.0), (45.0, 9.0)))
+    assert z2.breathing_snapshot(now)["signatures"] == []
+    # and they age out once the person leaves
+    assert z.breathing_snapshot(now + 100)["signatures"] == []
+
+
 def test_ble_summary_is_sanitised_and_goes_stale():
     from echo_maps.api.routes.presence import _parse_ble
     good = {"count": 5, "near": 2, "persistent": 1, "stable": 3, "devices": [

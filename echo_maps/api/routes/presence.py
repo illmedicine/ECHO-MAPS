@@ -83,13 +83,19 @@ def _num(v: object, lo: float, hi: float) -> float | None:
     return x if lo <= x <= hi else None  # also rejects NaN
 
 
-def _parse_breathing(raw: dict | None) -> tuple[float, float, bool] | None:
+def _parse_breathing(raw: dict | None) -> tuple[float, float, bool, tuple] | None:
     if not raw:
         return None
     bpm, snr = _num(raw.get("bpm"), 0, 200), _num(raw.get("snr"), 0, 1e6)
     if bpm is None or snr is None:
         return None
-    return bpm, snr, bool(raw.get("ok"))
+    peaks = []
+    for p in (raw.get("peaks") or [])[:3]:
+        if isinstance(p, dict):
+            pb, ps = _num(p.get("bpm"), 0, 200), _num(p.get("snr"), 0, 1e6)
+            if pb is not None and ps is not None:
+                peaks.append((pb, ps))
+    return bpm, snr, bool(raw.get("ok")), tuple(peaks)
 
 
 def _parse_ble(raw: dict | None) -> dict | None:
