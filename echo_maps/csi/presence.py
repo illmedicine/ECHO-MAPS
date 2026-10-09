@@ -36,6 +36,17 @@ HOLD_S = 12.0
 # Device is offline if no window arrived within this many seconds.
 OFFLINE_AFTER_S = 15.0
 
+# Breathing: the bridge reports a spectral estimate every ~5 s. A rate is only shown once
+# several recent readings agree, so a single noisy peak never reads as a person breathing.
+BREATH_MIN_SNR = 3.5            # spectral peak vs background; below this the reading is noise
+BREATH_RANGE_BPM = (6.0, 30.0)  # plausible resting/active adult range
+BREATH_WINDOW_S = 40.0
+BREATH_GOOD_READINGS = 4
+BREATH_SPREAD_BPM = 3.0         # readings must sit within this of their median to count as steady
+BREATH_STEADY_BPM = 1.5
+# Nearby-BLE summary is stale (and hidden) after this long.
+BLE_STALE_S = 30.0
+
 
 def window_score(amp_cv: float, decorr: float, rssi_std: float) -> float:
     """Combine window features into one motion score (≈0 when the link is still).
@@ -66,6 +77,11 @@ class ZoneState:
     frames_total: int = 0
     rssi: float = 0.0
     history: Deque[tuple[float, float, bool]] = field(default_factory=lambda: deque(maxlen=120))
+    ratio: float = 0.0  # (score - baseline) / (threshold - baseline): 0 = still, 1 = detection threshold
+    breath_snr: float = 0.0
+    ble: dict | None = None
+    ble_ts: float = 0.0
+    _breath: Deque[tuple[float, float, float]] = field(default_factory=lambda: deque(maxlen=24))  # (ts, bpm, snr)
 
     # internals
     _baseline: Deque[float] = field(default_factory=lambda: deque(maxlen=BASELINE_WINDOWS))
@@ -113,6 +129,7 @@ class ZoneState:
 
         span = max(self.threshold - self.baseline, 1e-6)
         ratio = (score - self.baseline) / span  # 0 = baseline, 1 = threshold
+        self.ratio = ratio
         if self.state == "present":
             self.confidence = max(0.5, min(0.99, 0.5 + 0.12 * ratio))
         elif self.state == "empty":
@@ -123,6 +140,30 @@ class ZoneState:
             "none" if not self.present else "high" if ratio > 4 else "moderate" if ratio > 2 else "low"
         )
         self.history.append((ts, score, self.present))
+
+    def update_breathing(self, ts: float, bpm: float, snr: float, ok: bool) -> None:
+        self.breath_snr = snr
+        lo, hi = BREATH_RANGE_BPM
+        if ok and snr >= BREATH_MIN_SNR and lo <= bpm <= hi:
+            self._breath.append((ts, bpm, snr))
+
+    def set_ble(self, ts: float, summary: dict) -> None:
+        self.ble = summary
+        self.ble_ts = ts
+
+    def breathing_snapshot(self, now: float) -> dict:
+        recent = [(t, b) for t, b, _ in self._breath if now - t <= BREATH_WINDOW_S]
+        if len(recent) < 2:
+            return {"state": "none", "bpm": None, "snr": round(self.breath_snr, 1), "readings": len(recent), "pattern": None}
+        bpms = [b for _, b in recent]
+        med = median(bpms)
+        spread = max(abs(b - med) for b in bpms)
+        if len(recent) >= BREATH_GOOD_READINGS and spread <= BREATH_SPREAD_BPM:
+            pattern = "steady" if spread <= BREATH_STEADY_BPM else "variable"
+            state = "good"
+        else:
+            pattern, state = None, "weak"
+        return {"state": state, "bpm": round(med, 1), "snr": round(self.breath_snr, 1), "readings": len(recent), "pattern": pattern}
 
     def snapshot(self, now: float | None = None) -> dict:
         now = time.time() if now is None else now
@@ -136,6 +177,15 @@ class ZoneState:
             "present": False if offline else self.present,
             "confidence": 0.0 if offline else round(self.confidence, 3),
             "activity": "none" if offline else self.activity,
+            "activity_ratio": 0.0 if offline else round(max(self.ratio, 0.0), 2),
+            "breathing": (
+                {"state": "none", "bpm": None, "snr": 0.0, "readings": 0, "pattern": None}
+                if offline else self.breathing_snapshot(now)
+            ),
+            "ble": (
+                {**self.ble, "age_s": round(now - self.ble_ts, 1)}
+                if self.ble and not offline and now - self.ble_ts <= BLE_STALE_S else None
+            ),
             "score": round(self.score, 4),
             "baseline": round(self.baseline, 4),
             "threshold": round(self.threshold, 4),

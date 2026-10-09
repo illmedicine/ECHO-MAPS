@@ -44,6 +44,10 @@ class IngestBody(BaseModel):
     zone: str = Field(min_length=1, max_length=63)  # the public area this bridge monitors
     bridge_name: str = Field(default="", max_length=63)  # label for the device itself
     ip: str = Field(default="", max_length=45)  # bridge's LAN address, for its local setup page
+    # Optional extras are parsed leniently (see _parse_*): a malformed extra must never
+    # cost us the presence windows in the same request.
+    breathing: dict | None = None
+    ble: dict | None = None
     windows: list[CSIWindow] = Field(min_length=1, max_length=MAX_WINDOWS_PER_POST)
 
 
@@ -68,6 +72,44 @@ _AREA_OK = re.compile(r"^[A-Za-z0-9 \-_.,'/#()]{1,47}$")  # same charset the fir
 _desired: dict[str, dict[str, str]] = {}
 
 
+_BLE_ID = re.compile(r"^[0-9a-f]{6}$")
+
+
+def _num(v: object, lo: float, hi: float) -> float | None:
+    try:
+        x = float(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return x if lo <= x <= hi else None  # also rejects NaN
+
+
+def _parse_breathing(raw: dict | None) -> tuple[float, float, bool] | None:
+    if not raw:
+        return None
+    bpm, snr = _num(raw.get("bpm"), 0, 200), _num(raw.get("snr"), 0, 1e6)
+    if bpm is None or snr is None:
+        return None
+    return bpm, snr, bool(raw.get("ok"))
+
+
+def _parse_ble(raw: dict | None) -> dict | None:
+    """Keep only counts and anonymised ids; drop anything that is not exactly that shape."""
+    if not raw:
+        return None
+    counts = {k: _num(raw.get(k), 0, 1000) for k in ("count", "near", "persistent", "stable")}
+    if any(v is None for v in counts.values()):
+        return None
+    devices = []
+    for d in (raw.get("devices") or [])[:8]:
+        if not isinstance(d, dict) or not _BLE_ID.match(str(d.get("id", ""))):
+            continue
+        rssi, age = _num(d.get("rssi"), -127, 20), _num(d.get("age"), 0, 86400)
+        if rssi is None or age is None:
+            continue
+        devices.append({"id": d["id"], "rssi": int(rssi), "t": 1 if d.get("t") else 0, "p": 1 if d.get("p") else 0, "age": int(age)})
+    return {**{k: int(v) for k, v in counts.items()}, "devices": devices}  # type: ignore[arg-type]
+
+
 def _check_device_key(key: str | None) -> None:
     expected = get_settings().presence_ingest_key
     if not expected:
@@ -85,6 +127,12 @@ async def ingest(body: IngestBody, x_device_key: str | None = Header(default=Non
     zone.bridge_name = body.bridge_name
     zone.ip = body.ip
     now = time.time()
+    breath = _parse_breathing(body.breathing)
+    if breath:
+        zone.update_breathing(now, *breath)
+    ble = _parse_ble(body.ble)
+    if ble is not None:
+        zone.set_ble(now, ble)
     for w in body.windows:
         ts = w.ts if w.ts and abs(w.ts - now) < 3600 else now  # ESP32 may have no RTC
         zone.update(ts, w.n, w.rssi_mean, w.rssi_std, w.amp_cv, w.decorr)
