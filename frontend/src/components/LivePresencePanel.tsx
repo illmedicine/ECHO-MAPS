@@ -14,6 +14,7 @@ import { isBackendConfigured, publishPublicAreas, type LiveZone } from "@/lib/ap
 import { getEnvironments } from "@/lib/environments";
 import { publicAreaNames } from "@/lib/sensingZones";
 import PresenceSpark from "./PresenceSpark";
+import ZoneInsights from "./ZoneInsights";
 
 const STATE_STYLE: Record<LiveZone["state"], { label: string; color: string; bg: string }> = {
   present: { label: "Presence detected", color: "#B3261E", bg: "rgba(234,67,53,0.10)" },
@@ -107,6 +108,7 @@ export default function LivePresencePanel({ compact = false }: { compact?: boole
                     {z.age_s !== null && <span>updated {z.age_s}s ago</span>}
                   </div>
                   <PresenceSpark zone={z} />
+                  <ZoneInsights zone={z} />
                 </>
               )}
               {z.state === "offline" && z.age_s !== null && (

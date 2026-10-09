@@ -15,6 +15,7 @@ import { classifyRoom, publicAreaNames } from "@/lib/sensingZones";
 import { getAreaModes, setAreaMode, type SensingMode } from "@/lib/publicAreaConfig";
 import type { Environment } from "@/lib/environments";
 import PresenceSpark from "./PresenceSpark";
+import ZoneInsights, { InsightChips } from "./ZoneInsights";
 
 type Status = "present" | "clear" | "learning" | "nosensor" | "unscanned" | "failed";
 type Filter = "all" | "present" | "clear" | "nosensor";
@@ -201,6 +202,8 @@ export default function PublicAreasView({ rooms, environmentName, onAddArea, onA
           <p className="text-[10px] mt-1.5" style={{ color: "var(--gh-text-muted)" }}>Calibrating baseline… {Math.round(r.zone.learning_progress * 100)}%</p>
         )}
 
+        {r.zone && r.status !== "nosensor" && r.status !== "learning" && <InsightChips zone={r.zone} />}
+
         <div className="mt-2.5 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <div className="inline-flex rounded-lg overflow-hidden text-[11px]" style={{ border: "1px solid var(--gh-border)" }} role="group" aria-label={`Sensing mode for ${room.name}`}>
             {(["auto", "manual"] as const).map((m) => (
@@ -367,6 +370,7 @@ function Detail({ r, mode, scanning, onScan, onMode, onRemove }: {
             <PresenceSpark zone={z} height={64} />
             <p className="text-[10px] mt-1" style={{ color: "var(--gh-text-muted)" }}>Motion score, last minute. Dashed line = detection threshold.</p>
           </div>
+          <div className="mb-3 -mt-3"><ZoneInsights zone={z} /></div>
           <dl className="grid grid-cols-2 gap-2 text-xs mb-3">
             {[
               ["Confidence", z.state === "learning" ? "—" : `${Math.round(z.confidence * 100)}%`],

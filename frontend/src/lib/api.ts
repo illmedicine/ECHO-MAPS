@@ -23,11 +23,60 @@ function getToken(): string | null {
   return user.apiToken ?? null;
 }
 
+/** True if the API token's own expiry (the `exp` claim) has passed, or is about to. */
+function tokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.exp === "number" && payload.exp * 1000 < Date.now() + 30_000;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether the saved login can still talk to the API. The sign-in page uses this so an
+ * expired session sends you to Google again instead of bouncing you back to a dashboard
+ * that can only show 401s.
+ */
+export function hasValidSession(): boolean {
+  if (typeof window === "undefined") return false;
+  const stored = localStorage.getItem("echo_maps_user");
+  if (!stored) return false;
+  if (!API_BASE) return true; // demo mode: no API session to expire
+  const token = getToken();
+  return !!token && !tokenExpired(token);
+}
+
+let sessionRedirecting = false;
+
+/** The API refused our token: drop it and send the user to sign in again (once). */
+function handleSessionExpired(): void {
+  if (typeof window === "undefined" || sessionRedirecting) return;
+  if (window.location.pathname.includes("/auth/")) return; // already signing in
+  sessionRedirecting = true;
+  try {
+    const raw = localStorage.getItem("echo_maps_user");
+    if (raw) {
+      const user = JSON.parse(raw);
+      delete user.apiToken; // keep id/name so this user's saved rooms and settings stay put
+      delete user.googleToken;
+      localStorage.setItem("echo_maps_user", JSON.stringify(user));
+    }
+  } catch {
+    /* nothing to clean up */
+  }
+  window.location.assign(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/auth/signin/?expired=1`);
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const token = getToken();
+  if (token && tokenExpired(token)) {
+    handleSessionExpired();
+    throw new ApiError(401, "Your session expired. Please sign in again.");
+  }
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string> ?? {}),
@@ -42,6 +91,7 @@ async function request<T>(
   });
 
   if (!res.ok) {
+    if (res.status === 401) handleSessionExpired();
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, body.detail ?? res.statusText);
   }
@@ -352,6 +402,25 @@ export interface LiveZone {
   bridge_name?: string;
   /** The bridge's LAN address, when it reports one. */
   ip?: string;
+  /** 0 = link is still, 1 = at the detection threshold, above = heavy movement. */
+  activity_ratio?: number;
+  /** Breathing-rate estimate; only "good"/"weak" when one person is staying fairly still near the link. */
+  breathing?: {
+    state: "none" | "weak" | "good";
+    bpm: number | null;
+    snr: number;
+    readings: number;
+    pattern: "steady" | "variable" | null;
+  };
+  /** Anonymised nearby BLE devices (ids are salted hashes that rotate daily); null when not reported. */
+  ble?: {
+    count: number;
+    near: number;
+    persistent: number;
+    stable: number;
+    age_s: number;
+    devices: { id: string; rssi: number; t: number; p: number; age: number }[];
+  } | null;
   /** offline = no data from the sensor; learning = building the empty-room baseline */
   state: "offline" | "learning" | "empty" | "present";
   present: boolean;
