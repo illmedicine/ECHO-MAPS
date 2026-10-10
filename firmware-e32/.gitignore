@@ -1,0 +1,3 @@
+.pio/
+sdkconfig.e32-bridge
+managed_components/
