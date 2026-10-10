@@ -24,8 +24,6 @@
 #include "esp_timer.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
-#include "soc/usb_serial_jtag_reg.h"
-#include "soc/system_reg.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
@@ -783,49 +781,13 @@ void lcd_init(void) {
     ESP_LOGI(TAG, "Initializing ST7789 LCD (%dx%d) via raw SPI", LCD_H_RES, LCD_V_RES);
 
     /*
-     * CRITICAL: Release GPIO19/20 from USB Serial/JTAG PHY.
-     * On ESP32-S3, GPIO19=USB_D- and GPIO20=USB_D+.
-     * The USB PHY holds these pins by default (pad_enable=1 at reset).
-     * We must:
-     *   1. Clear pad_enable while peripheral clock is on
-     *   2. Gate the peripheral clock so nothing re-enables the pad
-     *   3. Reset GPIOs to clean GPIO function
+     * Pins match Freenove's official FNK0086A_2.8_CFG1 TFT_eSPI setup:
+     * MOSI=GPIO20, SCLK=GPIO21, DC=GPIO0, CS/RST/BL not connected (BL is hard-wired on).
+     * GPIO19/20 are the USB pads, but the pad follows the GPIO matrix without any USB
+     * register tricks (verified with a drive/readback test on hardware), so the USB
+     * peripheral and GPIO19 (the board's power-sense ADC pin) are left untouched, exactly
+     * like the factory firmware does.
      */
-    uint32_t conf0_before = REG_READ(USB_SERIAL_JTAG_CONF0_REG);
-
-    /* Attempt 1: standard REG_CLR_BIT */
-    REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
-    uint32_t conf0_after1 = REG_READ(USB_SERIAL_JTAG_CONF0_REG);
-
-    /* Attempt 2: explicit write with all other bits preserved */
-    WRITE_PERI_REG(USB_SERIAL_JTAG_CONF0_REG, conf0_after1 & ~USB_SERIAL_JTAG_USB_PAD_ENABLE);
-    uint32_t conf0_after2 = REG_READ(USB_SERIAL_JTAG_CONF0_REG);
-
-    ESP_LOGI(TAG, "USB CONF0: before=0x%08lx  clr_bit=0x%08lx  write=0x%08lx  bit14=%d->%d->%d",
-             (unsigned long)conf0_before, (unsigned long)conf0_after1, (unsigned long)conf0_after2,
-             (conf0_before >> 14) & 1, (conf0_after1 >> 14) & 1, (conf0_after2 >> 14) & 1);
-
-    /* Gate USB Serial/JTAG peripheral clock to prevent re-enablement.
-     * Do NOT assert reset (reset would restore pad_enable=1 default). */
-    CLEAR_PERI_REG_MASK(SYSTEM_PERIP_CLK_EN0_REG, SYSTEM_USB_DEVICE_CLK_EN);
-    ESP_LOGI(TAG, "USB Serial/JTAG clock gated");
-
-    /*
-     * Reset GPIO19/20/21 to default GPIO function.
-     * This clears any IO MUX overrides left by the USB PHY
-     * and ensures the GPIO matrix can drive the pads.
-     */
-    gpio_reset_pin(GPIO_NUM_19);
-    gpio_reset_pin(GPIO_NUM_20);
-    gpio_reset_pin(GPIO_NUM_21);
-
-    /* Verify GPIO20 is usable: brief manual toggle */
-    gpio_set_direction(GPIO_NUM_20, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_NUM_20, 1);
-    esp_rom_delay_us(100);
-    gpio_set_level(GPIO_NUM_20, 0);
-    esp_rom_delay_us(100);
-    ESP_LOGI(TAG, "GPIO20 manual toggle OK");
 
     /* Configure DC pin as output */
     gpio_config_t dc_conf = {
@@ -852,10 +814,13 @@ void lcd_init(void) {
         return;
     }
 
-    /* Add SPI device — no CS pin, SPI mode 0, with pre_cb for DC timing */
+    /* Add SPI device — no CS pin, SPI mode 3, with pre_cb for DC timing.
+     * Mode 3 is required: with CS hard-wired low, this ST7789 mis-reads commands in mode 0
+     * (corrupting voltage/gamma settings, leaving the panel nearly black). Freenove's TFT_eSPI
+     * setup uses mode 3 for ST7789 as well. */
     spi_device_interface_config_t devcfg = {
         .clock_speed_hz = LCD_SPI_FREQ,
-        .mode = 0,
+        .mode = 3,
         .spics_io_num = -1,
         .queue_size = 7,
         .flags = SPI_DEVICE_NO_DUMMY,
@@ -946,8 +911,8 @@ void lcd_init(void) {
     lcd_cmd(0xE1);
     { uint8_t d[] = {0xD0,0x00,0x02,0x07,0x0A,0x28,0x31,0x54,0x47,0x0E,0x1C,0x17,0x1B,0x1E}; lcd_data(d, 14); }
 
-    /* Display Inversion ON */
-    lcd_cmd(0x21);  /* INVON */
+    /* Display inversion OFF — Freenove FNK0086A CFG1 (TFT_INVERSION_OFF) */
+    lcd_cmd(0x20);  /* INVOFF */
 
     /* Set full display window — CASET */
     lcd_cmd(0x2A);
