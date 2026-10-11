@@ -15,6 +15,7 @@
  */
 
 #include "lcd_ui.h"
+#include "presence_csi.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -22,10 +23,13 @@
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_timer.h"
+#include "esp_netif.h"
+#include "esp_heap_caps.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "lcd-ui";
@@ -52,6 +56,8 @@ static const char *TAG = "lcd-ui";
 #define C_YELLOW  0xFFE0
 #define C_ORANGE  0xFD20
 #define C_DARK    0x18E3
+#define C_PANEL   0x10A2
+#define C_GREY    0x8410
 #define C_MID     0x4208
 #define C_ACCENT  0x04FF
 #define C_SEL     0x2965
@@ -418,31 +424,85 @@ static void render_wifi_connecting(void) {
     draw_text_center(200, "Please wait...", C_MID, 1);
 }
 
-static void render_dashboard(void) {
-    draw_text(8, 4, "ILLY BRIDGE", C_CYAN, 2);
-    draw_hline(8, 22, 224, C_ACCENT);
-    if (wifi_connected) {
-        fill_rect(8, 28, 8, 8, C_GREEN);
-        draw_text(20, 28, wifi_ssid, C_GREEN, 1);
-        draw_text(20, 40, wifi_ip, C_MID, 1);
+/* ---- Live dashboard (same information and layout as the Illy Bridge 2 screen) ----
+ * Values come from the live network stack and presence module, not cached text, so the
+ * WiFi/IP rows are only "connected" when the board really is associated and has an IP. */
+typedef struct {
+    char area[40], name[40], ssid[33], ip[20], backend[24];
+    char frames[16], sent[20], motion[12], rssi[14], uptime[16], heap[12], toast[44];
+    bool wifi_ok;
+    uint16_t backend_color, frames_color;
+} dash_t;
+
+static dash_t dash;                      /* snapshot currently on screen */
+static char toast_text[44] = {0};
+static int64_t toast_until_us = 0;
+static SemaphoreHandle_t lcd_mtx = NULL;
+
+static void dash_collect(dash_t *d) {
+    memset(d, 0, sizeof(*d));
+    presence_zone_get(d->area, sizeof(d->area));
+    presence_bridge_name_get(d->name, sizeof(d->name));
+    presence_stats_t st = presence_csi_stats();
+
+    wifi_ap_record_t ap;
+    esp_netif_ip_info_t ip = {0};
+    esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    bool assoc = (esp_wifi_sta_get_ap_info(&ap) == ESP_OK);
+    bool has_ip = sta && esp_netif_get_ip_info(sta, &ip) == ESP_OK && ip.ip.addr != 0;
+    d->wifi_ok = assoc && has_ip;
+    if (assoc) strlcpy(d->ssid, (const char *)ap.ssid, sizeof(d->ssid));
+    if (has_ip) snprintf(d->ip, sizeof(d->ip), IPSTR, IP2STR(&ip.ip));
+
+    if (st.windows_sent == 0 && !st.backend_ok) {
+        strlcpy(d->backend, st.post_failures ? "unreachable" : "waiting", sizeof(d->backend));
+        d->backend_color = st.post_failures ? C_RED : C_YELLOW;
     } else {
-        fill_rect(8, 28, 8, 8, C_RED);
-        draw_text(20, 28, "Not connected", C_RED, 1);
+        strlcpy(d->backend, st.backend_ok ? "OK" : "FAILING", sizeof(d->backend));
+        d->backend_color = st.backend_ok ? C_GREEN : C_RED;
     }
-    draw_text(8, 56, user_bound ? "Echo Vue: Linked" : "Echo Vue: Waiting",
-              user_bound ? C_GREEN : C_YELLOW, 1);
-    draw_hline(8, 70, 224, C_MID);
-    for (int i = 0; i < DASH_ITEM_COUNT; i++) {
-        int iy = 78 + i * 34;
-        bool sel = (i == menu_sel);
-        if (sel) {
-            draw_btn_bg(8, iy, 224, 28, C_SEL);
-            draw_text(14, iy + 6, ">", C_CYAN, 2);
-        }
-        draw_text(32, iy + 8, dash_items[i], sel ? C_WHITE : C_GREEN, 1);
+    snprintf(d->frames, sizeof(d->frames), "%u", (unsigned)st.frames_total);
+    d->frames_color = st.frames_total ? C_WHITE : C_YELLOW;
+    snprintf(d->sent, sizeof(d->sent), "%u/%u", (unsigned)st.windows_sent, (unsigned)st.post_failures);
+    snprintf(d->motion, sizeof(d->motion), "%.2f", st.last_amp_cv);
+    if (assoc) snprintf(d->rssi, sizeof(d->rssi), "%d dBm", ap.rssi);
+    else strlcpy(d->rssi, "-", sizeof(d->rssi));
+    int64_t sec = esp_timer_get_time() / 1000000;
+    if (sec < 3600) snprintf(d->uptime, sizeof(d->uptime), "%dm %02ds", (int)(sec / 60), (int)(sec % 60));
+    else snprintf(d->uptime, sizeof(d->uptime), "%dh %02dm", (int)(sec / 3600), (int)((sec / 60) % 60));
+    snprintf(d->heap, sizeof(d->heap), "%u KB", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024));
+    if (esp_timer_get_time() < toast_until_us) strlcpy(d->toast, toast_text, sizeof(d->toast));
+}
+
+/* Small grey label above a larger value. */
+static void dash_item(int x, int y, const char *label, const char *val, uint16_t color) {
+    draw_text(x, y, label, C_GREY, 1);
+    draw_text(x, y + 10, val[0] ? val : "-", color, 2);
+}
+
+static void render_dashboard(void) {
+    fill_rect(0, 0, LCD_H_RES, LCD_V_RES, C_BLACK);
+    /* header bar: title, then version or the latest status toast */
+    fill_rect(0, 0, LCD_H_RES, 46, C_PANEL);
+    draw_text(8, 5, "ILLY BRIDGE", C_ACCENT, 2);
+    if (dash.toast[0]) {
+        draw_text(8, 30, dash.toast, C_YELLOW, 1);
+    } else {
+        char v[48];
+        snprintf(v, sizeof(v), "v%s  Freenove FNK0086", dev_ver);
+        draw_text(8, 30, v, C_GREY, 1);
     }
-    draw_hline(8, 216, 224, C_MID);
-    draw_text(8, 222, "BTN:Next  HOLD:Select", C_MID, 1);
+    dash_item(8, 52,  "AREA",   dash.area, C_WHITE);
+    dash_item(8, 84,  "BRIDGE", dash.name, C_WHITE);
+    dash_item(8, 116, "WIFI",   dash.wifi_ok ? dash.ssid : "offline", dash.wifi_ok ? C_GREEN : C_RED);
+    dash_item(8, 148, "IP",     dash.ip, dash.wifi_ok ? C_WHITE : C_RED);
+    dash_item(8, 180, "BACKEND", dash.backend, dash.backend_color);
+    dash_item(8,   212, "CSI FRAMES",  dash.frames, dash.frames_color);
+    dash_item(124, 212, "SENT / FAIL", dash.sent,   C_WHITE);
+    dash_item(8,   248, "MOTION",      dash.motion, C_WHITE);
+    dash_item(124, 248, "SIGNAL",      dash.rssi,   C_WHITE);
+    dash_item(8,   284, "UPTIME",      dash.uptime, C_WHITE);
+    dash_item(124, 284, "FREE HEAP",   dash.heap,   C_WHITE);
 }
 
 static void render_calibrating(void) {
@@ -527,6 +587,8 @@ static void lcd_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
 
 static void lcd_flush(void) {
     if (!strip_buf || !spi_dev) return;
+    if (lcd_mtx) xSemaphoreTake(lcd_mtx, portMAX_DELAY);
+    if (cur_screen == SCR_DASHBOARD) dash_collect(&dash);   /* one consistent snapshot per frame */
     for (int y = 0; y < LCD_V_RES; y += STRIP_H) {
         strip_y = y;
         strip_h = (y + STRIP_H > LCD_V_RES) ? (LCD_V_RES - y) : STRIP_H;
@@ -545,6 +607,7 @@ static void lcd_flush(void) {
         };
         spi_device_polling_transmit(spi_dev, &t);
     }
+    if (lcd_mtx) xSemaphoreGive(lcd_mtx);
 }
 
 /* ---- WiFi Scan ---- */
@@ -776,72 +839,19 @@ static void lcd_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     lcd_cmd(0x2C); /* RAMWR */
 }
 
-/* ---- Public API ---- */
-void lcd_init(void) {
-    ESP_LOGI(TAG, "Initializing ST7789 LCD (%dx%d) via raw SPI", LCD_H_RES, LCD_V_RES);
-
-    /*
-     * Pins match Freenove's official FNK0086A_2.8_CFG1 TFT_eSPI setup:
-     * MOSI=GPIO20, SCLK=GPIO21, DC=GPIO0, CS/RST/BL not connected (BL is hard-wired on).
-     * GPIO19/20 are the USB pads, but the pad follows the GPIO matrix without any USB
-     * register tricks (verified with a drive/readback test on hardware), so the USB
-     * peripheral and GPIO19 (the board's power-sense ADC pin) are left untouched, exactly
-     * like the factory firmware does.
-     */
-
-    /* Configure DC pin as output */
-    gpio_config_t dc_conf = {
-        .pin_bit_mask = (1ULL << LCD_PIN_DC),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    };
-    gpio_config(&dc_conf);
-    gpio_set_level(LCD_PIN_DC, 1);
-
-    /* Initialize SPI bus */
-    spi_bus_config_t bus = {
-        .mosi_io_num = LCD_PIN_MOSI,
-        .miso_io_num = -1,
-        .sclk_io_num = LCD_PIN_CLK,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = LCD_H_RES * STRIP_H * 2 + 64,
-    };
-    esp_err_t err = spi_bus_initialize(LCD_SPI_HOST, &bus, SPI_DMA_CH_AUTO);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "SPI bus init failed: %s", esp_err_to_name(err));
-        return;
-    }
-
-    /* Add SPI device — no CS pin, SPI mode 3, with pre_cb for DC timing.
-     * Mode 3 is required: with CS hard-wired low, this ST7789 mis-reads commands in mode 0
-     * (corrupting voltage/gamma settings, leaving the panel nearly black). Freenove's TFT_eSPI
-     * setup uses mode 3 for ST7789 as well. */
-    spi_device_interface_config_t devcfg = {
-        .clock_speed_hz = LCD_SPI_FREQ,
-        .mode = 3,
-        .spics_io_num = -1,
-        .queue_size = 7,
-        .flags = SPI_DEVICE_NO_DUMMY,
-        .pre_cb = lcd_spi_pre_cb,
-    };
-    err = spi_bus_add_device(LCD_SPI_HOST, &devcfg, &spi_dev);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "SPI device add failed: %s", esp_err_to_name(err));
-        return;
-    }
-    ESP_LOGI(TAG, "SPI bus OK (MOSI=%d, CLK=%d, DC=%d, %d MHz)",
-        LCD_PIN_MOSI, LCD_PIN_CLK, LCD_PIN_DC, LCD_SPI_FREQ / 1000000);
-
-    /*
-     * ST7789 init sequence — matches TFT_eSPI (Bodmer) ST7789_Init.h exactly.
-     * Reference: https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_Drivers/ST7789_Init.h
-     */
-
+/*
+ * Send the full ST7789 configuration. The panel's RST is tied to the ESP32's EN and CS is
+ * hard-wired low, so there is no way to reset or deselect it from software. While WiFi is
+ * running the panel occasionally drops its configuration (it then shows black / goes dark
+ * until re-initialised), so this is also re-sent periodically without the SWRESET
+ * (see lcd_refresh_panel). Every command is idempotent on a live panel.
+ */
+static void st7789_config(bool do_swreset) {
     /* Software reset — ensures clean state even without hardware RST pin */
-    lcd_cmd(0x01);  /* SWRESET */
-    vTaskDelay(pdMS_TO_TICKS(150));
+    if (do_swreset) {
+        lcd_cmd(0x01);  /* SWRESET */
+        vTaskDelay(pdMS_TO_TICKS(150));
+    }
 
     /* Sleep out */
     lcd_cmd(0x11);  /* SLPOUT */
@@ -928,6 +938,73 @@ void lcd_init(void) {
     lcd_cmd(0x29);  /* DISPON */
     vTaskDelay(pdMS_TO_TICKS(120));
 
+}
+
+/* ---- Public API ---- */
+void lcd_init(void) {
+    lcd_mtx = xSemaphoreCreateMutex();
+    ESP_LOGI(TAG, "Initializing ST7789 LCD (%dx%d) via raw SPI", LCD_H_RES, LCD_V_RES);
+
+    /*
+     * Pins match Freenove's official FNK0086A_2.8_CFG1 TFT_eSPI setup:
+     * MOSI=GPIO20, SCLK=GPIO21, DC=GPIO0, CS/RST/BL not connected (BL is hard-wired on).
+     * GPIO19/20 are the USB pads, but the pad follows the GPIO matrix without any USB
+     * register tricks (verified with a drive/readback test on hardware), so the USB
+     * peripheral and GPIO19 (the board's power-sense ADC pin) are left untouched, exactly
+     * like the factory firmware does.
+     */
+
+    /* Configure DC pin as output */
+    gpio_config_t dc_conf = {
+        .pin_bit_mask = (1ULL << LCD_PIN_DC),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    };
+    gpio_config(&dc_conf);
+    gpio_set_level(LCD_PIN_DC, 1);
+
+    /* Initialize SPI bus */
+    spi_bus_config_t bus = {
+        .mosi_io_num = LCD_PIN_MOSI,
+        .miso_io_num = -1,
+        .sclk_io_num = LCD_PIN_CLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = LCD_H_RES * STRIP_H * 2 + 64,
+    };
+    esp_err_t err = spi_bus_initialize(LCD_SPI_HOST, &bus, SPI_DMA_CH_AUTO);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SPI bus init failed: %s", esp_err_to_name(err));
+        return;
+    }
+
+    /* Add SPI device — no CS pin, SPI mode 3, with pre_cb for DC timing.
+     * Mode 3 is required: with CS hard-wired low, this ST7789 mis-reads commands in mode 0
+     * (corrupting voltage/gamma settings, leaving the panel nearly black). Freenove's TFT_eSPI
+     * setup uses mode 3 for ST7789 as well. */
+    spi_device_interface_config_t devcfg = {
+        .clock_speed_hz = LCD_SPI_FREQ,
+        .mode = 3,
+        .spics_io_num = -1,
+        .queue_size = 7,
+        .flags = SPI_DEVICE_NO_DUMMY,
+        .pre_cb = lcd_spi_pre_cb,
+    };
+    err = spi_bus_add_device(LCD_SPI_HOST, &devcfg, &spi_dev);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SPI device add failed: %s", esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "SPI bus OK (MOSI=%d, CLK=%d, DC=%d, %d MHz)",
+        LCD_PIN_MOSI, LCD_PIN_CLK, LCD_PIN_DC, LCD_SPI_FREQ / 1000000);
+
+    /*
+     * ST7789 init sequence — matches TFT_eSPI (Bodmer) ST7789_Init.h exactly.
+     * Reference: https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_Drivers/ST7789_Init.h
+     */
+
+    st7789_config(true);
     ESP_LOGI(TAG, "ST7789 init sequence complete");
 
     /* Allocate strip buffer */
@@ -993,7 +1070,9 @@ void lcd_enter_dashboard(void) {
 void lcd_set_wifi_status(bool connected, const char *ssid, const char *ip) {
     wifi_connected = connected;
     if (ssid) strncpy(wifi_ssid, ssid, sizeof(wifi_ssid) - 1);
-    if (ip) strncpy(wifi_ip, ip, sizeof(wifi_ip) - 1);
+    /* main.c re-sends the status with an empty IP right after connecting; keep the real one. */
+    if (!connected) wifi_ip[0] = 0;
+    else if (ip && ip[0]) strncpy(wifi_ip, ip, sizeof(wifi_ip) - 1);
 }
 
 void lcd_set_bound_status(bool bound, const char *uid) {
@@ -1017,6 +1096,12 @@ void lcd_show_presence_scan(const char *rn) {
 
 void lcd_show_status(const char *title, const char *detail) {
     if (!lcd_ready) return;
+    if (cur_screen == SCR_DASHBOARD) {          /* no button to dismiss a full-screen message */
+        snprintf(toast_text, sizeof(toast_text), "%s%s%s", title ? title : "",
+                 detail && detail[0] ? ": " : "", detail ? detail : "");
+        toast_until_us = esp_timer_get_time() + 6 * 1000000LL;
+        return;
+    }
     if (title) strncpy(status_title, title, sizeof(status_title) - 1);
     if (detail) strncpy(status_detail, detail, sizeof(status_detail) - 1);
     cur_screen = SCR_STATUS_MSG;
@@ -1039,14 +1124,33 @@ void lcd_show_home(const char *device_id, bool is_bound) {
     lcd_enter_dashboard();
 }
 
+/* Re-apply the panel configuration so a dropped config heals within a few seconds. */
+#define LCD_REFRESH_US (5 * 1000000LL)
+static int64_t last_refresh_us = 0;
+static bool lcd_refresh_panel(void) {
+    int64_t now = esp_timer_get_time();
+    if (now - last_refresh_us < LCD_REFRESH_US) return false;
+    last_refresh_us = now;
+    if (lcd_mtx) xSemaphoreTake(lcd_mtx, portMAX_DELAY);
+    st7789_config(false);
+    if (lcd_mtx) xSemaphoreGive(lcd_mtx);
+    return true;                          /* caller redraws: a reset panel lost its frame */
+}
+
 void lcd_handle_input(void) {
     if (!lcd_ready) return;
     btn_event_t ev = poll_button();
     bool needs_redraw = (ev != BTN_NONE);
+    if (lcd_refresh_panel()) needs_redraw = true;
     if (cur_screen == SCR_WIFI_PASS) needs_redraw = true;
     if (cur_screen == SCR_WIFI_CONNECTING) needs_redraw = true;
     if (cur_screen == SCR_CALIBRATING) needs_redraw = true;
     if (cur_screen == SCR_PRESENCE) needs_redraw = true;
+    if (cur_screen == SCR_DASHBOARD) {          /* redraw only when something on screen changed */
+        dash_t now;
+        dash_collect(&now);
+        if (memcmp(&now, &dash, sizeof(now)) != 0) needs_redraw = true;
+    }
 
     switch (cur_screen) {
     case SCR_BOOT:             handle_boot(ev); break;
