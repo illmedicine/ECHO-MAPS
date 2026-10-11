@@ -1,917 +1,372 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
-import { COMPANY_URL, CompanyLink } from "@/components/CompanyLink";
-import Image from "next/image";
+import { COMPANY_URL, CompanyFooter, CompanyLink } from "@/components/CompanyLink";
+import { InstrumentsSketch, JourneyMapSketch, MapSketch, PrototypeSketch, SkeletonSketch } from "@/components/marketing/DaVinciSketches";
+import ActivityCalendar, { type Release } from "@/components/marketing/ActivityCalendar";
+
+export const metadata: Metadata = {
+  title: "From Spectacle to Signal — The Evolution of Echo Vue | Illy Robotic Instruments",
+  description:
+    "Seven months of Echo Vue, drawn as a codex: the camera-built 3D skeleton and the map of dots, the six-month pause, and the rebuild around real signal at a Motel 6.",
+};
+
+const SERIF = "Georgia, 'Times New Roman', 'Iowan Old Style', serif";
+const muted = { color: "var(--gh-text-muted)" } as const;
+
+function Kicker({ children, light }: { children: React.ReactNode; light?: boolean }) {
+  return <p className="text-[11px] font-bold tracking-[0.22em] uppercase mb-2" style={{ color: light ? "#93b8f7" : "var(--gh-blue)" }}>{children}</p>;
+}
+function H2({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-3xl md:text-4xl font-bold leading-tight mb-5" style={{ fontFamily: SERIF }}>{children}</h2>;
+}
+function Body({ children }: { children: React.ReactNode }) {
+  return <div className="space-y-5 text-[17px] md:text-lg leading-[1.75]" style={{ fontFamily: SERIF }}>{children}</div>;
+}
+function PullQuote({ children }: { children: React.ReactNode }) {
+  return <blockquote className="my-10 pl-6 border-l-4 text-2xl md:text-4xl italic leading-snug" style={{ borderColor: "var(--gh-blue)", fontFamily: SERIF }}>{children}</blockquote>;
+}
+function Plate({ n, title, children, note, dark }: { n: string; title: string; children: React.ReactNode; note: string; dark?: boolean }) {
+  return (
+    <figure className="my-2">
+      <div className="rounded-sm overflow-hidden" style={{ boxShadow: "0 18px 50px rgba(60,40,10,0.35)", border: "10px solid #2a1d10" }}>{children}</div>
+      <figcaption className="mt-3 text-xs leading-snug" style={dark ? { color: "#94a3b8" } : muted}>
+        <strong style={{ color: dark ? "#e2e8f0" : "var(--gh-text)", fontFamily: SERIF }}>Plate {n}: {title}.</strong> {note}
+      </figcaption>
+    </figure>
+  );
+}
+
+type Entry = { date: string; title: string; what: string; why: string };
+
+/** Major release days, in order. These are the numbered flags on the calendar. */
+const RELEASES: Release[] = [
+  { date: "2026-03-31", title: "First commit, the Echo Vue rebrand, the calibration wizard and a Cameras tab" },
+  { date: "2026-04-02", title: "The 3D skeleton from a camera, Bluetooth anchors, and the first white paper" },
+  { date: "2026-04-07", title: "The live floor-plan map, presence engine and floor-plan editor" },
+  { date: "2026-04-08", title: "Beacon identities and the WiFi router anchor" },
+  { date: "2026-04-12", title: "The mobile room scanner, the last spring commit" },
+  { date: "2026-10-06", title: "WiFi site survey and the hotel auto-setup" },
+  { date: "2026-10-07", title: "Public-area sensing and the privacy policy; the camera code removed" },
+  { date: "2026-10-08", title: "Bridge configuration from the dashboard and the Public Areas view" },
+  { date: "2026-10-09", title: "Breathing measured from the radio spectrum; anonymised Bluetooth; people and pets" },
+  { date: "2026-10-10", title: "Illy Bridge 2 firmware for the 4.0-inch wall display" },
+  { date: "2026-10-11", title: "The live dashboard on the device, History, AI insights and the case study" },
+];
+
+const SPRING: Entry[] = [
+  { date: "Mar 31", title: "First commit: Echo Maps", what: "A CSI sensing platform, a web dashboard, Google sign-in and a backend, all stood up in a single day. By night it had a new name, Echo Vue, a dark interface inspired by Google Home, a calibration wizard, a presence tab and a Cameras tab.", why: "Turn the WiFi in a room into a picture of the room." },
+  { date: "Before the code", title: "Measure first", what: "Before a room went into Echo Vue it was measured by hand. A Klein Tools laser gave the distance to each wall, and a voltage detector found the outlets and live wiring inside them. Those numbers became room dimensions, square footage and floor plans, for homes first and then for facilities, buildings and factories.", why: "Understand the physical space before trying to sense anything in it." },
+  { date: "Apr 1", title: "A face for it", what: "A light theme, a transparent logo, emoji icons and a watermark.", why: "Make a sensing tool feel like a home product, not a lab bench." },
+  { date: "Apr 2", title: "The skeleton", what: "Real-time skeletal tracking from a camera using TensorFlow.js MoveNet, wired into a 3D viewer. Bluetooth discovery that named the manufacturer and operating system of nearby devices, and a protocol for tethering a Bluetooth address to a person's radio signature. The first research white paper.", why: "Know who is in the room and follow them." },
+  { date: "Apr 3", title: "It follows you", what: "Cloud sync across devices, network fingerprints, an architecture infographic, and a stream of fixes to keep the 3D view alive.", why: "One home, many screens." },
+  { date: "Apr 7", title: "The map", what: "A live floor-plan map with pulsing presence dots, a presence engine, household profiles and visitor tracking, a floor-plan editor, and an expanded 3D skeleton viewer. Cross-modal detection that fused camera, radio and Bluetooth.", why: "See a home as a digital twin: who, where, moving how." },
+  { date: "Apr 8", title: "Anchors", what: "Editable beacon identities that remember corrections, and a WiFi router anchor for triangulation.", why: "Pin the radio picture to real positions in the room." },
+  { date: "Apr 12", title: "The last spring commit", what: "A mobile room scanner for visual mapping and calibration. Then the project went quiet.", why: "Map the room with a camera, then sense it with radio." },
+];
+
+const OCTOBER: Entry[] = [
+  { date: "Oct 6", title: "Back, with a clipboard", what: "A WiFi site survey and a hotel auto-setup that models a property: floors, hallways, guest rooms and amenities.", why: "Stop modelling a living room. Model a real building." },
+  { date: "Oct 7", title: "The camera comes out", what: "Public-area sensing zones, a hallway per floor, a privacy policy, and continuous CSI presence sensing. Real WiFi captured on site became the beacons. All camera code was removed.", why: "The question was occupancy, not identity. A hallway should not need a face." },
+  { date: "Oct 8", title: "A bridge you can leave behind", what: "Firmware that joins the property's WiFi on its own, bridges you name and assign to an area from the dashboard, a Public Areas view in place of the room list, and the 3D viewer removed.", why: "Make the device work in a building you do not live in." },
+  { date: "Oct 9", title: "Breathing, measured", what: "A breathing-rate estimate from the CSI spectrum, anonymised nearby-device counts, and people and pets told apart by distinct breathing rates. Each number is labelled an estimate.", why: "Say only what the signal can support, and say so when it cannot." },
+  { date: "Oct 10", title: "A second bridge", what: "Firmware for a 4.0-inch ESP32-32E wall display, and a fix that finally lit the Freenove screen.", why: "A device that looks like part of the wall." },
+  { date: "Oct 11", title: "The device talks back", what: "The live dashboard on the bridge's own screen, a History page of anonymous aggregates kept for 90 days, AI-written insights, and the M6 Case Study.", why: "A readout you can read without trusting anyone." },
+];
+
+const MAP: { feature: string; then: string; now: string; why: string }[] = [
+  { feature: "Presence", then: "Presences for known household members, generated by a simulated RF scan, plus the camera.", now: "Real CSI from bridges, learned per link, in public areas only.", why: "From a demonstration of the idea to an instrument that measures it." },
+  { feature: "Skeleton", then: "A 3D, 33-point skeleton: 17 points seen by a laptop camera (MoveNet), the rest inferred. A generated skeleton when no camera was running.", now: "Gone. The camera code and the 3D viewer are removed.", why: "A skeleton identifies a person. The goal was occupancy." },
+  { feature: "Map", then: "A live floor plan with pulsing dots and movement trails per person.", now: "Public Areas: one card per area with status, its bridge, and live insights.", why: "Per-person positions are tracking; per-area status is occupancy." },
+  { feature: "Breathing", then: "A band-pass design for raw CSI on the server. In the browser, when no stream was connected, a generated sine wave near 15.5 breaths a minute.", now: "A spectrum on the device, kept only when a peak clearly stands out, shown with confidence. “No signal” otherwise.", why: "Nothing on screen should be there just to look finished." },
+  { feature: "Camera", then: "A Cameras tab to register and calibrate a camera per room, pose estimation on its video, and a mobile room scanner for visual mapping.", now: "Gone from the sensing pipeline. Bridges sense by radio only; a camera is a planned, opt-in module on the Pro.", why: "Cameras identify people. A public hallway should not need one." },
+  { feature: "Measuring", then: "A Klein Tools laser and voltage detector used by hand to get wall distances and find outlets, then entered as room dimensions and square footage.", now: "A hotel auto-setup that models a whole property, and a floor-plan editor where dimensions can still come from real measurements.", why: "Scale from one home to a facility without losing the physical ground truth." },
+  { feature: "Heart rate", then: "Designed in, with a generated 72 bpm fallback.", now: "Not reported.", why: "It cannot be measured reliably from one WiFi link." },
+  { feature: "Bluetooth", then: "Device names, manufacturers, operating systems, and tethering an address to a person.", now: "Salted, daily-rotating hashes: counts and signal strength, never addresses.", why: "A device address is a persistent identifier for a person." },
+  { feature: "Profiles", then: "Household members, visitors and per-person profiles.", now: "None. Presence, never identity.", why: "Identification needs consent this product does not ask for." },
+  { feature: "Hardware", then: "A browser and a webcam did the seeing.", now: "Illy Bridge 2 (4.0-inch wall plate) and Illy Bridge Pro, with a screen that shows what they are doing.", why: "A product has to run in a building, not on a laptop." },
+];
 
 export default function ResearchPage() {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-  const publishDate = "April 2, 2026";
-
   return (
-    <main className="min-h-screen" style={{ backgroundColor: "var(--gh-bg)" }}>
-      {/* ── Top Bar ── */}
-      <nav
-        className="sticky top-0 z-50 border-b backdrop-blur-md"
-        style={{
-          backgroundColor: "rgba(248,249,252,0.92)",
-          borderColor: "var(--gh-border)",
-        }}
-      >
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <Image
-              src={`${basePath}/logo.png`}
-              alt="Echo Vue"
-              width={36}
-              height={36}
-              unoptimized
-              style={{ background: "transparent" }}
-            />
-            <span className="font-bold text-sm tracking-tight">
-              Echo Vue <span style={{ color: "var(--gh-text-muted)" }}>Research</span>
-            </span>
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="text-xs font-medium px-3 py-1.5 rounded-lg transition hover:bg-black/5"
-              style={{ color: "var(--gh-text-muted)" }}
-            >
-              Home
-            </Link>
-            <Link
-              href="/dashboard"
-              className="text-xs font-medium px-4 py-1.5 rounded-lg transition"
-              style={{
-                backgroundColor: "rgba(66,133,244,0.08)",
-                color: "var(--gh-blue)",
-              }}
-            >
-              Open Dashboard
-            </Link>
-          </div>
+    <main className="min-h-screen" style={{ backgroundColor: "var(--gh-bg)", color: "var(--gh-text)" }}>
+      <nav className="sticky top-0 z-40 border-b backdrop-blur-md" style={{ backgroundColor: "rgba(248,249,252,0.92)", borderColor: "var(--gh-border)" }}>
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+          <Link href="/dashboard" className="text-sm transition hover:opacity-80" style={muted}>← Dashboard</Link>
+          <span className="text-[11px] font-bold tracking-[0.28em] uppercase hidden sm:block">Echo Vue <span style={muted}>· The Evolution Issue</span></span>
+          <Link href="/dashboard/case-study" className="text-xs hover:underline" style={{ color: "var(--gh-blue)" }}>Read the M6 Case Study →</Link>
         </div>
       </nav>
 
-      {/* ── Hero Banner ── */}
-      <header
-        className="relative overflow-hidden"
-        style={{
-          background:
-            "linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #1e3a5f 100%)",
-        }}
-      >
-        <div className="absolute inset-0 opacity-10">
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 20% 50%, rgba(66,133,244,0.3) 0%, transparent 50%), radial-gradient(circle at 80% 30%, rgba(99,102,241,0.2) 0%, transparent 50%)",
-            }}
-          />
-        </div>
-        <div className="relative max-w-4xl mx-auto px-6 py-20 md:py-28 text-center">
-          <div className="flex items-center justify-center gap-2 mb-6">
-            <span
-              className="text-[10px] font-bold tracking-[0.2em] uppercase px-3 py-1 rounded-full"
-              style={{
-                backgroundColor: "rgba(66,133,244,0.15)",
-                color: "#93b8f7",
-              }}
-            >
-              Research &amp; White Paper
-            </span>
-            <span
-              className="text-[10px] font-medium tracking-wide uppercase px-3 py-1 rounded-full"
-              style={{
-                backgroundColor: "rgba(251,188,5,0.12)",
-                color: "#fbd24e",
-              }}
-            >
-              Peer Review Draft
-            </span>
-          </div>
-          <h1
-            className="text-3xl md:text-5xl font-extrabold leading-tight mb-6"
-            style={{ color: "#f1f5f9" }}
-          >
-            Cross-Modal Spatiotemporal Fusion of WiFi CSI, Vision, and BLE for
-            Device-Free Biometric Human Tracking
+      {/* ── Cover ── */}
+      <header style={{ background: "radial-gradient(120% 90% at 20% 0%, #1e3a5f 0%, #0f172a 55%, #070b14 100%)" }}>
+        <div className="max-w-6xl mx-auto px-6 pt-14 md:pt-20 pb-10 md:pb-14">
+          <Kicker light>Research · The evolution of Echo Vue</Kicker>
+          <h1 className="text-5xl md:text-7xl lg:text-[5.5rem] font-bold leading-[1.02] tracking-tight max-w-4xl" style={{ fontFamily: SERIF, color: "#f8fafc" }}>
+            From Spectacle to Signal.
           </h1>
-          <p
-            className="text-base md:text-lg max-w-2xl mx-auto leading-relaxed mb-8"
-            style={{ color: "#94a3b8" }}
-          >
-            How Echo Vue transforms ambient radio frequency signals into
-            high-fidelity 3D rendered spatial digital twins — without cameras,
-            without wearables, and without compromise.
+          <p className="mt-6 text-lg md:text-2xl max-w-3xl leading-snug" style={{ color: "#cbd5e1", fontFamily: SERIF }}>
+            Seven months, one project, two ideas of what it means to see a room. How Echo Vue went from a glittering 3D skeleton built on a camera to a plain, honest readout on the wall.
           </p>
-          <div className="flex items-center justify-center gap-6 text-sm" style={{ color: "#94a3b8" }}>
-            <div className="flex items-center gap-2">
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold"
-                style={{ backgroundColor: "rgba(66,133,244,0.2)", color: "#93b8f7" }}
-              >
-                D
-              </div>
-              <div className="text-left">
-                <p className="font-semibold" style={{ color: "#f1f5f9" }}>
-                  DeMarkus Wilson
-                </p>
-                <p className="text-xs"><CompanyLink /></p>
-              </div>
-            </div>
-            <span style={{ color: "#334155" }}>|</span>
-            <span className="text-xs">{publishDate}</span>
-            <span style={{ color: "#334155" }}>|</span>
-            <span className="text-xs">18 min read</span>
+          <p className="mt-6 text-sm tracking-wide" style={{ color: "#94a3b8" }}>
+            By <strong style={{ color: "#e2e8f0" }}>DeMarkus Wilson</strong> · Founder &amp; CEO,{" "}
+            <a href={COMPANY_URL} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline" style={{ color: "#cbd5e1" }}>Illy Robotic Instruments</a>
+            {" "}· Codex studies · October 2026
+          </p>
+          <div className="mt-10 md:mt-14">
+            <Plate n="I" title="Carta del Progetto" dark note="The journey of Echo Vue drawn as a map: the spring island of prototypes, the six months in the field when testing and research carried on without new code, and the October island where it became real. Dates come from the project's own commit history.">
+              <JourneyMapSketch />
+            </Plate>
           </div>
         </div>
       </header>
 
-      {/* ── Article Body ── */}
-      <article className="max-w-3xl mx-auto px-6 py-16">
-        {/* Abstract */}
-        <section className="mb-16">
-          <div
-            className="rounded-2xl p-8 border-l-4"
-            style={{
-              backgroundColor: "var(--gh-surface)",
-              borderLeftColor: "var(--gh-blue)",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-            }}
-          >
-            <h2 className="text-xs font-bold tracking-[0.15em] uppercase mb-4" style={{ color: "var(--gh-blue)" }}>
-              Abstract
-            </h2>
-            <p className="text-sm leading-relaxed" style={{ color: "var(--gh-text)" }}>
-              The proliferation of ambient radio frequency (RF) signals presents
-              an untapped reservoir of transparent data indicators. Traditional
-              human activity recognition and spatial tracking rely on
-              line-of-sight visual sensors, which are highly susceptible to
-              occlusion, environmental degradation, and digital manipulation. We
-              present <strong>Echo Vue</strong>, a novel Generative AI rendering
-              engine that utilizes cross-modal sensor fusion. By combining Wi-Fi
-              Channel State Information (CSI), Bluetooth Low Energy (BLE) RSSI
-              matrices, and initial visual coordinate calibration, Echo Vue
-              establishes a continuous, non-intrusive biometric tether to human
-              targets. We introduce the &ldquo;CSI Anchor Protocol,&rdquo; which
-              solves the BLE MAC randomization problem by treating the physical
-              RF multipath signature — derived from human bone density and
-              micro-Doppler respiratory patterns — as the immutable ground
-              truth. This paper details the system architecture and explores its
-              transformative implications for healthcare telemetry, forensic
-              security, and military defense.
+      <article>
+        {/* ── Lede ── */}
+        <section className="max-w-3xl mx-auto px-6 pt-14 md:pt-20">
+          <Body>
+            <p>
+              <span className="float-left text-7xl md:text-8xl leading-[0.82] pr-3 pt-1 font-bold" style={{ fontFamily: SERIF, color: "var(--gh-blue)" }}>T</span>
+              {" "}he first commit landed on March 31, 2026. It was called Echo Maps then: a platform for sensing rooms with WiFi, big ambitions, and not much hardware. Within a day it had a new name, a dark interface borrowed from the language of Google Home, and a plan to turn the radio waves in a room into a living picture of it.
+            </p>
+            <p>
+              Twelve days later the commits stopped. The work did not. For nearly six months I kept using and testing the tool in my own home, collecting data and presenting the research to the technical community, but not one new feature was committed. Then, on October 6, the code started again, this time in a Motel 6, and almost everything that had made the spring version look impressive came out.
+            </p>
+          </Body>
+          <PullQuote>I stopped asking what the screen could show and started asking what I could stand behind.</PullQuote>
+          <Body>
+            <p>
+              This is the story of that change, told as a timeline, a feature map and a set of drawings in the style of a Renaissance notebook, because the first Echo Vue was exactly the kind of thing you sketch before you know if it can be built.
+            </p>
+          </Body>
+        </section>
+
+        {/* ── Chapter I ── */}
+        <section className="max-w-5xl mx-auto px-6 py-14 md:py-20">
+          <Kicker>Chapter I · March 31 to April 12</Kicker>
+          <H2>The vision.</H2>
+          <p className="text-[17px] md:text-lg leading-[1.75] max-w-3xl mb-10" style={{ fontFamily: SERIF }}>
+            Twelve days of building at full speed. The aim was a digital twin of a home: who is in each room, where they are standing, how they are moving, how they are breathing. Here is what got built, and what it was for.
+          </p>
+          <Timeline entries={SPRING} accent="#9a3b26" />
+        </section>
+
+        {/* ── Skeleton ── */}
+        <section className="py-14 md:py-20" style={{ backgroundColor: "var(--gh-surface)", borderTop: "1px solid var(--gh-border)", borderBottom: "1px solid var(--gh-border)" }}>
+          <div className="max-w-6xl mx-auto px-6">
+            <Kicker>How it used to work</Kicker>
+            <H2>The skeleton.</H2>
+            <Plate n="II" title="Studio of the Digital Body" note="Seventeen points are seen by the camera, red; sixteen more are inferred, hollow. The curve at lower right is a breathing signal drawn by a formula, which the drawing says out loud. A sketch for effect, not a plot of data.">
+              <SkeletonSketch />
+            </Plate>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+              {[
+                ["What it did", "A Cameras tab let you register and calibrate a camera for each room. Its video fed TensorFlow.js MoveNet, which found 17 body points; those were expanded to a 33-point skeleton and drawn in a 3D room, so you could watch a person walk, sit and wave as a wireframe. A mobile room scanner later used a phone camera to map the space itself."],
+                ["What it was for", "To show that a space could be understood as a body in a room, and to give every other feature, from positions to activity, something concrete to hang on."],
+                ["Why it is gone", "A skeleton identifies a person, and it came from a camera. A hallway only needs to know whether someone is in it. When the project moved into a public building, the camera code and the 3D viewer came out."],
+              ].map(([t, b]) => (
+                <div key={t} className="rounded-2xl p-5" style={{ backgroundColor: "var(--gh-bg)", border: "1px solid var(--gh-border)" }}>
+                  <h3 className="font-semibold text-lg mb-1.5" style={{ fontFamily: SERIF }}>{t}</h3>
+                  <p className="text-sm leading-relaxed" style={muted}>{b}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[17px] leading-relaxed max-w-3xl mt-8" style={{ fontFamily: SERIF }}>
+              One honest footnote belongs on the drawing. The original design streamed raw radio data to a server, where a band-pass filter could pull out breathing and heart-rate bands. But in the browser, whenever no live stream was connected, the vitals panel filled itself with a generated sine wave around 15.5 breaths a minute and 72 beats. It looked finished. It was a placeholder for a measurement that did not exist yet.
             </p>
           </div>
         </section>
 
-        {/* Section 1 */}
-        <Section number="1" title="Introduction">
-          <P>
-            Modern environments are saturated with electromagnetic signals.
-            Wi-Fi, cellular networks, BLE, and satellite GPS continuously
-            broadcast through physical space. Yet, this dense network of signal
-            and airwave data remains largely underutilized for environmental
-            perception.
-          </P>
-          <P>
-            Current computer vision paradigms face critical limitations: cameras
-            require line-of-sight, operate poorly in low light, and raise severe
-            privacy concerns. More critically, video data is increasingly
-            vulnerable to deepfake spoofing. Conversely, pure Wi-Fi sensing
-            utilizes the Orthogonal Frequency Division Multiplexing (OFDM)
-            subcarriers of modern routers to detect human presence, but
-            traditionally lacks the semantic awareness to identify{" "}
-            <em>specific</em> individuals in crowded environments.
-          </P>
-          <P>
-            The Echo Vue project bridges this gap. By utilizing existing, readily
-            available transceivers, we transform ambient RF noise into
-            high-fidelity, 2D/3D rendered spatial twins. Echo Vue hypothesizes
-            that biometric RF signatures — specifically mass reflection and
-            respiratory micro-vibrations — provide a verifiable cryptographic
-            identity that is far more difficult to disguise or spoof than visual
-            appearance.
-          </P>
-        </Section>
-
-        {/* Pull Quote */}
-        <PullQuote>
-          Echo Vue hypothesizes that biometric RF signatures provide a verifiable
-          cryptographic identity that is far more difficult to disguise or spoof
-          than visual appearance.
-        </PullQuote>
-
-        {/* Section 2 */}
-        <Section number="2" title="Methodology: The Echo Vue Architecture">
-          <P>
-            The core innovation of Echo Vue is its{" "}
-            <strong>Cross-Modal Spatiotemporal Alignment</strong>, which shifts
-            the computational burden from reactive sensing to predictive
-            Generative AI rendering.
-          </P>
-
-          <SubSection number="2.1" title="The Visual Handshake (Cross-Modal Calibration)">
-            <P>
-              To overcome the &ldquo;blindness&rdquo; of raw CSI data, Echo Vue
-              initiates a temporary cross-modal calibration phase. A visual
-              sensor extracts 3D skeletal keypoints while the Illy Bridge
-              hardware simultaneously captures the CSI tensor.
-            </P>
-            <P>
-              The AI engine mathematically maps the visual spatial coordinates to
-              the RF multipath disturbances using a cross-attention fusion
-              mechanism:
-            </P>
-            <Equation>
-              {"\\mathcal{F}_{fuse} = \\sigma \\left( W_{v} \\mathcal{V}_{k} + W_{c} \\mathcal{C}_{t} \\right)"}
-            </Equation>
-            <P>
-              Once the neural network achieves a 95% confidence threshold mapping
-              the physical form to the RF disturbance, the visual sensor is
-              deactivated. The target&apos;s biomechanical profile (gait
-              periodicity, mass, and bone density RF absorption) is stored as an
-              immutable vector embedding.
-            </P>
-          </SubSection>
-
-          <SubSection number="2.2" title="Active-Passive Sensor Fusion (The CSI Anchor Protocol)">
-            <P>
-              Echo Vue integrates active device emissions (BLE, GPS) with passive
-              reflection (CSI). A primary challenge in modern tracking is the
-              continuous 15-minute rotation of randomized BLE MAC addresses by
-              iOS and Android devices, designed to prevent passive tracking.
-            </P>
-            <P>
-              Echo Vue bypasses this via the <strong>CSI Anchor Protocol</strong>.
-              The Generative Engine assumes the CSI biometric signature as the
-              absolute spatial truth. When a new BLE MAC address spawns, the
-              system calculates the approximate distance based on the Received
-              Signal Strength Indicator (RSSI) using the log-distance path loss
-              model:
-            </P>
-            <Equation>
-              {"d = 10^{\\frac{TxPower - RSSI}{10n}}"}
-            </Equation>
-            <P>
-              If the calculated geometric radius of the new MAC address aligns
-              precisely with the spatial coordinates of the tracked CSI biometric
-              mass, the AI dynamically re-tethers the new MAC to the existing
-              user profile. This enables frictionless, zero-registration tracking
-              without requiring app permissions.
-            </P>
-          </SubSection>
-        </Section>
-
-        {/* Architecture Infographic — Figure 1 */}
-        <div className="my-12 rounded-2xl overflow-hidden border" style={{ borderColor: "var(--gh-border)" }}>
-          <ArchitectureInfographic />
-          <div
-            className="px-6 py-3 text-center text-xs"
-            style={{
-              backgroundColor: "var(--gh-surface)",
-              color: "var(--gh-text-muted)",
-            }}
-          >
-            <strong>Figure 1.</strong> Echo Vue three-phase pipeline: Visual
-            Handshake → AI Tethering &amp; RF Profile → Live No-Cam Rendering.
-            All available RF perception &amp; detection methods shown.
-          </div>
-        </div>
-
-        {/* Pull Quote */}
-        <PullQuote>
-          A person can wear a mask or digitally alter a video feed, but they
-          cannot alter their bone density, physical mass, or the specific way
-          their body absorbs a 5GHz Wi-Fi wave.
-        </PullQuote>
-
-        {/* Section 3 */}
-        <Section number="3" title="Implications and Applications">
-          <P>
-            The ability to accurately monitor and render human activity without
-            optical lenses or wearable sensors introduces paradigm-shifting
-            capabilities across multiple sectors.
-          </P>
-
-          <SubSection number="3.1" title="Healthcare and Clinical Monitoring">
-            <P>
-              In hospital environments, patient telemetry currently requires
-              intrusive wiring or wearable monitors. Echo Vue allows for the
-              continuous, non-contact monitoring of vital statistics. By analyzing
-              the micro-Doppler shifts in the Wi-Fi subcarriers, the AI can
-              isolate the rhythmic displacement of a patient&apos;s chest wall.
-            </P>
-            <BulletList
-              items={[
-                {
-                  label: "Continuous Vitals",
-                  text: "Real-time extraction of heart rate and respiration without physical contact.",
-                },
-                {
-                  label: "Staff Tracking",
-                  text: "Monitoring nurse/physician spatial workflows during critical triage without violating HIPAA through optical recording.",
-                },
-              ]}
-            />
-          </SubSection>
-
-          <SubSection number="3.2" title="Security, Forensics, and the Judiciary">
-            <P>
-              As generative video and deepfakes erode the reliability of optical
-              evidence, biometric RF signatures offer a mathematically verifiable
-              alternative.
-            </P>
-            <BulletList
-              items={[
-                {
-                  label: "Court Admissibility",
-                  text: "A person can wear a mask or digitally alter a video feed, but they cannot alter their bone density, physical mass, or the specific way their body absorbs a 5GHz Wi-Fi wave. Echo Vue's RF footprinting provides immutable forensic evidence of an individual's presence and actions within a given space.",
-                },
-              ]}
-            />
-          </SubSection>
-
-          <SubSection number="3.3" title="Military and Defense">
-            <P>
-              In tactical urban environments, line-of-sight is a severe
-              vulnerability. The Echo Vue engine can utilize ambient cell tower
-              data and locally deployed Wi-Fi/BLE nodes to map hostile
-              environments. This grants operatives a real-time, 3D-rendered view
-              of enemy combatant locations, breathing patterns, and movements
-              through structural walls prior to entry.
-            </P>
-          </SubSection>
-        </Section>
-
-        {/* Sector Grid */}
-        <div className="my-12">
-          <h3
-            className="text-xs font-bold tracking-[0.15em] uppercase mb-6 text-center"
-            style={{ color: "var(--gh-text-muted)" }}
-          >
-            Industry Applications
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {[
-              {
-                icon: "🏥",
-                title: "Healthcare",
-                items: ["Non-Contact Vitals", "Patient Safety", "Staff Workflow"],
-              },
-              {
-                icon: "🎖️",
-                title: "Military & Defense",
-                items: ["Through-Wall Imaging", "Urban Combat", "Personnel Tracking"],
-              },
-              {
-                icon: "🏠",
-                title: "Home & Elderly Care",
-                items: ["Fall Detection", "Breathing Alerts", "Smart Routines"],
-              },
-              {
-                icon: "🏢",
-                title: "Business & Retail",
-                items: ["Traffic Heatmaps", "Occupancy Analysis", "Space Mgmt"],
-              },
-              {
-                icon: "🎓",
-                title: "Universities",
-                items: ["Student Flow", "Smart Classrooms", "Campus Safety"],
-              },
-              {
-                icon: "🏭",
-                title: "Industrial",
-                items: ["HVAC Optimization", "Worker Safety", "Robotic Integration"],
-              },
-            ].map((sector) => (
-              <div
-                key={sector.title}
-                className="rounded-xl p-4 border"
-                style={{
-                  backgroundColor: "var(--gh-surface)",
-                  borderColor: "var(--gh-border)",
-                }}
-              >
-                <span className="text-2xl">{sector.icon}</span>
-                <h4 className="font-semibold text-sm mt-2 mb-2">{sector.title}</h4>
-                <ul className="space-y-1">
-                  {sector.items.map((item) => (
-                    <li
-                      key={item}
-                      className="text-xs flex items-start gap-1.5"
-                      style={{ color: "var(--gh-text-muted)" }}
-                    >
-                      <span style={{ color: "var(--gh-green)" }}>•</span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Section 4 */}
-        <Section number="4" title="Ethical Considerations and Future Work">
-          <P>
-            While humanity navigates the long-term biological concerns of RF
-            saturation, Echo Vue proposes that we extract maximal utility from the
-            airwaves already penetrating our environments.
-          </P>
-          <P>
-            Future iterations of the Echo Vue engine will focus on integrating
-            broader signal bands — such as Ultra-Wideband (UWB) and localized 5G
-            millimeter-wave data — to increase the resolution of the 3D
-            Generative rendering engine.
-          </P>
-        </Section>
-
-        {/* Section 5 */}
-        <Section number="5" title="Conclusion">
-          <P>
-            Echo Vue demonstrates that by aligning transparent data indicators —
-            Wi-Fi CSI, BLE, and visual ground truth — we can create a robust,
-            privacy-first perception engine. By treating the human body&apos;s
-            interaction with the electromagnetic spectrum as a unique, trackable
-            signature, we move beyond the limitations of the camera lens and into
-            the future of true environmental awareness.
-          </P>
-        </Section>
-
-        {/* About the Author */}
-        <div
-          className="mt-16 rounded-2xl p-8 border"
-          style={{
-            backgroundColor: "var(--gh-surface)",
-            borderColor: "var(--gh-border)",
-          }}
-        >
-          <div className="flex items-start gap-5">
-            <div
-              className="w-16 h-16 rounded-full flex-shrink-0 flex items-center justify-center text-2xl font-bold"
-              style={{
-                background: "linear-gradient(135deg, var(--gh-blue), var(--gh-accent))",
-                color: "white",
-              }}
-            >
-              D
-            </div>
-            <div>
-              <p
-                className="text-[10px] font-bold tracking-[0.15em] uppercase mb-1"
-                style={{ color: "var(--gh-blue)" }}
-              >
-                About the Author
+        {/* ── Map ── */}
+        <section className="max-w-6xl mx-auto px-6 py-14 md:py-20">
+          <Kicker>How it used to work</Kicker>
+          <H2>The map of dots.</H2>
+          <Plate n="III" title="Pianta, the live floor plan" note="Presence as pulsing dots, movement as dashed trails along a hallway. The drawing carries its own caveat: the positions were demonstration data.">
+            <MapSketch />
+          </Plate>
+          <div className="max-w-3xl mt-8">
+            <Body>
+              <p>
+                The live floor plan was the spring version at its most seductive. Draw a plan of your home, and each person appeared as a pulsing dot, leaving a trail as they moved from room to room. It was fed by a presence engine, household profiles and visitor tracking.
               </p>
-              <h3 className="font-bold text-lg mb-1">DeMarkus Wilson</h3>
-              <p className="text-sm mb-3" style={{ color: "var(--gh-text-muted)" }}>
-                Founder &amp; CEO, <CompanyLink />
+              <p>
+                In the demonstration, much of that came from a simulated radio scan: a pool of imagined phones, tablets and watches placed in rooms. It was a convincing preview of what a sensed home could feel like. It was a preview, and the October rebuild exists because a preview is not a product.
               </p>
-              <p className="text-sm leading-relaxed" style={{ color: "var(--gh-text-muted)" }}>
-                DeMarkus Wilson is the founder of <CompanyLink /> and
-                the architect of the Echo Vue platform. His work focuses on
-                cross-modal AI systems that fuse ambient radio frequency data
-                with generative rendering to create privacy-first spatial
-                intelligence. Echo Vue represents a new class of environmental
-                perception technology — one where the electromagnetic spectrum
-                itself becomes the sensor.
-              </p>
-            </div>
+            </Body>
           </div>
-        </div>
+        </section>
 
-        {/* CTA */}
-        <div
-          className="mt-12 rounded-2xl p-10 text-center"
-          style={{
-            background: "linear-gradient(135deg, #0f172a, #1e3a5f)",
-          }}
-        >
-          <h3 className="text-xl font-bold mb-3" style={{ color: "#f1f5f9" }}>
-            Experience Echo Vue
-          </h3>
-          <p className="text-sm mb-6 max-w-md mx-auto" style={{ color: "#94a3b8" }}>
-            See the technology in action. Set up your first environment in
-            minutes — cameras off, WiFi on.
+        {/* ── Instruments ── */}
+        <section className="max-w-6xl mx-auto px-6 pb-14 md:pb-20">
+          <Kicker>Where it started</Kicker>
+          <H2>Measure first.</H2>
+          <Plate n="IV" title="Strumenti" note="A handheld laser gives the distance to a wall, a voltage detector finds the outlet inside it, and the numbers become a floor plan. The figures in the drawing are illustrative.">
+            <InstrumentsSketch />
+          </Plate>
+          <div className="max-w-3xl mt-8">
+            <Body>
+              <p>
+                Before Echo Vue sensed a room, it had to know the room. The earliest work leaned on an ordinary tradesman&apos;s instrument, a Klein Tools laser for the distance to the walls, plus a voltage detector for finding outlets and live power inside them without opening anything up.
+              </p>
+              <p>
+                From those readings Echo Vue learned the square footage and shape of a space, and where power and the router sat within it. That gave the radio data something physical to be read against, and it is how a home, and then a facility, a building or a factory floor, could be understood as a place rather than a list of signals.
+              </p>
+            </Body>
+          </div>
+        </section>
+
+        {/* ── Pause ── */}
+        <section className="py-16 md:py-24 text-center" style={{ background: "radial-gradient(120% 120% at 50% 0%, #1e3a5f 0%, #0f172a 60%, #070b14 100%)" }}>
+          <div className="max-w-3xl mx-auto px-6">
+            <Kicker light>April 12 to October 6</Kicker>
+            <h2 className="text-4xl md:text-6xl font-bold leading-tight" style={{ fontFamily: SERIF, color: "#f8fafc" }}>One hundred and seventy-seven days in the field.</h2>
+            <p className="mt-5 text-lg md:text-xl leading-relaxed" style={{ fontFamily: SERIF, color: "#cbd5e1" }}>
+              The repository went quiet; the project did not. Through those months I kept using and testing the tool at home, collecting data, and presenting the research to the technical community. No new features were committed, which is why the calendar below shows a long stretch without a mark on it.
+            </p>
+          </div>
+        </section>
+
+        {/* ── Chapter II ── */}
+        <section className="max-w-5xl mx-auto px-6 py-14 md:py-20">
+          <Kicker>Chapter II · October 6 to October 11</Kicker>
+          <H2>The motel.</H2>
+          <p className="text-[17px] md:text-lg leading-[1.75] max-w-3xl mb-10" style={{ fontFamily: SERIF }}>
+            Six days, and a different question. Not &ldquo;what can this show?&rdquo; but &ldquo;what can be defended in a hallway full of strangers?&rdquo; The answer shaped every commit that followed.
           </p>
-          <div className="flex gap-4 justify-center">
-            <Link
-              href="/auth/signin"
-              className="btn-primary px-8 py-3 rounded-xl font-semibold text-sm"
-            >
-              Get Started Free
-            </Link>
-            <Link
-              href="/"
-              className="px-8 py-3 rounded-xl font-semibold text-sm border transition"
-              style={{ borderColor: "#334155", color: "#94a3b8" }}
-            >
-              Learn More
-            </Link>
+          <Timeline entries={OCTOBER} accent="#4285f4" />
+        </section>
+
+        {/* ── Calendar ── */}
+        <section className="py-14 md:py-20" style={{ backgroundColor: "var(--gh-surface)", borderTop: "1px solid var(--gh-border)", borderBottom: "1px solid var(--gh-border)" }}>
+          <div className="max-w-6xl mx-auto px-6">
+            <Kicker>The calendar</Kicker>
+            <H2>When it all happened.</H2>
+            <p className="text-[17px] md:text-lg leading-[1.75] max-w-3xl mb-8" style={{ fontFamily: SERIF }}>
+              Every commit and every deployment, plotted on the day it happened. Look for the numbered flags: they mark the major releases listed underneath. The tinted stretch in the middle is the field-testing period, with no new feature code.
+            </p>
+            <ActivityCalendar releases={RELEASES} gapStart="2026-04-12" gapEnd="2026-10-06" through="2026-10-11" />
           </div>
-        </div>
+        </section>
+
+        {/* ── Prototypes ── */}
+        <section className="py-14 md:py-20" style={{ backgroundColor: "var(--gh-surface)", borderTop: "1px solid var(--gh-border)", borderBottom: "1px solid var(--gh-border)" }}>
+          <div className="max-w-6xl mx-auto px-6">
+            <Kicker>The hardware</Kicker>
+            <H2>From a webcam to a wall plate.</H2>
+            <Plate n="V" title="Prototipi" note="Two bridges, drawn as studies: the Illy Bridge 2 wall plate with its 4.0-inch screen, and the Illy Bridge Pro with a speaker, microphones and, as planned modules, a camera and a biometric pad. See the case study for the finished renders and target prices.">
+              <PrototypeSketch />
+            </Plate>
+            <div className="max-w-3xl mt-8">
+              <Body>
+                <p>
+                  The spring version needed a laptop and a webcam. The October version needed something you could leave in a hallway: a small board with a radio, a processor, and a screen that tells you exactly what it is doing, down to its area, its network and its health.
+                </p>
+              </Body>
+              <Link href="/dashboard/case-study" className="inline-block mt-6 px-6 py-3 rounded-xl text-sm font-semibold" style={{ backgroundColor: "#4285f4", color: "#fff" }}>
+                See the devices and the case study →
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Feature map ── */}
+        <section className="max-w-6xl mx-auto px-6 py-14 md:py-20">
+          <Kicker>The feature map</Kicker>
+          <H2>Then, now, and why.</H2>
+          <p className="text-[17px] md:text-lg leading-[1.75] max-w-3xl mb-8" style={{ fontFamily: SERIF }}>
+            Every major feature of the spring build, set against what replaced it, with the reason for the change.
+          </p>
+          <div className="overflow-x-auto rounded-2xl" style={{ border: "1px solid var(--gh-border)" }}>
+            <table className="w-full text-sm" style={{ backgroundColor: "var(--gh-surface)" }}>
+              <thead>
+                <tr style={{ backgroundColor: "var(--gh-card)" }}>
+                  {["Feature", "Spring · the vision", "October · the instrument", "Why it changed"].map((h) => (
+                    <th key={h} className="text-left p-3 font-semibold">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {MAP.map((r) => (
+                  <tr key={r.feature} style={{ borderTop: "1px solid var(--gh-border)" }}>
+                    <td className="p-3 font-semibold align-top whitespace-nowrap" style={{ fontFamily: SERIF }}>{r.feature}</td>
+                    <td className="p-3 align-top" style={muted}>{r.then}</td>
+                    <td className="p-3 align-top">{r.now}</td>
+                    <td className="p-3 align-top" style={muted}>{r.why}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* ── What changed ── */}
+        <section className="py-14 md:py-20" style={{ backgroundColor: "#0f172a", color: "#e2e8f0" }}>
+          <div className="max-w-3xl mx-auto px-6">
+            <Kicker light>What changed, and why</Kicker>
+            <h2 className="text-3xl md:text-5xl font-bold leading-tight mb-6" style={{ fontFamily: SERIF }}>The spectacle went first.</h2>
+            <div className="space-y-5 text-[17px] md:text-lg leading-[1.75]" style={{ fontFamily: SERIF, color: "#cbd5e1" }}>
+              <p>
+                The spring build was the better demo. A glowing skeleton and a map of moving dots make a room feel alive, and they photograph beautifully. But a good deal of that life was borrowed: from a camera, from a simulated scan, from a formula standing in for a signal.
+              </p>
+              <p>
+                Three things pulled it apart. <strong style={{ color: "#fff" }}>Honesty:</strong> a screen should never show a number the system did not measure. <strong style={{ color: "#fff" }}>Privacy:</strong> a camera, a skeleton and a per-person profile all identify people, and the point of the product was never who. <strong style={{ color: "#fff" }}>Reality:</strong> a bridge in a hotel hallway has to work on a network you do not control, be set up from a dashboard, and say what it is doing on its own screen.
+              </p>
+              <p>
+                What replaced the spectacle is quieter and true to its inputs. Breathing is estimated from the radio spectrum and shown with its confidence, or not shown. People and pets are counted from distinct breathing rates and labelled as estimates. Nothing identifies anyone.
+              </p>
+              <p>
+                Some of the spring ideas are gone for good, heart rate and the per-person skeleton among them. Others came back in a form that can be defended. The question I carry from the motel is the one in the pull quote above: not what the screen can show, but what I can stand behind.
+              </p>
+            </div>
+            <p className="mt-8 text-sm" style={{ color: "#94a3b8" }}>
+              The reasoning behind the privacy choices, and the legal questions it left open, is in the <Link href="/dashboard/case-study" className="underline hover:no-underline" style={{ color: "#cbd5e1" }}>M6 Case Study</Link>.
+            </p>
+          </div>
+        </section>
+
+        {/* ── CTA ── */}
+        <section className="py-16 md:py-24 text-center" style={{ background: "radial-gradient(120% 120% at 50% 0%, #1e3a5f 0%, #0f172a 60%, #070b14 100%)" }}>
+          <div className="max-w-3xl mx-auto px-6">
+            <h2 className="text-4xl md:text-6xl font-bold leading-tight" style={{ fontFamily: SERIF, color: "#f8fafc" }}>The next chapter is the building.</h2>
+            <p className="mt-5 text-lg md:text-xl" style={{ fontFamily: SERIF, color: "#cbd5e1" }}>
+              Illy Bridge 2 and Illy Bridge Pro are in prototype. Echo Vue is on its way from experiment to product.
+            </p>
+            <div className="mt-8 flex items-center justify-center gap-3 flex-wrap">
+              <a href={COMPANY_URL} target="_blank" rel="noopener noreferrer" className="px-6 py-3 rounded-xl text-sm font-semibold" style={{ backgroundColor: "#4285f4", color: "#fff" }}>
+                Talk to Illy Robotic Instruments
+              </a>
+              <Link href="/dashboard" className="px-6 py-3 rounded-xl text-sm font-semibold" style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.2)" }}>
+                See Echo Vue live
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="max-w-3xl mx-auto px-6 py-10">
+          <p className="text-[11px] leading-relaxed" style={muted}>
+            The dates and feature descriptions come from the project&apos;s commit history. The drawings are illustrations in the manner of Renaissance notebooks, made for this page; figures, positions and curves in them are drawn for effect, not plotted from data.
+            Echo Vue is a prototype, not a medical device or a safety-certified system. The earlier white paper that stood on this page described a camera-fusion design that is no longer part of the product.
+            <CompanyLink className="hover:underline ml-1" style={{ color: "var(--gh-blue)" }}>Illy Robotic Instruments</CompanyLink>.
+          </p>
+        </section>
       </article>
 
-      {/* Footer */}
-      <footer
-        className="border-t py-8 text-center"
-        style={{ borderColor: "var(--gh-border)" }}
-      >
-        <p className="text-xs" style={{ color: "var(--gh-text-muted)" }}>
-          &copy; {new Date().getFullYear()} <CompanyLink /> &middot;{" "}
-          <CompanyLink>illyrobotic-ai.com</CompanyLink>{" "}
-          &middot; Echo Vue — Future-Proof Perception.
-        </p>
-      </footer>
+      <CompanyFooter />
     </main>
   );
 }
 
-/* ── Article Layout Components ── */
-
-function Section({
-  number,
-  title,
-  children,
-}: {
-  number: string;
-  title: string;
-  children: React.ReactNode;
-}) {
+function Timeline({ entries, accent }: { entries: Entry[]; accent: string }) {
   return (
-    <section className="mb-12">
-      <div className="flex items-baseline gap-3 mb-5">
-        <span
-          className="text-xs font-bold tabular-nums"
-          style={{ color: "var(--gh-blue)" }}
-        >
-          {number}.
-        </span>
-        <h2 className="text-2xl font-bold">{title}</h2>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function SubSection({
-  number,
-  title,
-  children,
-}: {
-  number: string;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mb-8 ml-1">
-      <h3 className="text-lg font-semibold mb-3">
-        <span className="text-sm font-medium mr-2" style={{ color: "var(--gh-text-muted)" }}>
-          {number}
-        </span>
-        {title}
-      </h3>
-      {children}
-    </div>
-  );
-}
-
-function P({ children }: { children: React.ReactNode }) {
-  return (
-    <p
-      className="text-[15px] leading-[1.85] mb-4"
-      style={{ color: "var(--gh-text)" }}
-    >
-      {children}
-    </p>
-  );
-}
-
-function PullQuote({ children }: { children: React.ReactNode }) {
-  return (
-    <blockquote
-      className="my-12 py-8 px-8 rounded-2xl border-l-4 relative"
-      style={{
-        backgroundColor: "rgba(66,133,244,0.03)",
-        borderLeftColor: "var(--gh-blue)",
-      }}
-    >
-      <span
-        className="absolute -top-2 left-6 text-5xl leading-none"
-        style={{ color: "var(--gh-blue)", opacity: 0.15 }}
-      >
-        &ldquo;
-      </span>
-      <p className="text-lg md:text-xl font-medium italic leading-relaxed relative z-10" style={{ color: "var(--gh-text)" }}>
-        {children}
-      </p>
-      <cite
-        className="block mt-4 text-xs not-italic font-semibold"
-        style={{ color: "var(--gh-text-muted)" }}
-      >
-        — DeMarkus Wilson, <CompanyLink />
-      </cite>
-    </blockquote>
-  );
-}
-
-function Equation({ children }: { children: string }) {
-  return (
-    <div
-      className="my-6 py-5 px-6 rounded-xl text-center font-mono text-sm overflow-x-auto"
-      style={{
-        backgroundColor: "var(--gh-card)",
-        border: "1px solid var(--gh-border)",
-        color: "var(--gh-text)",
-      }}
-    >
-      <code>{children}</code>
-    </div>
-  );
-}
-
-function BulletList({
-  items,
-}: {
-  items: { label: string; text: string }[];
-}) {
-  return (
-    <ul className="space-y-3 my-4 ml-1">
-      {items.map((item) => (
-        <li key={item.label} className="flex items-start gap-3">
-          <span
-            className="mt-1.5 w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: "var(--gh-blue)" }}
-          />
-          <div>
-            <strong className="text-sm">{item.label}:</strong>{" "}
-            <span className="text-sm" style={{ color: "var(--gh-text-muted)" }}>
-              {item.text}
-            </span>
-          </div>
+    <ol className="relative border-l-2 ml-2 md:ml-4 space-y-8" style={{ borderColor: accent }}>
+      {entries.map((e) => (
+        <li key={e.date + e.title} className="pl-7 md:pl-10 relative">
+          <span className="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full" style={{ backgroundColor: accent, boxShadow: "0 0 0 4px var(--gh-bg)" }} aria-hidden />
+          <p className="text-xs font-bold tracking-[0.18em] uppercase" style={{ color: accent }}>{e.date}</p>
+          <h3 className="text-xl md:text-2xl font-bold mt-0.5" style={{ fontFamily: SERIF }}>{e.title}</h3>
+          <p className="text-[15px] leading-relaxed mt-1.5" style={{ fontFamily: SERIF }}>{e.what}</p>
+          <p className="text-sm mt-2 italic" style={muted}><strong style={{ color: "var(--gh-text)", fontStyle: "normal" }}>Intention:</strong> {e.why}</p>
         </li>
       ))}
-    </ul>
-  );
-}
-
-/* ══════════════════════════════════════════════════
-   Architecture Infographic — Figure 1
-   Full SVG-based diagram showing 3-phase pipeline,
-   all RF perception methods, and industry verticals.
-   ══════════════════════════════════════════════════ */
-
-function ArchitectureInfographic() {
-  return (
-    <div style={{ backgroundColor: "#f8faff", padding: "2rem 1rem" }}>
-      <svg viewBox="0 0 1100 760" xmlns="http://www.w3.org/2000/svg" className="w-full" style={{ maxWidth: 1100, margin: "0 auto", display: "block" }}>
-        <defs>
-          <linearGradient id="igBg" x1="0" y1="0" x2="1100" y2="760" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#f0f5ff" />
-            <stop offset="100%" stopColor="#e8f0fe" />
-          </linearGradient>
-          <linearGradient id="igPhase1" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" />
-            <stop offset="100%" stopColor="#2563eb" />
-          </linearGradient>
-          <linearGradient id="igPhase2" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#8b5cf6" />
-            <stop offset="100%" stopColor="#7c3aed" />
-          </linearGradient>
-          <linearGradient id="igPhase3" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#10b981" />
-            <stop offset="100%" stopColor="#059669" />
-          </linearGradient>
-          <filter id="igShadow">
-            <feDropShadow dx="0" dy="2" stdDeviation="4" floodOpacity="0.10" />
-          </filter>
-          <marker id="igArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
-          </marker>
-          <marker id="igArrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
-          </marker>
-        </defs>
-
-        {/* Background */}
-        <rect width="1100" height="760" rx="16" fill="url(#igBg)" />
-
-        {/* ── Title ── */}
-        <text x="550" y="34" textAnchor="middle" fontSize="20" fontWeight="800" fill="#1e293b" fontFamily="system-ui, sans-serif">
-          <a href={COMPANY_URL} target="_blank" rel="noopener noreferrer">Echo Vue by Illy Robotic Instruments</a>
-        </text>
-        <text x="550" y="54" textAnchor="middle" fontSize="12" fill="#64748b" fontFamily="system-ui, sans-serif">
-          Ambient RF Perception &amp; Generative Digital Twins — Frictionless Pipeline
-        </text>
-
-        {/* ══ PHASE 1 ══ */}
-        <rect x="20" y="75" width="340" height="310" rx="12" fill="white" filter="url(#igShadow)" />
-        <rect x="20" y="75" width="340" height="36" rx="12" fill="url(#igPhase1)" />
-        <rect x="20" y="99" width="340" height="12" fill="url(#igPhase1)" />
-        <text x="190" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="white" fontFamily="system-ui">Phase 1: Setup &amp; Fusion</text>
-
-        {/* Existing WiFi infrastructure */}
-        <circle cx="70" cy="148" r="22" fill="#eff6ff" stroke="#3b82f6" strokeWidth="1.5" />
-        <text x="70" y="153" textAnchor="middle" fontSize="18">🛜</text>
-        <text x="70" y="178" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">Existing WiFi</text>
-        <text x="70" y="188" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">Access Point</text>
-
-        {/* Arrow cam → router */}
-        <line x1="95" y1="148" x2="130" y2="148" stroke="#64748b" strokeWidth="1.5" markerEnd="url(#igArrow)" />
-
-        {/* Router / ESP32 */}
-        <circle cx="160" cy="148" r="22" fill="#eff6ff" stroke="#3b82f6" strokeWidth="1.5" />
-        <text x="160" y="153" textAnchor="middle" fontSize="18">📡</text>
-        <text x="160" y="178" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">ESP32-S3</text>
-        <text x="160" y="188" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">WiFi 6 + BLE</text>
-
-        {/* Arrow router → AI */}
-        <line x1="185" y1="148" x2="220" y2="148" stroke="#64748b" strokeWidth="1.5" markerEnd="url(#igArrow)" />
-
-        {/* AI Engine */}
-        <circle cx="250" cy="148" r="22" fill="#dbeafe" stroke="#2563eb" strokeWidth="2" />
-        <text x="250" y="153" textAnchor="middle" fontSize="16">🧠</text>
-        <text x="250" y="178" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">AI Generative</text>
-        <text x="250" y="188" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">Backend Engine</text>
-
-        {/* Phase 1 Detection Methods */}
-        <rect x="35" y="200" width="310" height="170" rx="8" fill="#f8fafc" stroke="#e2e8f0" strokeWidth="1" />
-        <text x="190" y="218" textAnchor="middle" fontSize="9" fontWeight="700" fill="#334155" fontFamily="system-ui">RF PERCEPTION INPUTS</text>
-
-        {/* Method chips */}
-        {[
-          { label: "WiFi CSI (802.11ac/ax)", desc: "52+ subcarrier amplitude & phase", y: 232, color: "#3b82f6" },
-          { label: "BLE 5.x Passive Scan", desc: "RSSI, manufacturer, MAC rotation", y: 256, color: "#8b5cf6" },
-          { label: "BLE Address-Type Detection", desc: "Public vs random, OS fingerprint", y: 280, color: "#a855f7" },
-          { label: "CSI Multipath Reflections", desc: "Channel impulse response per antenna", y: 304, color: "#0ea5e9" },
-          { label: "RF Absorption Signatures", desc: "Body mass, bone density, gait profile", y: 328, color: "#14b8a6" },
-          { label: "Doppler Micro-Motion", desc: "Breathing, heartbeat, fall detection", y: 352, color: "#06b6d4" },
-        ].map((m, i) => (
-          <g key={i}>
-            <rect x="42" y={m.y} width="8" height="8" rx="2" fill={m.color} />
-            <text x="56" y={m.y + 8} fontSize="8.5" fontWeight="600" fill="#1e293b" fontFamily="system-ui">{m.label}</text>
-            <text x="220" y={m.y + 8} fontSize="7.5" fill="#64748b" fontFamily="system-ui">{m.desc}</text>
-          </g>
-        ))}
-
-        {/* Phase 1 bottom label */}
-        <text x="190" y="383" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="system-ui" fontStyle="italic">
-          Continuous CSI from existing WiFi. No camera, no manual scan.
-        </text>
-
-        {/* ══ ARROW Phase 1 → 2 ══ */}
-        <line x1="365" y1="230" x2="395" y2="230" stroke="#3b82f6" strokeWidth="2" markerEnd="url(#igArrowBlue)" />
-
-        {/* ══ PHASE 2 ══ */}
-        <rect x="400" y="75" width="300" height="310" rx="12" fill="white" filter="url(#igShadow)" />
-        <rect x="400" y="75" width="300" height="36" rx="12" fill="url(#igPhase2)" />
-        <rect x="400" y="99" width="300" height="12" fill="url(#igPhase2)" />
-        <text x="550" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="white" fontFamily="system-ui">Phase 2: AI Tethering &amp; Profile</text>
-
-        {/* Human silhouette with RF waves */}
-        <circle cx="550" cy="170" r="40" fill="#f5f3ff" stroke="#8b5cf6" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="550" y="178" textAnchor="middle" fontSize="36">🧍</text>
-        {/* RF waves around person */}
-        {[45, 90, 135, 180, 225, 270, 315, 360].map((deg, i) => {
-          const r = 48;
-          const cx = 550 + Math.cos((deg * Math.PI) / 180) * r;
-          const cy = 170 + Math.sin((deg * Math.PI) / 180) * r;
-          return <circle key={i} cx={cx} cy={cy} r="3" fill="#8b5cf6" opacity="0.4" />;
-        })}
-        <text x="550" y="228" textAnchor="middle" fontSize="9" fontWeight="700" fill="#5b21b6" fontFamily="system-ui">RF Profile Vector</text>
-
-        {/* Tethering methods */}
-        <rect x="415" y="245" width="270" height="125" rx="8" fill="#faf5ff" stroke="#e9d5ff" strokeWidth="1" />
-        <text x="550" y="262" textAnchor="middle" fontSize="9" fontWeight="700" fill="#5b21b6" fontFamily="system-ui">CROSS-MODAL FUSION &amp; TETHERING</text>
-
-        {[
-          { icon: "🔗", label: "CSI Anchor Protocol", desc: "Re-tethers rotating BLE MACs via spatial alignment" },
-          { icon: "🧬", label: "LatentCSI Deep Embedding", desc: "512-dim biometric vector: gait, mass, bone density" },
-          { icon: "📊", label: "SpatialAttentionGAN", desc: "Subcarrier attention for dominant motion features" },
-          { icon: "🎯", label: "95% Confidence Threshold", desc: "Empty-space baseline adapts automatically" },
-        ].map((m, i) => (
-          <g key={i}>
-            <text x="425" y={280 + i * 22} fontSize="12">{m.icon}</text>
-            <text x="442" y={280 + i * 22} fontSize="8.5" fontWeight="600" fill="#1e293b" fontFamily="system-ui">{m.label}</text>
-            <text x="442" y={291 + i * 22} fontSize="7" fill="#64748b" fontFamily="system-ui">{m.desc}</text>
-          </g>
-        ))}
-
-        <text x="550" y="383" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="system-ui" fontStyle="italic">
-          LatentCSI creates deep biometric RF signature. Confidence threshold met.
-        </text>
-
-        {/* ══ ARROW Phase 2 → 3 ══ */}
-        <line x1="705" y1="230" x2="735" y2="230" stroke="#8b5cf6" strokeWidth="2" markerEnd="url(#igArrowBlue)" />
-
-        {/* ══ PHASE 3 ══ */}
-        <rect x="740" y="75" width="340" height="310" rx="12" fill="white" filter="url(#igShadow)" />
-        <rect x="740" y="75" width="340" height="36" rx="12" fill="url(#igPhase3)" />
-        <rect x="740" y="99" width="340" height="12" fill="url(#igPhase3)" />
-        <text x="910" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="white" fontFamily="system-ui">Phase 3: Live No-Cam Mode</text>
-
-        {/* No-camera badge */}
-        <circle cx="820" cy="148" r="20" fill="#f0fdf4" stroke="#10b981" strokeWidth="1.5" />
-        <text x="820" y="153" textAnchor="middle" fontSize="14">📷</text>
-        <line x1="806" y1="138" x2="834" y2="158" stroke="#ef4444" strokeWidth="2.5" />
-        <text x="820" y="178" textAnchor="middle" fontSize="8" fill="#059669" fontWeight="600" fontFamily="system-ui">No camera</text>
-
-        {/* Digital twin */}
-        <circle cx="910" cy="148" r="20" fill="#f0fdf4" stroke="#10b981" strokeWidth="1.5" />
-        <text x="910" y="153" textAnchor="middle" fontSize="16">🏠</text>
-        <text x="910" y="178" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">Digital Twin</text>
-
-        {/* Phone */}
-        <circle cx="1000" cy="148" r="20" fill="#f0fdf4" stroke="#10b981" strokeWidth="1.5" />
-        <text x="1000" y="153" textAnchor="middle" fontSize="16">📱</text>
-        <text x="1000" y="178" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="system-ui">2D/3D Render</text>
-
-        <line x1="842" y1="148" x2="888" y2="148" stroke="#64748b" strokeWidth="1" markerEnd="url(#igArrow)" />
-        <line x1="932" y1="148" x2="978" y2="148" stroke="#64748b" strokeWidth="1" markerEnd="url(#igArrow)" />
-
-        {/* Tracking capabilities */}
-        <rect x="755" y="195" width="310" height="175" rx="8" fill="#f0fdf4" stroke="#bbf7d0" strokeWidth="1" />
-        <text x="910" y="213" textAnchor="middle" fontSize="9" fontWeight="700" fill="#065f46" fontFamily="system-ui">CONTINUOUS DEVICE-FREE TRACKING</text>
-
-        {[
-          { icon: "👤", label: "Multi-Person Tracking", desc: "Simultaneous RF signature discrimination" },
-          { icon: "💓", label: "Non-Contact Vitals", desc: "Heart rate, breathing from micro-Doppler" },
-          { icon: "🦴", label: "Skeletal Reconstruction", desc: "WaveFormer generates 3D pose from CSI" },
-          { icon: "🗺️", label: "Spatial Heatmaps", desc: "Occupancy, traffic flow, dwell time" },
-          { icon: "⚡", label: "Fall Detection", desc: "Sudden velocity change in CSI amplitude" },
-          { icon: "🔒", label: "Privacy-First", desc: "No cameras, no wearables, no registration" },
-          { icon: "🌐", label: "Through-Wall Sensing", desc: "WiFi penetrates walls — tracks across rooms" },
-        ].map((m, i) => (
-          <g key={i}>
-            <text x="765" y={232 + i * 21} fontSize="11">{m.icon}</text>
-            <text x="782" y={232 + i * 21} fontSize="8.5" fontWeight="600" fill="#1e293b" fontFamily="system-ui">{m.label}</text>
-            <text x="910" y={232 + i * 21} fontSize="7.5" fill="#64748b" fontFamily="system-ui">{m.desc}</text>
-          </g>
-        ))}
-
-        <text x="910" y="383" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="system-ui" fontStyle="italic">
-          Tracks people/objects using ONLY WiFi CSI reflections. Non-intrusive.
-        </text>
-
-        {/* ══ BOTTOM: INDUSTRY APPLICATIONS ══ */}
-        <rect x="20" y="410" width="1060" height="28" rx="8" fill="#1e293b" />
-        <text x="550" y="429" textAnchor="middle" fontSize="11" fontWeight="700" fill="white" fontFamily="system-ui" letterSpacing="2">
-          INDUSTRY APPLICATIONS
-        </text>
-
-        {/* Industry cards */}
-        {[
-          { icon: "🏥", title: "Healthcare", items: ["Non-Contact Vitals", "Patient Safety", "Fall Detection", "Staff Workflow"], color: "#ef4444", x: 20 },
-          { icon: "🎖️", title: "Military & Defense", items: ["Through-Wall Imaging", "Urban Combat Recon", "Personnel Tracking", "Base Security"], color: "#f59e0b", x: 197 },
-          { icon: "🏡", title: "Home & Elderly Care", items: ["Fall Detection", "Breathing Alerts", "Privacy Security", "Smart Routines"], color: "#10b981", x: 374 },
-          { icon: "🏢", title: "Business & Retail", items: ["Foot Traffic Heatmaps", "Occupancy Analysis", "Productivity", "Space Mgmt"], color: "#3b82f6", x: 551 },
-          { icon: "🎓", title: "Education", items: ["Student Engagement", "Smart Classrooms", "Campus Safety", "Resource Alloc."], color: "#8b5cf6", x: 728 },
-          { icon: "🏭", title: "Industrial & Smart", items: ["HVAC Optimization", "Occupancy-Based", "Worker Safety", "Robotic Integration"], color: "#f97316", x: 905 },
-        ].map((sector, i) => (
-          <g key={i}>
-            <rect x={sector.x} y="450" width="170" height="148" rx="10" fill="white" filter="url(#igShadow)" />
-            <rect x={sector.x} y="450" width="170" height="4" rx="2" fill={sector.color} />
-            <text x={sector.x + 85} y="478" textAnchor="middle" fontSize="22">{sector.icon}</text>
-            <text x={sector.x + 85} y="496" textAnchor="middle" fontSize="9" fontWeight="700" fill="#1e293b" fontFamily="system-ui">{sector.title}</text>
-            {sector.items.map((item, j) => (
-              <g key={j}>
-                <circle cx={sector.x + 28} cy={512 + j * 17} r="2" fill={sector.color} />
-                <text x={sector.x + 36} y={515 + j * 17} fontSize="8" fill="#475569" fontFamily="system-ui">{item}</text>
-              </g>
-            ))}
-          </g>
-        ))}
-
-        {/* ── Bottom: Frictionless flow ── */}
-        <rect x="20" y="612" width="1060" height="52" rx="10" fill="white" filter="url(#igShadow)" />
-        <text x="550" y="632" textAnchor="middle" fontSize="10" fontWeight="700" fill="#1e293b" fontFamily="system-ui">
-          FRICTIONLESS ONBOARDING FLOW
-        </text>
-        {[
-          { step: "1", label: "Place Illy Bridge", icon: "📡" },
-          { step: "2", label: "Auto Baseline", icon: "📊" },
-          { step: "3", label: "Power On", icon: "🔌" },
-          { step: "4", label: "AI Learns You", icon: "🧠" },
-          { step: "5", label: "No Camera, Ever", icon: "✅" },
-          { step: "6", label: "Live Digital Twin", icon: "🏠" },
-        ].map((s, i) => {
-          const sx = 80 + i * 170;
-          return (
-            <g key={i}>
-              <text x={sx} y="656" textAnchor="middle" fontSize="14">{s.icon}</text>
-              <text x={sx + 18} y="656" textAnchor="start" fontSize="8" fill="#475569" fontFamily="system-ui">{s.label}</text>
-              {i < 5 && <text x={sx + 120} y="656" textAnchor="middle" fontSize="10" fill="#94a3b8">→</text>}
-            </g>
-          );
-        })}
-
-        {/* Footer */}
-        <text x="20" y="748" fontSize="8" fill="#94a3b8" fontFamily="system-ui"><a href={COMPANY_URL} target="_blank" rel="noopener noreferrer">www.illyrobotic-ai.com</a></text>
-        <text x="1080" y="748" textAnchor="end" fontSize="8" fontWeight="700" fill="#64748b" fontFamily="system-ui">FUTURE-PROOF PERCEPTION.</text>
-      </svg>
-    </div>
+    </ol>
   );
 }
