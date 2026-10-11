@@ -33,6 +33,13 @@ export default function Home() {
           >
             Research
           </Link>
+          <Link
+            href="/case-study"
+            className="px-8 py-3.5 md:py-3 border rounded-xl font-semibold hover:border-[var(--gh-text-muted)] transition text-center"
+            style={{ borderColor: "var(--gh-border)" }}
+          >
+            Case Study
+          </Link>
           <a
             href="#how-it-works"
             className="px-8 py-3.5 md:py-3 border rounded-xl font-semibold hover:border-[var(--gh-text-muted)] transition text-center"
@@ -102,7 +109,11 @@ export default function Home() {
       {/* Footer */}
       <footer className="mt-20 text-center text-xs text-[var(--gh-text-muted)] pb-8">
         <p>&copy; {new Date().getFullYear()} <CompanyLink />. Echo Vue — Privacy-first smart environment sensing.</p>
-        <Link href="/privacy" className="hover:underline mt-1 inline-block" style={{ color: "var(--gh-blue)" }}>Privacy &amp; Sensing Policy</Link>
+        <div className="mt-1 flex items-center justify-center gap-3 flex-wrap" style={{ color: "var(--gh-blue)" }}>
+          <Link href="/research" className="hover:underline">Research</Link>
+          <Link href="/case-study" className="hover:underline">M6 Case Study</Link>
+          <Link href="/privacy" className="hover:underline">Privacy &amp; Sensing Policy</Link>
+        </div>
       </footer>
     </main>
   );

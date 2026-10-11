@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { COMPANY_URL, CompanyFooter, CompanyLink } from "@/components/CompanyLink";
+import SessionLink from "@/components/SessionLink";
 import { InstrumentsSketch, JourneyMapSketch, MapSketch, PrototypeSketch, SkeletonSketch } from "@/components/marketing/DaVinciSketches";
 import ActivityCalendar, { type Release } from "@/components/marketing/ActivityCalendar";
 
@@ -91,9 +92,9 @@ export default function ResearchPage() {
     <main className="min-h-screen" style={{ backgroundColor: "var(--gh-bg)", color: "var(--gh-text)" }}>
       <nav className="sticky top-0 z-40 border-b backdrop-blur-md" style={{ backgroundColor: "rgba(248,249,252,0.92)", borderColor: "var(--gh-border)" }}>
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-          <Link href="/dashboard" className="text-sm transition hover:opacity-80" style={muted}>← Dashboard</Link>
+          <SessionLink signedOut={{ href: "/", label: "← Echo Vue" }} signedIn={{ href: "/dashboard", label: "← Dashboard" }} className="text-sm transition hover:opacity-80" style={muted} />
           <span className="text-[11px] font-bold tracking-[0.28em] uppercase hidden sm:block">Echo Vue <span style={muted}>· The Evolution Issue</span></span>
-          <Link href="/dashboard/case-study" className="text-xs hover:underline" style={{ color: "var(--gh-blue)" }}>Read the M6 Case Study →</Link>
+          <Link href="/case-study" className="text-xs hover:underline" style={{ color: "var(--gh-blue)" }}>Read the M6 Case Study →</Link>
         </div>
       </nav>
 
@@ -261,7 +262,7 @@ export default function ResearchPage() {
                   The spring version needed a laptop and a webcam. The October version needed something you could leave in a hallway: a small board with a radio, a processor, and a screen that tells you exactly what it is doing, down to its area, its network and its health.
                 </p>
               </Body>
-              <Link href="/dashboard/case-study" className="inline-block mt-6 px-6 py-3 rounded-xl text-sm font-semibold" style={{ backgroundColor: "#4285f4", color: "#fff" }}>
+              <Link href="/case-study" className="inline-block mt-6 px-6 py-3 rounded-xl text-sm font-semibold" style={{ backgroundColor: "#4285f4", color: "#fff" }}>
                 See the devices and the case study →
               </Link>
             </div>
@@ -318,7 +319,7 @@ export default function ResearchPage() {
               </p>
             </div>
             <p className="mt-8 text-sm" style={{ color: "#94a3b8" }}>
-              The reasoning behind the privacy choices, and the legal questions it left open, is in the <Link href="/dashboard/case-study" className="underline hover:no-underline" style={{ color: "#cbd5e1" }}>M6 Case Study</Link>.
+              The reasoning behind the privacy choices, and the legal questions it left open, is in the <Link href="/case-study" className="underline hover:no-underline" style={{ color: "#cbd5e1" }}>M6 Case Study</Link>.
             </p>
           </div>
         </section>
@@ -334,9 +335,7 @@ export default function ResearchPage() {
               <a href={COMPANY_URL} target="_blank" rel="noopener noreferrer" className="px-6 py-3 rounded-xl text-sm font-semibold" style={{ backgroundColor: "#4285f4", color: "#fff" }}>
                 Talk to Illy Robotic Instruments
               </a>
-              <Link href="/dashboard" className="px-6 py-3 rounded-xl text-sm font-semibold" style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.2)" }}>
-                See Echo Vue live
-              </Link>
+              <SessionLink signedOut={{ href: "/auth/signin", label: "Sign in to see Echo Vue live" }} signedIn={{ href: "/dashboard", label: "See Echo Vue live" }} className="px-6 py-3 rounded-xl text-sm font-semibold" style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.2)" }} />
             </div>
           </div>
         </section>

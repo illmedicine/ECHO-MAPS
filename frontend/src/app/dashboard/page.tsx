@@ -334,7 +334,7 @@ export default function DashboardPage() {
           <Link href="/dashboard/bridge" className="sidebar-item w-full">
             <span className="text-lg">📡</span>Illy Bridge Config
           </Link>
-          <Link href="/dashboard/case-study" className="sidebar-item w-full">
+          <Link href="/case-study" className="sidebar-item w-full">
             <span className="text-lg">📖</span>M6 Case Study
           </Link>
           <Link href="/research" className="sidebar-item w-full">
