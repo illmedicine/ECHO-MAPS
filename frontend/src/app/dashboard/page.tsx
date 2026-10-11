@@ -328,8 +328,14 @@ export default function DashboardPage() {
           <Link href="/dashboard/survey" className="sidebar-item w-full" style={{ backgroundColor: "rgba(66,133,244,0.08)", color: "var(--gh-blue)", fontWeight: 500 }}>
             <span className="text-lg">🛰️</span>WiFi Site Survey
           </Link>
+          <Link href="/dashboard/history" className="sidebar-item w-full" style={{ backgroundColor: "rgba(52,168,83,0.08)", color: "var(--gh-green)", fontWeight: 500 }}>
+            <span className="text-lg">📈</span>History &amp; Insights
+          </Link>
           <Link href="/dashboard/bridge" className="sidebar-item w-full">
             <span className="text-lg">📡</span>Illy Bridge Config
+          </Link>
+          <Link href="/dashboard/case-study" className="sidebar-item w-full">
+            <span className="text-lg">📖</span>M6 Case Study
           </Link>
           <Link href="/research" className="sidebar-item w-full">
             <span className="text-lg">📄</span>Research
