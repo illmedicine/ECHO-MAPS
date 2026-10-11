@@ -152,3 +152,29 @@ def test_memory_fallback_keeps_data_and_queries_merge_sources():
         return svc.persistence
 
     assert asyncio.run(go()) == "memory"
+
+
+def test_equipment_is_recognised_after_ten_minutes_not_an_hour():
+    # A 20-minute look at the lobby: a printer's fixed address is there the whole time, a staff phone
+    # (also fixed, but only passing) is there for a few minutes. The printer must not count as a visitor.
+    printer = [dict(id="f00001", rotating=False, rssi=-64, **{"from": T0, "to": T0 + 20 * 60})]
+    staff = [dict(id="f00002", rotating=False, **{"from": minutes(5), "to": minutes(9)})]
+    scene = Scene(hours=20 / 60)
+    scene.run(printer + staff)
+    summary, _b, _batch = asyncio.run(scene.report())
+    d = summary["devices"]
+    assert d["fixtures"] == 1 and d["stable"] == 1
+    assert d["estimate"] == 1
+
+
+def test_people_per_device_rises_with_the_apple_share():
+    def people_basis(mfrs):
+        devs = [dict(id=f"a{i:05x}", rotating=True, m=m, rssi=-55 - 5 * i, **{"from": minutes(10 * i), "to": minutes(10 * i + 8)})
+                for i, m in enumerate(mfrs)]
+        scene = Scene(hours=2)
+        scene.run(devs)
+        return asyncio.run(scene.report())[0]["people"]["basis"][0]
+
+    assert "1.30 devices per person" in people_basis([SAMSUNG] * 4)
+    assert "1.60 devices per person" in people_basis([APPLE] * 4)      # capped
+    assert "1.50 devices per person" in people_basis([APPLE, APPLE, SAMSUNG, SAMSUNG])   # half Apple

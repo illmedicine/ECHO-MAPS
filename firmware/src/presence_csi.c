@@ -212,7 +212,83 @@ static void breathing_analyse(void) {
 }
 
 
+/* ── Wide sweep (macro mode): CSI from the traffic on every 2.4 GHz channel ──
+ * The radio is normally parked on the AP's channel. A sweep pass puts it in promiscuous mode, hops
+ * across the channels, and on each one keeps the CSI of the busiest transmitter (frames from one
+ * transmitter see one multipath channel, so their variation is motion rather than a change of
+ * transmitter). Only physical-layer amplitude features survive the dwell: addresses live in the
+ * slot table in RAM and are overwritten by the next channel. */
+#define SWEEP_CH_FIRST   1
+#define SWEEP_CH_LAST    13
+#define SWEEP_DWELL_MS   300
+#define SWEEP_PERIOD_S   60       /* a sweep costs a few seconds off the AP, so not too often */
+#define SWEEP_MIN_FRAMES 8
+#define SWEEP_SLOTS      6
+#define SWEEP_MAXSUB     128
+
+typedef struct {
+    uint8_t  mac[6];
+    int      nsub;
+    uint16_t n, dn;
+    double   rssi_sum, decorr_sum;
+    float    sum[SWEEP_MAXSUB], sumsq[SWEEP_MAXSUB], prev[SWEEP_MAXSUB];
+    bool     have_prev;
+} sweep_slot_t;
+
+typedef struct { uint8_t ch; uint16_t n, all; int8_t rssi; float amp_cv, decorr; } sweep_ch_t;
+
+static volatile bool s_sweep_on;
+static volatile bool s_sweep_hold;
+bool presence_sweep_holds_link(void) { return s_sweep_hold; }
+static sweep_slot_t s_slot[SWEEP_SLOTS];
+static int s_slot_n;
+static uint32_t s_sweep_all;                 /* every frame heard on the current channel */
+static sweep_ch_t s_sweep[SWEEP_CH_LAST];
+static int s_sweep_n;
+static bool s_sweep_fresh;
+static int64_t s_next_sweep_us;
+#define MACRO_FIRST_SWEEP_US  (3 * 1000000LL)
+
+/* Called from csi_cb with the normalised amplitudes while a sweep is running. */
+static void sweep_feed(const wifi_csi_info_t *info, const float *a, int nsub) {
+    if (nsub > SWEEP_MAXSUB) nsub = SWEEP_MAXSUB;
+    taskENTER_CRITICAL(&s_mux);
+    s_sweep_all++;
+    sweep_slot_t *sl = NULL;
+    for (int i = 0; i < s_slot_n; i++)
+        if (s_slot[i].nsub == nsub && memcmp(s_slot[i].mac, info->mac, 6) == 0) { sl = &s_slot[i]; break; }
+    if (!sl && s_slot_n < SWEEP_SLOTS) {
+        sl = &s_slot[s_slot_n++];
+        memset(sl, 0, sizeof(*sl));
+        memcpy(sl->mac, info->mac, 6);
+        sl->nsub = nsub;
+    }
+    if (sl) {
+        for (int k = 0; k < nsub; k++) { sl->sum[k] += a[k]; sl->sumsq[k] += a[k] * a[k]; }
+        if (sl->have_prev) {
+            float mb = 0;
+            for (int k = 0; k < nsub; k++) mb += sl->prev[k];
+            mb /= nsub;
+            float sab = 0, saa = 0, sbb = 0;
+            for (int k = 0; k < nsub; k++) {
+                float da = a[k] - 1.0f, db = sl->prev[k] - mb;
+                sab += da * db; saa += da * da; sbb += db * db;
+            }
+            if (saa > 1e-9f && sbb > 1e-9f) { sl->decorr_sum += 1.0f - sab / sqrtf(saa * sbb); sl->dn++; }
+        }
+        memcpy(sl->prev, a, nsub * sizeof(float));
+        sl->have_prev = true;
+        sl->rssi_sum += info->rx_ctrl.rssi;
+        sl->n++;
+    }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+static volatile uint32_t s_dbg_prom, s_dbg_cb;   /* DIAG: packets heard / CSI callbacks per dwell */
+static void sweep_noop_rx(void *buf, wifi_promiscuous_pkt_type_t type) { (void)buf; (void)type; s_dbg_prom++; }
+
 static void csi_cb(void *ctx, wifi_csi_info_t *info) {
+    if (s_sweep_on) s_dbg_cb++;
     if (!info || !info->buf || info->len < 8) return;
     int nsub = info->len / 2;
     if (nsub > MAX_SUB) nsub = MAX_SUB;
@@ -232,6 +308,8 @@ static void csi_cb(void *ctx, wifi_csi_info_t *info) {
     mean /= nsub;
     if (mean < 1e-3f) return;
     for (int k = 0; k < nsub; k++) a[k] /= mean;
+
+    if (s_sweep_on) { sweep_feed(info, a, nsub); return; }   /* wide sweep: not the home-channel window */
 
     taskENTER_CRITICAL(&s_mux);
     if (nsub != s_nsub) {            /* stream layout changed: restart window */
@@ -308,6 +386,9 @@ static bool take_window(window_t *w) {
 }
 
 /* CSI is only produced when frames arrive, so ping the gateway to keep them flowing. */
+static esp_ping_handle_t s_ping;
+static bool s_ping_running;
+
 static void start_ping(void) {
     esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     esp_netif_ip_info_t ip;
@@ -326,11 +407,202 @@ static void start_ping(void) {
     cfg.data_size = 16;
     cfg.task_stack_size = 3072;
     esp_ping_callbacks_t cbs = {0};
-    esp_ping_handle_t h;
-    if (esp_ping_new_session(&cfg, &cbs, &h) == ESP_OK) {
-        esp_ping_start(h);
+    if (esp_ping_new_session(&cfg, &cbs, &s_ping) == ESP_OK) {
+        esp_ping_start(s_ping);
+        s_ping_running = true;
         ESP_LOGI(TAG, "CSI traffic: pinging gateway every %d ms", PING_INTERVAL);
     }
+}
+
+/* ── Sensing strategy: time-division of the single radio between micro (CSI) and macro (census) ── */
+typedef enum { STRAT_MICRO = 0, STRAT_MACRO, STRAT_AUTO, STRAT_SMART, STRAT_COUNT } strategy_t;
+typedef enum { MODE_MICRO = 0, MODE_MACRO } sense_mode_t;
+static const char *const STRAT_NAME[STRAT_COUNT] = {"micro", "macro", "auto", "smart"};
+
+#define AUTO_MICRO_S        45     /* auto-sweep: seconds of CSI ... */
+#define AUTO_MACRO_S        15     /* ... then seconds of census      */
+#define SMART_TRIGGER       3      /* this many phones close by => crowd, go micro (2 checks in a row) */
+#define SMART_BUSY_AT       2      /* at or above this the space still counts as busy */
+#define SMART_MIN_MICRO_S   60     /* stay micro at least this long, so a flicker cannot thrash the radio */
+#define SMART_HOLD_S        90     /* ...and until it has been quiet this long */
+#define MACRO_POST_TICKS    5      /* macro mode uploads its census every ~5 s */
+
+#ifndef PRESENCE_DEFAULT_STRATEGY
+#define PRESENCE_DEFAULT_STRATEGY STRAT_MICRO
+#endif
+static volatile strategy_t s_strategy = PRESENCE_DEFAULT_STRATEGY;
+static volatile sense_mode_t s_mode = MODE_MICRO;
+static int64_t s_mode_since_us;
+static bool s_mode_applied;          /* radio has been put into s_mode at least once */
+static int s_smart_hits;
+static int64_t s_smart_busy_us;
+
+/* Reduce the busiest transmitter of the dwell that just ended to one channel record. */
+static void sweep_collect(int ch) {
+    static sweep_slot_t best;                /* copy: the CSI callback keeps writing until the next channel */
+    int bi = -1;
+    uint32_t all;
+    taskENTER_CRITICAL(&s_mux);
+    all = s_sweep_all;
+    for (int i = 0; i < s_slot_n; i++) if (bi < 0 || s_slot[i].n > s_slot[bi].n) bi = i;
+    if (bi >= 0) memcpy(&best, &s_slot[bi], sizeof(best));
+    taskEXIT_CRITICAL(&s_mux);
+    if (bi < 0 || best.n < SWEEP_MIN_FRAMES) {
+        if (all > 0 && s_sweep_n < SWEEP_CH_LAST)       /* busy but not enough CSI from one link */
+            s_sweep[s_sweep_n++] = (sweep_ch_t){ .ch = (uint8_t)ch, .n = best.n, .all = (uint16_t)all };
+        return;
+    }
+    double cv = 0; int cvn = 0;
+    for (int k = 0; k < best.nsub; k++) {
+        double m = best.sum[k] / best.n;
+        double var = best.sumsq[k] / best.n - m * m;
+        if (var < 0) var = 0;
+        if (m > 0.05) { cv += sqrt(var) / m; cvn++; }
+    }
+    if (s_sweep_n < SWEEP_CH_LAST)
+        s_sweep[s_sweep_n++] = (sweep_ch_t){
+            .ch = (uint8_t)ch, .n = best.n, .all = (uint16_t)all,
+            .rssi = (int8_t)(best.rssi_sum / best.n),
+            .amp_cv = cvn ? (float)(cv / cvn) : 0,
+            .decorr = best.dn ? (float)(best.decorr_sum / best.dn) : 0,
+        };
+}
+
+/* One pass over the channels. Blocks ~SWEEP_DWELL_MS x 13. Must not overlap an upload. */
+static void sweep_pass(void) {
+    uint8_t home = 0;
+    wifi_second_chan_t sec = WIFI_SECOND_CHAN_NONE;
+    if (esp_wifi_get_channel(&home, &sec) != ESP_OK || home == 0) return;
+
+    /* The driver refuses to change channel while associated, so leave the AP for the sweep. */
+    s_sweep_hold = true;
+    presence_ble_pause(true);                /* BLE and WiFi share the radio: sweep alone */
+    esp_wifi_set_ps(WIFI_PS_NONE);           /* a dozing receiver hears nothing while hopping */
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(250));
+
+    wifi_promiscuous_filter_t f = { .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA };
+    esp_wifi_set_promiscuous_filter(&f);
+    esp_wifi_set_promiscuous_rx_cb(sweep_noop_rx);
+    if (esp_wifi_set_promiscuous(true) != ESP_OK) { s_sweep_hold = false; presence_ble_pause(false); esp_wifi_connect(); return; }
+    esp_wifi_set_csi(true);
+    s_sweep_n = 0;
+    s_sweep_on = true;
+    int set_fail = 0;
+    for (int ch = SWEEP_CH_FIRST; ch <= SWEEP_CH_LAST; ch++) {
+        taskENTER_CRITICAL(&s_mux);
+        s_slot_n = 0;
+        s_sweep_all = 0;
+        taskEXIT_CRITICAL(&s_mux);
+        if (esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE) != ESP_OK) { set_fail++; continue; }
+        esp_wifi_set_csi(false);                  /* CSI stops following the radio across a channel change: re-arm it */
+        esp_wifi_set_csi(true);
+        s_dbg_prom = 0; s_dbg_cb = 0;
+        vTaskDelay(pdMS_TO_TICKS(SWEEP_DWELL_MS));
+        ESP_LOGD(TAG, "sweep ch%d: promisc pkts=%u csi cb=%u", ch, (unsigned)s_dbg_prom, (unsigned)s_dbg_cb);
+        sweep_collect(ch);
+    }
+    s_sweep_on = false;
+    esp_wifi_set_csi(s_mode == MODE_MICRO);
+    esp_wifi_set_promiscuous(false);
+    esp_wifi_set_channel(home, sec);
+    s_sweep_hold = false;
+    presence_ble_pause(false);
+    if (s_mode == MODE_MACRO) esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    esp_wifi_connect();                      /* rejoin the AP; the normal handler takes over if that fails */
+    s_sweep_fresh = s_sweep_n > 0;
+    s_stats.sweeps_done++;
+    int with_csi = 0;
+    for (int i = 0; i < s_sweep_n; i++) if (s_sweep[i].n >= SWEEP_MIN_FRAMES) with_csi++;
+    s_stats.sweep_channels = (uint8_t)with_csi;
+    ESP_LOGI(TAG, "Wide sweep done: %d/%d channels with CSI (%d busy), %d set_channel failures, back on ch %d",
+             with_csi, SWEEP_CH_LAST - SWEEP_CH_FIRST + 1, s_sweep_n, set_fail, home);
+}
+
+static void apply_mode(sense_mode_t m) {
+    if (s_mode_applied && m == s_mode) return;
+    if (m == MODE_MICRO) {
+        esp_wifi_set_ps(WIFI_PS_NONE);               /* power-save gaps would starve CSI */
+        esp_wifi_set_csi(true);
+        if (s_ping && !s_ping_running) { esp_ping_start(s_ping); s_ping_running = true; }
+        presence_ble_set_wide(false);                /* share air time with CSI */
+    } else {
+        if (s_ping && s_ping_running) { esp_ping_stop(s_ping); s_ping_running = false; }
+        esp_wifi_set_csi(false);
+        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);          /* idle radio: wake only for beacons */
+        presence_ble_set_wide(true);                 /* ...and spend the air time listening */
+        taskENTER_CRITICAL(&s_mux);
+        breath_reset_locked();
+        s_n = 0; s_decorr_n = 0; s_have_prev = false;
+        s_rssi_sum = s_rssi_sumsq = s_decorr_sum = 0;
+        taskEXIT_CRITICAL(&s_mux);
+    }
+    s_mode = m;
+    s_mode_applied = true;
+    s_mode_since_us = esp_timer_get_time();
+    if (m == MODE_MACRO) s_next_sweep_us = s_mode_since_us + MACRO_FIRST_SWEEP_US;
+    ESP_LOGI(TAG, "Sensing mode -> %s (strategy %s)", m == MODE_MICRO ? "micro" : "macro", STRAT_NAME[s_strategy]);
+}
+
+/* Called once a second from the window task. */
+static void strategy_tick(void) {
+    int64_t now = esp_timer_get_time();
+    int64_t in_mode_s = (now - s_mode_since_us) / 1000000;
+    sense_mode_t want = s_mode;
+    switch (s_strategy) {
+    case STRAT_MICRO: want = MODE_MICRO; break;
+    case STRAT_MACRO: want = MODE_MACRO; break;
+    case STRAT_AUTO:
+        if (s_mode == MODE_MICRO && in_mode_s >= AUTO_MICRO_S) want = MODE_MACRO;
+        else if (s_mode == MODE_MACRO && in_mode_s >= AUTO_MACRO_S) want = MODE_MICRO;
+        break;
+    case STRAT_SMART: {
+        int crowd = presence_ble_crowd();
+        if (crowd < 0) { want = MODE_MICRO; break; }          /* no census available: keep sensing */
+        if (s_mode == MODE_MACRO) {
+            s_smart_hits = crowd >= SMART_TRIGGER ? s_smart_hits + 1 : 0;
+            if (s_smart_hits >= 2) { want = MODE_MICRO; s_smart_busy_us = now; }
+        } else {
+            if (crowd >= SMART_BUSY_AT) s_smart_busy_us = now;
+            if (in_mode_s >= SMART_MIN_MICRO_S && (now - s_smart_busy_us) / 1000000 >= SMART_HOLD_S) want = MODE_MACRO;
+        }
+        break;
+    }
+    default: break;
+    }
+    if (want != s_mode) { s_smart_hits = 0; apply_mode(want); }
+}
+
+const char *presence_strategy_get(void) { return STRAT_NAME[s_strategy]; }
+const char *presence_mode_get(void) { return s_mode == MODE_MICRO ? "micro" : "macro"; }
+
+bool presence_strategy_set(const char *name) {
+    if (!name) return false;
+    for (int i = 0; i < STRAT_COUNT; i++) {
+        if (strcmp(name, STRAT_NAME[i]) != 0) continue;
+        nvs_handle_t h;
+        if (nvs_open("presence", NVS_READWRITE, &h) == ESP_OK) {
+            nvs_set_str(h, "strategy", name);
+            nvs_commit(h);
+            nvs_close(h);
+        }
+        s_smart_hits = 0;
+        s_smart_busy_us = esp_timer_get_time();
+        s_strategy = (strategy_t)i;
+        ESP_LOGI(TAG, "Sensing strategy set to '%s'", name);
+        return true;                                /* the next tick moves the radio */
+    }
+    return false;
+}
+
+static void strategy_load(void) {
+    char v[8];
+    size_t l = sizeof(v);
+    nvs_handle_t h;
+    if (nvs_open("presence", NVS_READONLY, &h) != ESP_OK) return;
+    if (nvs_get_str(h, "strategy", v, &l) == ESP_OK)
+        for (int i = 0; i < STRAT_COUNT; i++) if (strcmp(v, STRAT_NAME[i]) == 0) s_strategy = (strategy_t)i;
+    nvs_close(h);
 }
 
 /* ── Bridge identity (runtime-settable, persisted) ── */
@@ -576,9 +848,9 @@ bool presence_areas_refresh(int timeout_ms) {
 
 /* POST pending windows to the backend. */
 static bool post_pending(void) {
-    if (s_pending_n == 0) return true;
-    static char body[2400];
-    static char extra[900];
+    if (s_pending_n == 0 && s_mode != MODE_MACRO) return true;   /* macro uploads its census with no windows */
+    static char body[3400];
+    static char extra[1700];
     char zone[ID_MAX], bname[ID_MAX], ip[16] = "";
     presence_zone_get(zone, sizeof(zone));
     presence_bridge_name_get(bname, sizeof(bname));
@@ -596,11 +868,23 @@ static bool post_pending(void) {
         xo += snprintf(extra + xo, sizeof(extra) - xo, "]},");
         s_breath.fresh = false;
     }
+    if (s_sweep_fresh) {
+        xo += snprintf(extra + xo, sizeof(extra) - xo, "\"sweep\":[");
+        for (int i = 0; i < s_sweep_n && xo < (int)sizeof(extra) - 140; i++)
+            xo += snprintf(extra + xo, sizeof(extra) - xo,
+                           "%s{\"ch\":%u,\"n\":%u,\"all\":%u,\"rssi\":%d,\"amp_cv\":%.4f,\"decorr\":%.4f}",
+                           i ? "," : "", s_sweep[i].ch, s_sweep[i].n, s_sweep[i].all, s_sweep[i].rssi,
+                           s_sweep[i].amp_cv, s_sweep[i].decorr);
+        xo += snprintf(extra + xo, sizeof(extra) - xo, "],");
+        s_sweep_fresh = false;
+    }
     char ble[700];
     if (presence_ble_json(ble, sizeof(ble)) > 0) xo += snprintf(extra + xo, sizeof(extra) - xo, "\"ble\":%s,", ble);
     int off = snprintf(body, sizeof(body),
-                       "{\"device_id\":\"%s\",\"zone\":\"%s\",\"bridge_name\":\"%s\",\"ip\":\"%s\",\"uptime_s\":%u,%s\"windows\":[",
-                       get_bridge_device_id(), zone, bname, ip, (unsigned)(esp_timer_get_time() / 1000000), extra);
+                       "{\"device_id\":\"%s\",\"zone\":\"%s\",\"bridge_name\":\"%s\",\"ip\":\"%s\",\"uptime_s\":%u,"
+                       "\"strategy\":\"%s\",\"mode\":\"%s\",%s\"windows\":[",
+                       get_bridge_device_id(), zone, bname, ip, (unsigned)(esp_timer_get_time() / 1000000),
+                       presence_strategy_get(), presence_mode_get(), extra);
     for (int i = 0; i < s_pending_n && off < (int)sizeof(body) - 160; i++) {
         const window_t *w = &s_pending[i];
         off += snprintf(body + off, sizeof(body) - off,
@@ -629,7 +913,7 @@ static bool post_pending(void) {
     esp_http_client_cleanup(c);
 
     /* The reply may carry configuration the dashboard wants this bridge to adopt. */
-    char want_area[ID_MAX] = "", want_name[ID_MAX] = "";
+    char want_area[ID_MAX] = "", want_name[ID_MAX] = "", want_strategy[12] = "";
     if (status == 200) {
         cJSON *root = cJSON_Parse(s_abuf);
         cJSON *conf = root ? cJSON_GetObjectItem(root, "config") : NULL;
@@ -637,10 +921,13 @@ static bool post_pending(void) {
         cJSON *n = conf ? cJSON_GetObjectItem(conf, "bridge_name") : NULL;
         if (cJSON_IsString(a) && strlen(a->valuestring) < ID_MAX) strlcpy(want_area, a->valuestring, ID_MAX);
         if (cJSON_IsString(n) && strlen(n->valuestring) < ID_MAX) strlcpy(want_name, n->valuestring, ID_MAX);
+        cJSON *st = conf ? cJSON_GetObjectItem(conf, "strategy") : NULL;
+        if (cJSON_IsString(st) && strlen(st->valuestring) < sizeof(want_strategy)) strlcpy(want_strategy, st->valuestring, sizeof(want_strategy));
         cJSON_Delete(root);
     }
     xSemaphoreGive(s_net_lock);
     if (want_name[0] && strcmp(want_name, bname) != 0) presence_bridge_name_set(want_name);
+    if (want_strategy[0] && strcmp(want_strategy, presence_strategy_get()) != 0) presence_strategy_set(want_strategy);
     if (want_area[0] && strcmp(want_area, zone) != 0 && !area_adopt_from_server(want_area))
         xTaskNotifyGive(s_areas_task);   /* could not adopt it (list full?): refresh the list, the dashboard will resend */
 
@@ -651,11 +938,18 @@ static bool post_pending(void) {
 
 static void window_task(void *arg) {
     TickType_t last = xTaskGetTickCount();
-    int tick = 0;
+    int tick = 0, macro_ticks = 0;
     for (;;) {
         vTaskDelayUntil(&last, pdMS_TO_TICKS(WINDOW_MS));
+        strategy_tick();
+        if (s_mode == MODE_MACRO && esp_timer_get_time() >= s_next_sweep_us) {
+            sweep_pass();
+            s_next_sweep_us = esp_timer_get_time() + SWEEP_PERIOD_S * 1000000LL;
+        }
+        s_stats.strategy = presence_strategy_get();
+        s_stats.mode = presence_mode_get();
         if (++tick % 5 == 0) {
-            breathing_analyse();
+            if (s_mode == MODE_MICRO) breathing_analyse();
             char ble[700];
             int bl = presence_ble_json(ble, sizeof(ble));
             ESP_LOGI(TAG, "breathing: %s bpm=%.1f snr=%.1f | ble: %.90s", s_breath.valid ? "yes" : "no",
@@ -673,8 +967,11 @@ static void window_task(void *arg) {
             s_stats.last_rssi = (int)w.rssi_mean;
         }
         s_stats.frames_total = s_frames_total;
-        /* Send every ~2 s to halve request overhead; retry with backlog if the backend is down. */
-        if (s_pending_n >= 2) {
+        /* Send every ~2 s to halve request overhead; retry with backlog if the backend is down.
+         * In macro mode there are no windows: upload the BLE census every few seconds instead. */
+        macro_ticks = s_mode == MODE_MACRO ? macro_ticks + 1 : 0;
+        if (s_pending_n >= 2 || (s_mode == MODE_MACRO && macro_ticks >= MACRO_POST_TICKS)) {
+            macro_ticks = 0;
             int n = s_pending_n;
             if (post_pending()) {
                 s_pending_n = 0;
@@ -685,7 +982,9 @@ static void window_task(void *arg) {
                 s_stats.backend_ok = false;
             }
         }
-        if (s_frames_total == 0) {
+        if (s_mode == MODE_MACRO) {
+            /* radio is deliberately not measuring CSI */
+        } else if (s_frames_total == 0) {
             ESP_LOGW(TAG, "No CSI frames yet: check WiFi link / gateway ping");
         } else if ((s_frames_total % 250) < 30) {
             ESP_LOGI(TAG, "frames=%u sent=%u fail=%u cv=%.4f decorr=%.4f rssi=%d",
@@ -700,6 +999,9 @@ presence_stats_t presence_csi_stats(void) { return s_stats; }
 
 void presence_csi_start(void) {
     esp_wifi_set_ps(WIFI_PS_NONE);   /* power-save gaps would starve CSI */
+    strategy_load();
+    s_stats.strategy = presence_strategy_get();
+    s_stats.mode = "micro";
 
     wifi_csi_config_t cfg = {
         .lltf_en = true,
@@ -720,6 +1022,10 @@ void presence_csi_start(void) {
 
     start_ping();
     presence_ble_start();
+    s_mode_since_us = esp_timer_get_time();
+    s_smart_busy_us = s_mode_since_us;
+    /* macro-leaning strategies start in macro; the rest start measuring CSI right away */
+    apply_mode((s_strategy == STRAT_MACRO || s_strategy == STRAT_SMART) ? MODE_MACRO : MODE_MICRO);
     xTaskCreatePinnedToCore(window_task, "csi_window", 8192, NULL, 4, NULL, 1);
     char zone[ID_MAX], bname[ID_MAX];
     presence_zone_get(zone, sizeof(zone));

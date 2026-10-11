@@ -203,12 +203,12 @@ static void render_cal(void) {
 
 /* Dashboard rows. Labels are drawn once; values are redrawn only when they change. */
 #define ROW_Y0   48
-#define ROW_DY   24
+#define ROW_DY   22
 #define VAL_X    190
 typedef struct { const char *label; char last[48]; uint16_t color; } row_t;
 #define ROW(l) { .label = (l), .last = "", .color = 0 }
 static row_t s_rows[] = {
-    ROW("AREA"), ROW("BRIDGE"), ROW("WIFI"), ROW("IP"), ROW("BACKEND"),
+    ROW("AREA"), ROW("BRIDGE"), ROW("WIFI"), ROW("IP"), ROW("BACKEND"), ROW("SENSING"),
     ROW("CSI FRAMES"), ROW("WINDOWS SENT"), ROW("MOTION / RSSI"), ROW("UPTIME"), ROW("FREE HEAP"),
 };
 #define NROWS ((int)(sizeof(s_rows) / sizeof(s_rows[0])))
@@ -242,17 +242,19 @@ static void refresh_dash(void) {
     set_row(3, s_ip[0] ? s_ip : "-", C_WHITE);
     if (st.windows_sent == 0 && !st.backend_ok) set_row(4, st.post_failures ? "unreachable" : "waiting", st.post_failures ? C_RED : C_YELLOW);
     else set_row(4, st.backend_ok ? "OK" : "FAILING", st.backend_ok ? C_GREEN : C_RED);
+    snprintf(b, sizeof(b), "%s/%s sweep %uch", st.strategy ? st.strategy : "?", st.mode ? st.mode : "?", (unsigned)st.sweep_channels);
+    set_row(5, b, st.mode && st.mode[0] == 'm' && st.mode[1] == 'a' ? C_ORANGE : C_WHITE);   /* macro = CSI paused */
     snprintf(b, sizeof(b), "%u", (unsigned)st.frames_total);
-    set_row(5, b, st.frames_total ? C_WHITE : C_YELLOW);
+    set_row(6, b, st.frames_total ? C_WHITE : C_YELLOW);
     snprintf(b, sizeof(b), "%u (fail %u)", (unsigned)st.windows_sent, (unsigned)st.post_failures);
-    set_row(6, b, C_WHITE);
-    snprintf(b, sizeof(b), "%.2f / %d dBm", st.last_amp_cv, st.last_rssi);
     set_row(7, b, C_WHITE);
+    snprintf(b, sizeof(b), "%.2f / %d dBm", st.last_amp_cv, st.last_rssi);
+    set_row(8, b, C_WHITE);
     int64_t s = esp_timer_get_time() / 1000000;
     snprintf(b, sizeof(b), "%dh %02dm %02ds", (int)(s / 3600), (int)((s / 60) % 60), (int)(s % 60));
-    set_row(8, b, C_WHITE);
-    snprintf(b, sizeof(b), "%u KB", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024));
     set_row(9, b, C_WHITE);
+    snprintf(b, sizeof(b), "%u KB", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024));
+    set_row(10, b, C_WHITE);
 
     /* toast line under the rows */
     bool toast = esp_timer_get_time() < s_msg_until_us;

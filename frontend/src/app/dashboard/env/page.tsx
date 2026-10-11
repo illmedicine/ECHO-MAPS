@@ -73,6 +73,7 @@ function EnvironmentViewContent() {
     status = "Sensing disabled (private room)";
   } else if (zone && zone.state !== "offline") {
     if (zone.state === "learning") { status = `Calibrating baseline ${Math.round(zone.learning_progress * 100)}%`; color = "#B8860B"; }
+    else if (zone.state === "standby") { status = "Standby (counting devices, CSI paused)"; color = "var(--gh-text-muted)"; }
     else if (zone.present) { status = "Presence detected"; color = "#B3261E"; }
     else { status = "Clear"; color = "var(--gh-green)"; }
   }
@@ -130,7 +131,7 @@ function EnvironmentViewContent() {
           <div className="rounded-2xl border p-4" style={{ backgroundColor: "var(--gh-surface)", borderColor: "var(--gh-border)" }}>
             <h3 className="font-semibold mb-3">Live CSI Presence</h3>
             <p className="text-lg font-semibold" style={{ color }}>{status}</p>
-            {sensed && zone && zone.state !== "offline" && zone.state !== "learning" && (
+            {sensed && zone && zone.state !== "offline" && zone.state !== "learning" && zone.state !== "standby" && (
               <p className="text-xs mt-1" style={{ color: "var(--gh-text-muted)" }}>
                 Confidence {Math.round(zone.confidence * 100)}% · RSSI {zone.rssi} dBm · updated {zone.age_s}s ago
               </p>

@@ -16,12 +16,21 @@ import {
   isBackendConfigured,
   publishPublicAreas,
   type BridgeInfo,
+  type SensingStrategy,
 } from "@/lib/api";
 import { getEnvironments } from "@/lib/environments";
 import { publicAreaNames } from "@/lib/sensingZones";
 
 const NAME_OK = /^[A-Za-z0-9 \-_.,'/#()]{1,47}$/;
 const UNASSIGNED = "";
+
+/** How a bridge shares its single 2.4 GHz radio between wide device counting and high-resolution CSI. */
+const STRATEGIES: { id: SensingStrategy; label: string; help: string }[] = [
+  { id: "micro", label: "Micro · continuous CSI", help: "Fixed channel, always measuring motion and breathing. Best accuracy for presence; device counting runs on BLE alongside it." },
+  { id: "macro", label: "Macro · device census", help: "Low-power wide listening only (BLE census, no motion sensing). Best for device counting; presence reads Standby." },
+  { id: "auto", label: "Auto-sweep · 45 s micro / 15 s macro", help: "Alternates on a timer so both views stay fresh." },
+  { id: "smart", label: "Smart trigger · macro until a crowd", help: "Quiet census until several people are nearby, then switches to continuous CSI, and drops back once the space empties." },
+];
 
 type Link = "no-backend" | "connecting" | "ok" | "error";
 
@@ -117,9 +126,14 @@ export default function BridgeConfigPanel() {
 
 function BridgeCard({ bridge: b, areas }: { bridge: BridgeInfo; areas: string[] }) {
   // What the bridge will have once any pending change lands.
-  const target = { name: b.pending?.bridge_name ?? b.bridge_name, area: b.pending?.area ?? b.area };
+  const target = {
+    name: b.pending?.bridge_name ?? b.bridge_name,
+    area: b.pending?.area ?? b.area,
+    strategy: (b.pending?.strategy ?? b.strategy) as SensingStrategy | "",
+  };
   const [name, setName] = useState(target.name);
   const [area, setArea] = useState(areas.includes(target.area) ? target.area : UNASSIGNED);
+  const [strategy, setStrategy] = useState<SensingStrategy | "">(target.strategy);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -131,7 +145,8 @@ function BridgeCard({ bridge: b, areas }: { bridge: BridgeInfo; areas: string[] 
     if (touched) return;
     setName(target.name);
     setArea(areas.includes(target.area) ? target.area : UNASSIGNED);
-  }, [target.name, target.area, areas, touched]);
+    setStrategy(target.strategy);
+  }, [target.name, target.area, target.strategy, areas, touched]);
 
   // Pending went away => the bridge adopted the change.
   useEffect(() => {
@@ -148,7 +163,8 @@ function BridgeCard({ bridge: b, areas }: { bridge: BridgeInfo; areas: string[] 
   const nameChanged = name.trim() !== b.bridge_name;
   const areaChanged = area !== UNASSIGNED && area !== b.area;
   const nameValid = NAME_OK.test(name.trim());
-  const dirty = (nameChanged || areaChanged) && nameValid && !b.pending;
+  const strategyChanged = strategy !== "" && strategy !== b.strategy;
+  const dirty = (nameChanged || areaChanged || strategyChanged) && nameValid && !b.pending;
   const online = b.state !== "offline";
 
   const save = async () => {
@@ -158,6 +174,7 @@ function BridgeCard({ bridge: b, areas }: { bridge: BridgeInfo; areas: string[] 
       await configureBridge(b.device_id, {
         ...(nameChanged ? { bridge_name: name.trim() } : {}),
         ...(areaChanged ? { area } : {}),
+        ...(strategyChanged ? { strategy: strategy as SensingStrategy } : {}),
       });
       setTouched(false);
     } catch (e) {
@@ -206,6 +223,24 @@ function BridgeCard({ bridge: b, areas }: { bridge: BridgeInfo; areas: string[] 
           </select>
         </label>
       </div>
+
+      <label className="block text-xs mt-3">
+        <span className="font-medium">Sensing strategy</span>
+        <select
+          value={strategy}
+          onChange={(e) => { setStrategy(e.target.value as SensingStrategy); setTouched(true); }}
+          className="mt-1 w-full px-3 py-2 rounded-lg text-sm"
+          style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)", color: "var(--gh-text)" }}
+          aria-label={`Sensing strategy for ${b.device_id}`}
+        >
+          {strategy === "" && <option value="">{b.state === "offline" ? "— unknown (bridge offline) —" : "— firmware does not report a strategy yet —"}</option>}
+          {STRATEGIES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        <span className="block text-[10px] mt-1" style={{ color: "var(--gh-text-muted)" }}>
+          {STRATEGIES.find((s) => s.id === strategy)?.help ?? "The bridge needs the latest firmware to offer sensing strategies."}
+          {b.mode && ` Radio is in ${b.mode} mode right now.`}
+        </span>
+      </label>
 
       <div className="flex items-center gap-3 flex-wrap mt-3">
         <button

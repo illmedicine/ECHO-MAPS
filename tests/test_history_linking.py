@@ -80,3 +80,14 @@ def test_peak_concurrent_and_names():
     assert peak_concurrent([(0, 10), (5, 15), (12, 20)]) == 2
     assert peak_concurrent([]) == 0
     assert mfr_name("004C") == "Apple" and mfr_name("") == "Unknown" and mfr_name("ffff") == "Other"
+
+
+def test_two_guests_passing_are_not_merged_in_a_crowded_handover():
+    # One id ends just as five others begin. The closest-looking stranger is 8 dB away, which the normal
+    # rule would accept; in a crowd only a close signal match may link, so nothing is merged.
+    old = [sight("aaaaaa", 1000, 1600, mfr=APPLE, rssi_last=-50)]
+    crowd = [sight(f"b{i:05x}", 1601, 2200, mfr=APPLE, rssi_first=-58 - i) for i in range(5)]
+    chains = link_rotating(old + crowd)
+    assert len(chains) == 6 and all(c.linked == 0 for c in chains)
+    # without the crowd the same 8 dB match is still accepted
+    assert len(link_rotating(old + crowd[:1])) == 1

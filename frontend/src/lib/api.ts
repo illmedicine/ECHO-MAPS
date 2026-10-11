@@ -432,8 +432,23 @@ export interface LiveZone {
     age_s: number;
     devices: { id: string; rssi: number; t: number; p: number; age: number }[];
   } | null;
-  /** offline = no data from the sensor; learning = building the empty-room baseline */
-  state: "offline" | "learning" | "empty" | "present";
+  /** offline = no data from the sensor; learning = building the empty-room baseline;
+   *  standby = the bridge is in macro mode (device census only), so CSI is not being measured */
+  state: "offline" | "learning" | "standby" | "empty" | "present";
+  /** Sensing strategy the dashboard asked for ("" on firmware that predates strategies). */
+  strategy?: SensingStrategy | "";
+  /** What the radio is doing right now. */
+  mode?: SensingMode | "";
+  csi_active?: boolean;
+  /** Latest wide sweep (macro mode): motion features per 2.4 GHz channel, no addresses. */
+  sweep?: {
+    age_s: number;
+    measured: number;
+    active: number;
+    learning: boolean;
+    busiest: number | null;
+    channels: { ch: number; n: number; all: number; rssi: number; score: number; active: boolean; learning: boolean; measured: boolean }[];
+  } | null;
   present: boolean;
   confidence: number;
   activity: "none" | "low" | "moderate" | "high";
@@ -464,9 +479,15 @@ export function publishPublicAreas(areas: string[]): Promise<{ areas: string[] }
   });
 }
 
+/** macro: wide low-power device census | micro: continuous high-resolution CSI |
+ *  auto: 45 s micro / 15 s macro | smart: macro until a crowd appears, then micro */
+export type SensingStrategy = "macro" | "micro" | "auto" | "smart";
+export type SensingMode = "macro" | "micro";
+
 export interface BridgeConfig {
   bridge_name?: string;
   area?: string;
+  strategy?: SensingStrategy;
 }
 
 export interface BridgeInfo {
@@ -476,6 +497,9 @@ export interface BridgeInfo {
   area: string;
   ip: string;
   state: LiveZone["state"];
+  /** What the bridge reports it is running ("" until it has uploaded on strategy-aware firmware). */
+  strategy: SensingStrategy | "";
+  mode: SensingMode | "";
   age_s: number | null;
   /** Configuration sent from the dashboard that the bridge has not applied yet. */
   pending: BridgeConfig | null;

@@ -348,7 +348,7 @@ export default function HistoryInsights() {
               ))}
               <p>
                 Phones and watches rotate their Bluetooth address every ~15 minutes. When one id disappears at the same moment another appears at a similar signal
-                strength (and the same manufacturer, where announced), they are treated as one device. Devices present almost the entire period are treated as equipment and left out of visitor counts.
+                strength (and the same manufacturer, where announced), they are treated as one device. Devices with a fixed address that are present most of the time (from about 10 minutes of data) are treated as equipment, such as a printer, TV or desktop, and left out of visitor counts. Devices per person rises with the Apple share, since Apple users often also carry a Watch or AirPods.
               </p>
               <p>Data coverage in this period: {pct(s.window.coverage)} ({s.window.data_minutes} minutes recorded). Recording since {when(report.bridge.recording_since ?? status?.recording_since)}.</p>
             </div>

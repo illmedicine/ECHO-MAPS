@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from echo_maps.api.deps import TokenPayload, get_current_user
 from echo_maps.config import get_settings
-from echo_maps.csi.presence import PresenceRegistry
+from echo_maps.csi.presence import MACRO_HOLD_S, STRATEGIES, PresenceRegistry
 from echo_maps.history.store import service as history
 
 router = APIRouter()
@@ -50,7 +50,12 @@ class IngestBody(BaseModel):
     # cost us the presence windows in the same request.
     breathing: dict | None = None
     ble: dict | None = None
-    windows: list[CSIWindow] = Field(min_length=1, max_length=MAX_WINDOWS_PER_POST)
+    sweep: list | None = None   # macro mode: per-channel motion features, no addresses
+    # Sensing strategy the bridge is running and what its radio is doing this instant. Old firmware
+    # sends neither. In macro mode a bridge uploads its BLE census with no CSI windows.
+    strategy: str = Field(default="", max_length=16)
+    mode: str = Field(default="", max_length=16)
+    windows: list[CSIWindow] = Field(default_factory=list, max_length=MAX_WINDOWS_PER_POST)
 
 
 class AreasBody(BaseModel):
@@ -60,6 +65,9 @@ class AreasBody(BaseModel):
 class BridgeConfigBody(BaseModel):
     bridge_name: str | None = Field(default=None, max_length=47)
     area: str | None = Field(default=None, max_length=47)
+    # macro: wide low-power device census only | micro: continuous high-resolution CSI only |
+    # auto: alternate micro and macro on a timer | smart: macro until a crowd appears, then micro
+    strategy: str | None = Field(default=None, max_length=16)
 
 
 # Public areas of this facility, published by the dashboard (which owns the
@@ -126,6 +134,26 @@ def _parse_ble(raw: dict | None) -> dict | None:
     return {**{k: int(v) for k, v in counts.items()}, "devices": devices}  # type: ignore[arg-type]
 
 
+def _parse_sweep(raw: list | None) -> list[dict]:
+    """Per-channel physical-layer features only. Anything else in an entry is dropped."""
+    out = []
+    seen: set[int] = set()
+    for c in (raw or [])[:14]:
+        if not isinstance(c, dict):
+            continue
+        ch = _num(c.get("ch"), 1, 14)
+        n, allf = _num(c.get("n"), 0, 100000), _num(c.get("all"), 0, 100000)
+        if ch is None or n is None or allf is None or int(ch) in seen:
+            continue
+        rssi = _num(c.get("rssi", 0), -127, 0)
+        cv, de = _num(c.get("amp_cv", 0), 0, 10), _num(c.get("decorr", 0), 0, 2)
+        if rssi is None or cv is None or de is None:
+            continue
+        seen.add(int(ch))
+        out.append({"ch": int(ch), "n": int(n), "all": int(allf), "rssi": int(rssi), "amp_cv": cv, "decorr": de})
+    return out
+
+
 def _check_device_key(key: str | None) -> None:
     expected = get_settings().presence_ingest_key
     if not expected:
@@ -143,35 +171,47 @@ async def ingest(body: IngestBody, x_device_key: str | None = Header(default=Non
     zone.bridge_name = body.bridge_name
     zone.ip = body.ip
     now = time.time()
+    if not body.windows and body.mode != "macro":
+        # Only a bridge in macro mode legitimately uploads without CSI windows.
+        raise HTTPException(status_code=422, detail="windows required unless mode is macro")
+    zone.touch(now, body.strategy, body.mode)
     breath = _parse_breathing(body.breathing)
     if breath:
         zone.update_breathing(now, *breath)
     ble = _parse_ble(body.ble)
     if ble is not None:
         zone.set_ble(now, ble)
+    sweep = _parse_sweep(body.sweep)
+    if sweep:
+        zone.set_sweep(now, sweep)
     for w in body.windows:
         ts = w.ts if w.ts and abs(w.ts - now) < 3600 else now  # ESP32 may have no RTC
         zone.update(ts, w.n, w.rssi_mean, w.rssi_std, w.amp_cv, w.decorr)
+    # While the bridge is in macro mode no CSI is measured: its old verdict must not keep counting as
+    # "occupied" in history (the BLE census it uploads is still recorded in full).
+    csi_live = zone.mode != "macro" or (now - zone.last_seen) <= MACRO_HOLD_S
     try:   # history must never cost the bridge its presence upload
         history.recorder.observe(
             device_id=body.device_id, area=body.zone, bridge_name=body.bridge_name, ts=now,
-            present=zone.present, ratio=max(zone.ratio, 0.0),
-            signatures=zone.breathing_snapshot(now)["signatures"], ble=ble, uptime_s=body.uptime_s,
+            present=zone.present and csi_live, ratio=max(zone.ratio, 0.0) if csi_live else 0.0,
+            signatures=zone.breathing_snapshot(now)["signatures"] if csi_live else [],
+            ble=ble, uptime_s=body.uptime_s,
         )
     except Exception:
         pass
     resp: dict = {"status": "ok", "state": zone.snapshot()["state"]}
     want = _desired.get(body.device_id)
     if want:
-        if _config_applied(want, body.zone, body.bridge_name):
+        if _config_applied(want, body.zone, body.bridge_name, zone.strategy):
             _desired.pop(body.device_id, None)  # the bridge has adopted it
         else:
             resp["config"] = want
     return resp
 
 
-def _config_applied(want: dict[str, str], area: str, name: str) -> bool:
-    return want.get("area", area) == area and want.get("bridge_name", name) == name
+def _config_applied(want: dict[str, str], area: str, name: str, strategy: str = "") -> bool:
+    return (want.get("area", area) == area and want.get("bridge_name", name) == name
+            and want.get("strategy", strategy) == strategy)
 
 
 @router.put("/areas")
@@ -206,8 +246,10 @@ async def bridges(user: TokenPayload = Depends(get_current_user)) -> dict:
             "area": z["zone"],
             "ip": z["ip"],
             "state": z["state"],
+            "strategy": z["strategy"],
+            "mode": z["mode"],
             "age_s": z["age_s"],
-            "pending": want if want and not _config_applied(want, z["zone"], z["bridge_name"]) else None,
+            "pending": want if want and not _config_applied(want, z["zone"], z["bridge_name"], z["strategy"]) else None,
         })
     out.sort(key=lambda b: (b["bridge_name"] or "~", b["device_id"]))
     return {"server_time": time.time(), "bridges": out}
@@ -233,8 +275,12 @@ async def configure_bridge(device_id: str, body: BridgeConfigBody, user: TokenPa
         if not _AREA_OK.match(area):
             raise HTTPException(status_code=422, detail="Invalid area name")
         want["area"] = area
+    if body.strategy is not None:
+        if body.strategy not in STRATEGIES:
+            raise HTTPException(status_code=422, detail=f"strategy must be one of {', '.join(STRATEGIES)}")
+        want["strategy"] = body.strategy
     if not want:
-        raise HTTPException(status_code=422, detail="Send bridge_name and/or area")
+        raise HTTPException(status_code=422, detail="Send bridge_name, area and/or strategy")
     _desired[device_id] = {**_desired.get(device_id, {}), **want}
     return {"device_id": device_id, "pending": _desired[device_id]}
 

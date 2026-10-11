@@ -196,6 +196,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        if (presence_sweep_holds_link()) return;   /* deliberate: a wide sweep is hopping channels */
         if (s_wifi_retry_count < WIFI_MAX_RETRY) {
             esp_wifi_connect();
             s_wifi_retry_count++;

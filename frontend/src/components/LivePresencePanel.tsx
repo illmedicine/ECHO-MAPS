@@ -20,6 +20,7 @@ const STATE_STYLE: Record<LiveZone["state"], { label: string; color: string; bg:
   present: { label: "Presence detected", color: "#B3261E", bg: "rgba(234,67,53,0.10)" },
   empty: { label: "Clear", color: "var(--gh-green)", bg: "rgba(52,168,83,0.10)" },
   learning: { label: "Learning baseline", color: "#B8860B", bg: "rgba(251,188,5,0.12)" },
+  standby: { label: "Standby · counting devices", color: "var(--gh-text-muted)", bg: "var(--gh-card)" },
   offline: { label: "Sensor offline", color: "var(--gh-text-muted)", bg: "var(--gh-card)" },
 };
 
@@ -97,11 +98,19 @@ export default function LivePresencePanel({ compact = false }: { compact?: boole
                   <div className="flex flex-wrap gap-x-3 text-[10px] mt-1" style={{ color: "var(--gh-text-muted)" }}>
                     {z.state === "learning" ? (
                       <span>Calibrating empty-room baseline… {Math.round(z.learning_progress * 100)}%</span>
+                    ) : z.state === "standby" ? (
+                      <span>Standby: counting nearby devices, motion sensing is paused in macro mode</span>
                     ) : (
                       <>
                         <span>Confidence {Math.round(z.confidence * 100)}%</span>
                         {z.present && <span>Activity: {z.activity}</span>}
                       </>
+                    )}
+                    {z.sweep && (
+                      <span title={z.sweep.channels.filter((c) => c.measured).map((c) => `ch${c.ch}${c.active ? " ●" : ""}`).join("  ")}>
+                        Wide sweep: {z.sweep.measured} channel{z.sweep.measured === 1 ? "" : "s"} measured
+                        {z.sweep.learning ? " (learning quiet baseline)" : `, ${z.sweep.active} with unusual motion`} · {Math.round(z.sweep.age_s)}s ago
+                      </span>
                     )}
                     <span>RSSI {z.rssi} dBm</span>
                     <span>{z.frames.toLocaleString()} CSI frames</span>

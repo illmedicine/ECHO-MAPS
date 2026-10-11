@@ -54,6 +54,19 @@ SIG_MAX = 3
 SIG_FAST_BPM = 20.0   # above this is "faster": typical of small animals or an active person
 # Nearby-BLE summary is stale (and hidden) after this long.
 BLE_STALE_S = 30.0
+# Sensing strategies a bridge can run (see the firmware's sensing state machine). In "macro" mode the
+# radio is left to the wide, low-power device census and no CSI windows are produced, so a silent CSI
+# stream there means "not measuring", never "empty". The last CSI verdict is held this long (it covers
+# the short macro slice of an auto-sweep), after which the zone reads "standby".
+STRATEGIES = ("macro", "micro", "auto", "smart")
+MODES = ("macro", "micro")
+MACRO_HOLD_S = 20.0
+# Wide sweep (macro mode): the bridge hops across the 2.4 GHz channels and reports motion features of
+# the traffic it hears on each. Each channel learns its own quiet baseline, like a home-channel link.
+SWEEP_STALE_S = 180.0
+SWEEP_LEARN = 5            # sweeps of quiet data before a channel can be called active
+SWEEP_BASELINE = 60
+SWEEP_MIN_FRAMES = 8
 
 
 def window_score(amp_cv: float, decorr: float, rssi_std: float) -> float:
@@ -80,6 +93,9 @@ class ZoneState:
     threshold: float = 0.0
     activity: str = "none"  # none | low | moderate | high
     last_seen: float = 0.0  # unix seconds of last window received
+    last_contact: float = 0.0  # unix seconds of the last upload of any kind (windows or BLE-only)
+    strategy: str = ""  # what the dashboard asked for: macro | micro | auto | smart ("" = old firmware)
+    mode: str = ""  # what the radio is doing right now: macro | micro
     last_present: float = 0.0
     windows_total: int = 0
     frames_total: int = 0
@@ -89,6 +105,8 @@ class ZoneState:
     breath_snr: float = 0.0
     ble: dict | None = None
     ble_ts: float = 0.0
+    sweep: dict | None = None
+    _sweep_base: dict = field(default_factory=dict)  # channel -> deque of quiet scores
     _breath: Deque[tuple[float, float, float]] = field(default_factory=lambda: deque(maxlen=24))  # (ts, bpm, snr)
     _peaks: Deque[tuple[float, float, float]] = field(default_factory=lambda: deque(maxlen=150))  # every peak: (ts, bpm, snr)
 
@@ -96,8 +114,17 @@ class ZoneState:
     _baseline: Deque[float] = field(default_factory=lambda: deque(maxlen=BASELINE_WINDOWS))
     _recent: Deque[bool] = field(default_factory=lambda: deque(maxlen=ENTER_OF))
 
+    def touch(self, ts: float, strategy: str = "", mode: str = "") -> None:
+        """The bridge is alive (it uploaded something), whether or not CSI windows came with it."""
+        self.last_contact = ts
+        if strategy in STRATEGIES:
+            self.strategy = strategy
+        if mode in MODES:
+            self.mode = mode
+
     def update(self, ts: float, n: int, rssi_mean: float, rssi_std: float, amp_cv: float, decorr: float) -> None:
         self.last_seen = ts
+        self.last_contact = max(self.last_contact, ts)
         self.windows_total += 1
         self.frames_total += max(n, 0)
         if n > 0:  # an empty window carries no RSSI; don't let it read as 0 dBm
@@ -160,6 +187,31 @@ class ZoneState:
         if ok and snr >= BREATH_MIN_SNR and lo <= bpm <= hi:
             self._breath.append((ts, bpm, snr))
 
+    def set_sweep(self, ts: float, channels: list[dict]) -> None:
+        """Fold one wide-sweep pass in: per channel, score the motion features against that channel's
+        own quiet history. A channel is `active` when it rises well above it; it is `learning` until
+        it has SWEEP_LEARN quiet passes. Other people's traffic cannot make a channel look active
+        unless it also changes the multipath, which is what the score measures."""
+        out = []
+        for c in channels:
+            row = {"ch": c["ch"], "n": c["n"], "all": c["all"], "rssi": c["rssi"],
+                   "score": 0.0, "active": False, "learning": False, "measured": c["n"] >= SWEEP_MIN_FRAMES}
+            if row["measured"]:
+                score = window_score(c["amp_cv"], c["decorr"], 0.0)
+                row["score"] = round(score, 4)
+                base = self._sweep_base.setdefault(c["ch"], deque(maxlen=SWEEP_BASELINE))
+                if len(base) < SWEEP_LEARN:
+                    row["learning"] = True
+                    base.append(score)
+                else:
+                    med = median(base)
+                    mad = median(abs(x - med) for x in base)
+                    row["active"] = score > med + K_SIGMA * max(1.4826 * mad, MAD_FLOOR)
+                    if not row["active"]:
+                        base.append(score)
+            out.append(row)
+        self.sweep = {"ts": ts, "channels": out}
+
     def set_ble(self, ts: float, summary: dict) -> None:
         self.ble = summary
         self.ble_ts = ts
@@ -207,34 +259,59 @@ class ZoneState:
             pattern, state = None, "weak"
         return {"state": state, "bpm": round(med, 1), "snr": round(self.breath_snr, 1), "readings": len(recent), "pattern": pattern, "signatures": sigs}
 
+    def _sweep_snapshot(self, now: float, offline: bool) -> dict | None:
+        if offline or not self.sweep or now - self.sweep["ts"] > SWEEP_STALE_S:
+            return None
+        ch = self.sweep["channels"]
+        measured = [c for c in ch if c["measured"]]
+        busiest = max(ch, key=lambda c: c["all"], default=None)
+        return {
+            "age_s": round(now - self.sweep["ts"], 1),
+            "channels": ch,
+            "measured": len(measured),
+            "active": sum(1 for c in measured if c["active"]),
+            "learning": any(c["learning"] for c in measured),
+            "busiest": busiest["ch"] if busiest and busiest["all"] else None,
+        }
+
     def snapshot(self, now: float | None = None) -> dict:
         now = time.time() if now is None else now
-        offline = self.last_seen == 0 or (now - self.last_seen) > OFFLINE_AFTER_S
+        csi_age = now - self.last_seen if self.last_seen else float("inf")
+        contact_age = now - self.last_contact if self.last_contact else float("inf")
+        # Alive = the bridge uploaded recently. Outside macro mode that also needs CSI windows,
+        # exactly as before: a bridge that should be measuring but is not is offline.
+        offline = contact_age > OFFLINE_AFTER_S or (self.mode != "macro" and csi_age > OFFLINE_AFTER_S)
+        standby = not offline and csi_age > (MACRO_HOLD_S if self.mode == "macro" else OFFLINE_AFTER_S)
+        quiet = offline or standby
         return {
             "zone": self.zone,
             "device_id": self.device_id,
             "bridge_name": self.bridge_name,
             "ip": self.ip,
-            "state": "offline" if offline else self.state,
-            "present": False if offline else self.present,
-            "confidence": 0.0 if offline else round(self.confidence, 3),
-            "activity": "none" if offline else self.activity,
-            "activity_ratio": 0.0 if offline else round(max(self.ratio, 0.0), 2),
+            "strategy": self.strategy,
+            "mode": self.mode,
+            "csi_active": not quiet,
+            "state": "offline" if offline else "standby" if standby else self.state,
+            "present": False if quiet else self.present,
+            "confidence": 0.0 if quiet else round(self.confidence, 3),
+            "activity": "none" if quiet else self.activity,
+            "activity_ratio": 0.0 if quiet else round(max(self.ratio, 0.0), 2),
             "breathing": (
                 {"state": "none", "bpm": None, "snr": 0.0, "readings": 0, "pattern": None, "signatures": []}
-                if offline else self.breathing_snapshot(now)
+                if quiet else self.breathing_snapshot(now)
             ),
             "ble": (
                 {**self.ble, "age_s": round(now - self.ble_ts, 1)}
                 if self.ble and not offline and now - self.ble_ts <= BLE_STALE_S else None
             ),
+            "sweep": self._sweep_snapshot(now, offline),
             "score": round(self.score, 4),
             "baseline": round(self.baseline, 4),
             "threshold": round(self.threshold, 4),
             "rssi": round(self.rssi, 1),
             "last_seen": self.last_seen,
             "last_present": self.last_present,
-            "age_s": None if self.last_seen == 0 else round(now - self.last_seen, 1),
+            "age_s": None if self.last_contact == 0 else round(now - self.last_contact, 1),
             "windows": self.windows_total,
             "frames": self.frames_total,
             "learning_progress": min(1.0, len(self._baseline) / LEARN_WINDOWS),

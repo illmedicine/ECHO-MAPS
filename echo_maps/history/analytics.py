@@ -24,9 +24,18 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from echo_maps.history.linking import Chain, link_rotating, mfr_name, peak_concurrent
 
-DEVICES_PER_PERSON = 1.3     # advertising BLE devices carried per person (phone, watch, earbuds...)
-FIXTURE_SHARE = 0.8          # a stable device present this much of a long window is a fixture
-FIXTURE_MIN_WINDOW_S = 3600
+# Advertising BLE devices carried per person (phone, watch, earbuds...). Apple users very often add
+# a Watch and AirPods that advertise separately, so the ratio rises with the Apple share of the
+# visiting devices: ~1.3 with none, ~1.5 when about half are Apple (a typical hotel crowd).
+DEVICES_PER_PERSON = 1.3
+DEVICES_PER_PERSON_APPLE_BOOST = 0.4
+DEVICES_PER_PERSON_MAX = 1.6
+# A stable (non-rotating) address is almost never a modern phone: it is a TV, printer, desktop, POS
+# or beacon. One that is present for most of the time we have data for is treated as equipment and
+# left out of the visitor and people counts. The span needed is deliberately short, because the
+# front-desk printer is obvious after 10 minutes and should not inflate the count while we wait an hour.
+FIXTURE_SHARE = 0.7
+FIXTURE_MIN_WINDOW_S = 600
 RECURRING_VISITS = 3         # a stable device that came back this many times is a regular
 PERSON_BPM_TOL = 1.5         # breathing signatures this close are the same occupant
 PET_BPM_TOL = 2.5
@@ -106,8 +115,9 @@ def estimate(
     near = [s for s in sightings if s.get("near_samples", 0) > 0 and s.get("samples", 0) >= 2]
     stable = [s for s in near if not s["rotating"]]
     rotating = [s for s in near if s["rotating"]]
-    long_window = window_s >= FIXTURE_MIN_WINDOW_S
-    fixtures = [s for s in stable if long_window and s["seconds"] >= FIXTURE_SHARE * min(window_s, max(data_minutes * 60, 1))]
+    span_s = min(window_s, max(data_minutes * 60, 1))     # time we actually have data for
+    long_window = span_s >= FIXTURE_MIN_WINDOW_S
+    fixtures = [s for s in stable if long_window and s["seconds"] >= FIXTURE_SHARE * span_s]
     visitors_stable = [s for s in stable if s not in fixtures]
     chains: list[Chain] = link_rotating(near)
     linked = sum(c.linked for c in chains)
@@ -132,11 +142,15 @@ def estimate(
     person_clusters = _cluster([e["bpm_mean"] for e in person_eps], PERSON_BPM_TOL)
     people_peak = max((b["people_max"] for b in buckets), default=0)
     p_low = max(people_peak, 1 if periods else 0)
-    from_devices = dev_point / DEVICES_PER_PERSON
+    apple = mfr_counts.get("Apple", 0)
+    apple_share = apple / dev_point if dev_point else 0.0
+    per_person = min(DEVICES_PER_PERSON_MAX, DEVICES_PER_PERSON + DEVICES_PER_PERSON_APPLE_BOOST * apple_share)
+    from_devices = dev_point / per_person
     p_high = max(_round(dev_high), len(person_eps), p_low)
     p_point = min(max(_round(max(from_devices, person_clusters)), p_low), p_high)
     people_basis = [
-        f"{dev_point} estimated device(s) ÷ {DEVICES_PER_PERSON} devices per person ≈ {_round(from_devices)}",
+        f"{dev_point} estimated device(s) ÷ {per_person:.2f} devices per person ≈ {_round(from_devices)} "
+        f"({_pct(apple_share)} Apple, which tends to mean a Watch or earbuds as well)",
         f"{person_clusters} distinct breathing signature(s) across {len(person_eps)} episode(s)",
         f"{people_peak} seen breathing at the same time; {len(periods)} separate occupied period(s)",
     ]

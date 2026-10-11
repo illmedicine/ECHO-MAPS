@@ -227,3 +227,80 @@ def test_ingest_endpoint(monkeypatch):
     w["zone"] = "Room 304"
     assert c.post("/api/presence/ingest", json=w, headers=h).status_code == 403
     assert c.get("/api/presence/zones").status_code in (401, 403)
+
+
+def test_sensing_strategy_round_trip_and_macro_uploads(monkeypatch):
+    monkeypatch.setenv("PRESENCE_INGEST_KEY", "k" * 20)
+    import echo_maps.config as cfg
+    cfg._settings = None
+    from echo_maps.api.app import create_app
+    from echo_maps.api.deps import get_current_user
+    from echo_maps.api.routes import presence as routes
+    routes._registry.__init__()
+    routes._desired.clear()
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: object()
+    c = TestClient(app)
+    h = {"X-Device-Key": "k" * 20}
+    win = [{"n": 40, "amp_cv": 0.03, "decorr": 0.02}]
+    post = lambda **kw: c.post("/api/presence/ingest", headers=h, json={  # noqa: E731
+        "device_id": "b1", "zone": "Lobby", "bridge_name": "B", **kw})
+    url = "/api/presence/bridges/b1/config"
+
+    assert post(windows=win, strategy="micro", mode="micro").status_code == 200
+    assert post(mode="macro").status_code == 200 and post().status_code == 422   # BLE-only only in macro
+    assert c.put(url, json={"strategy": "bogus"}).status_code == 422
+    assert c.put(url, json={"strategy": "smart"}).status_code == 200
+    assert c.get("/api/presence/bridges").json()["bridges"][0]["pending"] == {"strategy": "smart"}
+    assert post(windows=win, strategy="micro", mode="micro").json()["config"] == {"strategy": "smart"}
+    assert "config" not in post(windows=win, strategy="smart", mode="micro").json()
+    b = c.get("/api/presence/bridges").json()["bridges"][0]
+    assert (b["strategy"], b["mode"], b["pending"]) == ("smart", "micro", None)
+
+
+def test_macro_mode_reads_standby_not_empty_and_not_offline():
+    z = ZoneState(zone="Lobby", device_id="d")
+    rnd = random.Random(3)
+    t = 1000.0
+    for _ in range(40):
+        _quiet(z, t, rnd); t += 1
+    z.touch(t, "auto", "macro")                      # radio now spends its time on the BLE census
+    assert z.snapshot(t + 5)["state"] == "empty"     # the last CSI verdict is held briefly
+    z.touch(t + 40, "auto", "macro")
+    s = z.snapshot(t + 40)
+    assert s["state"] == "standby" and not s["csi_active"] and not s["present"]
+    assert z.snapshot(t + 80)["state"] == "offline"  # no contact at all is still offline
+    z.touch(t + 90, "micro", "micro")                # should be measuring but sends no windows: offline
+    assert z.snapshot(t + 120)["state"] == "offline"
+
+
+def test_wide_sweep_learns_each_channel_then_flags_motion():
+    z = ZoneState(zone="Lobby", device_id="d")
+    quiet = lambda ch: {"ch": ch, "n": 30, "all": 80, "rssi": -60, "amp_cv": 0.03, "decorr": 0.02}  # noqa: E731
+    for i in range(6):
+        z.touch(1000 + i, "smart", "macro")
+        z.set_sweep(1000 + i, [quiet(1), quiet(6), {"ch": 11, "n": 2, "all": 5, "rssi": -80, "amp_cv": 0, "decorr": 0}])
+    s = z.snapshot(1006)["sweep"]
+    assert s["measured"] == 2 and s["active"] == 0 and not s["learning"] and s["busiest"] == 1
+    moving = {"ch": 6, "n": 30, "all": 80, "rssi": -60, "amp_cv": 0.22, "decorr": 0.25}
+    z.set_sweep(1010, [quiet(1), moving])
+    s = z.snapshot(1011)["sweep"]
+    assert s["active"] == 1 and [c["ch"] for c in s["channels"] if c["active"]] == [6]
+    assert z.snapshot(1010 + 400)["sweep"] is None                    # stale sweeps are hidden
+
+
+def test_sweep_ingest_keeps_only_channel_features(monkeypatch):
+    monkeypatch.setenv("PRESENCE_INGEST_KEY", "k" * 20)
+    import echo_maps.config as cfg
+    cfg._settings = None
+    from echo_maps.api.app import create_app
+    from echo_maps.api.routes import presence as routes
+    routes._registry.__init__()
+    c = TestClient(create_app())
+    sweep = [{"ch": 6, "n": 30, "all": 80, "rssi": -61, "amp_cv": 0.04, "decorr": 0.03, "mac": "aa:bb:cc:dd:ee:ff"},
+             {"ch": 99, "n": 1, "all": 1}, {"ch": 6, "n": 5, "all": 5}, "junk"]
+    r = c.post("/api/presence/ingest", headers={"X-Device-Key": "k" * 20},
+               json={"device_id": "b1", "zone": "Lobby", "mode": "macro", "sweep": sweep})
+    assert r.status_code == 200
+    ch = routes._registry.snapshots()[0]["sweep"]["channels"]
+    assert [x["ch"] for x in ch] == [6] and "mac" not in ch[0]        # bad/duplicate entries and addresses dropped

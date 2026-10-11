@@ -31,6 +31,28 @@ bool presence_area_at(int i, char *out, size_t n);
 bool presence_areas_refresh(int timeout_ms);
 
 /* Live counters for the LCD / status endpoint. */
+/* Sensing strategy. The ESP32 has one 2.4 GHz radio, so it time-shares it between two jobs:
+ *   micro - fixed channel, continuous high-resolution CSI (presence, breathing)
+ *   macro - CSI and gateway pings off, BLE listening wide and WiFi power-save on: a cheap device census
+ * and four strategies choose between them:
+ *   "micro"  always micro                       "macro"  always macro
+ *   "auto"   45 s micro, then 15 s macro        "smart"  macro until several phones are close, then
+ *                                                        micro until the space has been quiet for a while
+ * The dashboard sets the strategy through the reply to the bridge's upload; it is kept in flash.
+ * Default is "micro", the behaviour of earlier firmware.
+ *
+ * Macro mode also runs a wide sweep every ~20 s: the radio hops across channels 1-13 (about 120 ms
+ * each, then back to the AP's channel) and reduces the CSI of the traffic it hears on each channel
+ * to the same motion features micro mode uses. Transmitter addresses are only used in RAM during a
+ * dwell, to keep one link's frames together; they are never stored or sent.
+ */
+/* True while a wide sweep has deliberately taken the radio off the AP. The WiFi event handler must
+ * not reconnect or count retries then; the sweep rejoins the AP itself when it is done. */
+bool presence_sweep_holds_link(void);
+const char *presence_strategy_get(void);
+const char *presence_mode_get(void);                 /* what the radio is doing right now */
+bool presence_strategy_set(const char *name);        /* false if unknown */
+
 typedef struct {
     uint32_t frames_total;     /* CSI frames received since boot            */
     uint32_t windows_sent;     /* windows accepted by the backend           */
@@ -39,6 +61,10 @@ typedef struct {
     float    last_amp_cv;
     float    last_decorr;
     int      last_rssi;
+    uint8_t  sweep_channels;   /* channels that yielded CSI in the latest wide sweep */
+    uint32_t sweeps_done;      /* wide sweeps completed since boot */
+    const char *strategy;      /* "micro" | "macro" | "auto" | "smart" */
+    const char *mode;          /* "micro" | "macro" */
 } presence_stats_t;
 
 presence_stats_t presence_csi_stats(void);

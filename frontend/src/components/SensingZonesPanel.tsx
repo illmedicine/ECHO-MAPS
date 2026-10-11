@@ -98,8 +98,8 @@ export default function SensingZonesPanel() {
       <div className="space-y-1.5 mb-4">
         {classified.pub.map((r) => {
           const z = liveFor(r.name);
-          const status = !z || z.state === "offline" ? "No live sensor" : z.state === "learning" ? "Calibrating" : z.present ? "Presence detected" : "Clear";
-          const color = !z || z.state === "offline" ? "var(--gh-text-muted)" : z.present ? "#B3261E" : "var(--gh-green)";
+          const status = !z || z.state === "offline" ? "No live sensor" : z.state === "learning" ? "Calibrating" : z.state === "standby" ? "Standby (counting devices)" : z.present ? "Presence detected" : "Clear";
+          const color = !z || z.state === "offline" || z.state === "standby" ? "var(--gh-text-muted)" : z.present ? "#B3261E" : "var(--gh-green)";
           return (
             <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: "var(--gh-card)", border: "1px solid rgba(52,168,83,0.25)" }}>
               <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />

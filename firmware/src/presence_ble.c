@@ -40,6 +40,8 @@ static uint8_t s_salt[16];
 static uint32_t s_salt_at;
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool s_running;
+static volatile bool s_wide;
+static volatile bool s_paused;
 static uint8_t s_own_addr_type;
 
 static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
@@ -110,9 +112,10 @@ static int gap_cb(struct ble_gap_event *ev, void *arg) {
 }
 
 static void start_scan(void) {
+    if (s_paused) return;
     struct ble_gap_disc_params p = {0};
     p.itvl = 160;            /* 100 ms interval ...                              */
-    p.window = 80;           /* ... 50 ms window: leaves air time for WiFi CSI   */
+    p.window = s_wide ? 160 : 80;  /* ... 50 ms window leaves air time for WiFi CSI; 100 ms = continuous */
     p.passive = 1;
     p.filter_duplicates = 0; /* we want repeated RSSI samples                    */
     int rc = ble_gap_disc(s_own_addr_type, BLE_HS_FOREVER, &p, gap_cb, NULL);
@@ -145,6 +148,33 @@ void presence_ble_start(void) {
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.reset_cb = on_reset;
     nimble_port_freertos_init(host_task);
+}
+
+void presence_ble_pause(bool pause) {
+    if (s_paused == pause) return;
+    s_paused = pause;
+    if (!s_running) return;
+    if (pause) ble_gap_disc_cancel();
+    else start_scan();
+}
+
+void presence_ble_set_wide(bool wide) {
+    if (s_wide == wide) return;
+    s_wide = wide;
+    if (!s_running) return;
+    ble_gap_disc_cancel();      /* restart with the new duty; a duplicate start just logs a warning */
+    start_scan();
+}
+
+int presence_ble_crowd(void) {
+    if (!s_running) return -1;
+    uint32_t t = now_ms();
+    int n = 0;
+    taskENTER_CRITICAL(&s_mux);
+    for (int i = 0; i < s_n; i++)
+        if (!s_dev[i].stable && s_dev[i].rssi >= NEAR_RSSI && t - s_dev[i].last_ms <= SEEN_MS) n++;
+    taskEXIT_CRITICAL(&s_mux);
+    return n;
 }
 
 int presence_ble_json(char *out, size_t n) {

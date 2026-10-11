@@ -17,7 +17,7 @@ import type { Environment } from "@/lib/environments";
 import PresenceSpark from "./PresenceSpark";
 import ZoneInsights, { InsightChips } from "./ZoneInsights";
 
-type Status = "present" | "clear" | "learning" | "nosensor" | "unscanned" | "failed";
+type Status = "present" | "clear" | "learning" | "standby" | "nosensor" | "unscanned" | "failed";
 type Filter = "all" | "present" | "clear" | "nosensor";
 
 interface Area {
@@ -42,6 +42,7 @@ const STATUS_STYLE: Record<Status, { label: string; color: string; bg: string }>
   present: { label: "Presence detected", color: "#B3261E", bg: "rgba(234,67,53,0.10)" },
   clear: { label: "Clear", color: "var(--gh-green)", bg: "rgba(52,168,83,0.10)" },
   learning: { label: "Learning baseline", color: "#B8860B", bg: "rgba(251,188,5,0.12)" },
+  standby: { label: "Standby · counting devices", color: "var(--gh-text-muted)", bg: "var(--gh-card)" },
   nosensor: { label: "No live sensor", color: "var(--gh-text-muted)", bg: "var(--gh-card)" },
   unscanned: { label: "Not scanned yet", color: "var(--gh-text-muted)", bg: "var(--gh-card)" },
   failed: { label: "Scan failed", color: "#B3261E", bg: "var(--gh-card)" },
@@ -50,6 +51,7 @@ const STATUS_STYLE: Record<Status, { label: string; color: string; bg: string }>
 function statusOf(z: LiveZone | null): Status {
   if (!z || z.state === "offline") return "nosensor";
   if (z.state === "learning") return "learning";
+  if (z.state === "standby") return "standby";
   return z.present ? "present" : "clear";
 }
 
@@ -192,7 +194,7 @@ export default function PublicAreasView({ rooms, environmentName, onAddArea, onA
           </span>
         </div>
 
-        {r.zone && r.status !== "nosensor" && r.status !== "learning" && (
+        {r.zone && r.status !== "nosensor" && r.status !== "learning" && r.status !== "standby" && (
           <p className="text-[10px] mt-1.5" style={{ color: "var(--gh-text-muted)" }}>
             Confidence {Math.round(r.zone.confidence * 100)}%
             {mode === "auto" && r.zone.age_s !== null ? ` · updated ${Math.round(r.zone.age_s)}s ago` : ""}

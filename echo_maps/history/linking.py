@@ -28,9 +28,14 @@ from dataclasses import dataclass, field
 
 MAX_GAP_S = 10.0          # new id may start up to this long after the old one stops
 MAX_OVERLAP_S = 3.0       # ...or up to this long before (timestamp quantisation)
-MAX_RSSI_DELTA = 15       # dB between the old id's last and the new id's first signal
-UNKNOWN_MFR_GAP_S = 5.0   # tighter limits when a manufacturer cannot confirm the match
-UNKNOWN_MFR_RSSI = 10
+MAX_RSSI_DELTA = 12       # dB between the old id's last and the new id's first signal
+UNKNOWN_MFR_GAP_S = 4.0   # tighter limits when a manufacturer cannot confirm the match
+UNKNOWN_MFR_RSSI = 8
+# When many ids could continue the same one (a crowd rotating at once, or two guests passing each
+# other), signal strength is the only thing telling them apart, so insist on a much closer match
+# rather than letting the nearest-looking stranger be merged in.
+CROWD_CANDIDATES = 4
+CROWD_RSSI = 6
 MIN_SAMPLES = 2           # an id heard once is a blip, not a device
 
 # BLE company ids (Bluetooth SIG assigned numbers) that commonly show up in phones, wearables and
@@ -111,6 +116,7 @@ def link_rotating(rows: list[dict], *, min_samples: int = MIN_SAMPLES) -> list[C
         for ai, a in enumerate(sightings):
             lo = bisect_left(firsts, a["last_seen"] - MAX_OVERLAP_S)
             hi = bisect_right(firsts, a["last_seen"] + MAX_GAP_S)
+            cands: list[tuple[float, int]] = []
             for pos in range(lo, hi):
                 bi = order[pos]
                 if bi == ai:
@@ -120,7 +126,11 @@ def link_rotating(rows: list[dict], *, min_samples: int = MIN_SAMPLES) -> list[C
                     continue                          # b is not a continuation, it is earlier
                 sc = _score(a, b)
                 if sc is not None:
-                    pairs.append((sc, ai, bi))
+                    cands.append((sc, bi))
+            if len(cands) >= CROWD_CANDIDATES:        # crowded handover: only a close signal match counts
+                cands = [(sc, bi) for sc, bi in cands
+                         if abs(a["rssi_last"] - sightings[bi]["rssi_first"]) <= CROWD_RSSI]
+            pairs.extend((sc, ai, bi) for sc, bi in cands)
         pairs.sort(reverse=True)
         succ: dict[int, int] = {}
         has_pred: set[int] = set()
