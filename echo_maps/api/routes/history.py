@@ -125,7 +125,8 @@ async def insights(body: InsightsBody, user: TokenPayload = Depends(get_current_
     else:
         payload = ai_mod.build_payload(built["summary"], built["hourly"], built["areas"], built["observations"], analytics._tz(body.tz))
         try:
-            result = await ai_mod.generate(payload, api_key=cfg.anthropic_api_key, model=cfg.anthropic_model)
+            result = await ai_mod.generate(payload, api_key=cfg.anthropic_api_key, model=cfg.anthropic_model,
+                                           workspace_id=cfg.anthropic_workspace_id)
             result["ai_error"] = None
         except ai_mod.InsightsUnavailable as exc:
             result = {

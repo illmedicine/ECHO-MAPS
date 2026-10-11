@@ -112,7 +112,7 @@ def api_message(exc: Exception) -> str:
 
 # A 400 that is about the account (credits, access, retention) will not be fixed by retrying
 # the request in a simpler shape, so stop and show it.
-_ACCOUNT_WORDS = ("credit", "billing", "plan", "organization", "api key", "permission", "retention", "not available")
+_ACCOUNT_WORDS = ("credit", "billing", "plan", "organization", "workspace", "api key", "permission", "retention", "not available")
 
 
 def parse_json(text: str) -> dict:
@@ -133,10 +133,16 @@ _JSON_ONLY = (
 )
 
 
-async def generate(payload: dict, *, api_key: str, model: str) -> dict:
+def make_client(api_key: str, workspace_id: str = "") -> anthropic.AsyncAnthropic:
+    """A user-linked key (sk-ant-usr-...) is not tied to one workspace, so Anthropic needs to be told which."""
+    headers = {"anthropic-workspace-id": workspace_id} if workspace_id else None
+    return anthropic.AsyncAnthropic(api_key=api_key, timeout=90.0, max_retries=1, default_headers=headers)
+
+
+async def generate(payload: dict, *, api_key: str, model: str, workspace_id: str = "") -> dict:
     if not api_key:
         raise InsightsUnavailable("ANTHROPIC_API_KEY is not set on the server")
-    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=90.0, max_retries=1)
+    client = make_client(api_key, workspace_id.strip())
     user = "Statistics for this period (JSON):\n" + json.dumps(payload, separators=(",", ":"))
     base = dict(model=model, max_tokens=8000, system=SYSTEM_PROMPT)   # adaptive thinking spends part of max_tokens
     structured = dict(base, messages=[{"role": "user", "content": user}],

@@ -25,6 +25,8 @@ services:
         sync: false  # set to the PRESENCE_DEVICE_KEY value in firmware/src/secrets.h
       - key: ANTHROPIC_API_KEY
         sync: false  # Claude API key for AI insights on the History page
+      - key: ANTHROPIC_WORKSPACE_ID
+        sync: false  # only if the key is a user key (sk-ant-usr-...): your workspace id, wrkspc_...
       - key: GOOGLE_CLIENT_ID
         sync: false  # Set manually after deploy
       - key: GOOGLE_CLIENT_SECRET

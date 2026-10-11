@@ -41,3 +41,15 @@ def test_generate_without_a_key_says_so():
     import asyncio
     with pytest.raises(ai.InsightsUnavailable, match="ANTHROPIC_API_KEY"):
         asyncio.run(ai.generate({}, api_key="", model="claude-opus-5-5"))
+
+
+def test_user_keys_send_the_workspace_header_and_workspace_keys_do_not():
+    scoped = ai.make_client("sk-ant-api03-x", "")
+    assert "anthropic-workspace-id" not in {k.lower() for k in scoped.default_headers}
+    user = ai.make_client("sk-ant-usr-x", "wrkspc_123")
+    assert {k.lower(): v for k, v in user.default_headers.items()}["anthropic-workspace-id"] == "wrkspc_123"
+
+
+def test_workspace_error_is_treated_as_an_account_problem():
+    reason = "This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header"
+    assert any(w in reason.lower() for w in ai._ACCOUNT_WORDS)

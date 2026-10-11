@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # every statistic plus rule-based observations.
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-5-5"
+    # Only needed when the API key is a user key that is not scoped to one workspace
+    # (sk-ant-usr-...): Anthropic then wants the workspace id (wrkspc_...) on each request.
+    anthropic_workspace_id: str = ""
     history_retention_days: int = 90
     history_flush_seconds: int = 30
 
