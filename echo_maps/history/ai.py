@@ -98,43 +98,95 @@ def _text(response) -> str:
     return next((b.text for b in response.content if b.type == "text"), "")
 
 
+def api_message(exc: Exception) -> str:
+    """The reason the API gave for rejecting a request (it never contains the key)."""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict) and err.get("message"):
+            return str(err["message"])[:300]
+        if body.get("message"):
+            return str(body["message"])[:300]
+    return str(getattr(exc, "message", exc))[:300]
+
+
+# A 400 that is about the account (credits, access, retention) will not be fixed by retrying
+# the request in a simpler shape, so stop and show it.
+_ACCOUNT_WORDS = ("credit", "billing", "plan", "organization", "api key", "permission", "retention", "not available")
+
+
+def parse_json(text: str) -> dict:
+    """Parse the model's JSON, tolerating prose or code fences around it."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        i, j = text.find("{"), text.rfind("}")
+        if i < 0 or j <= i:
+            raise
+        return json.loads(text[i : j + 1])
+
+
+_JSON_ONLY = (
+    "\n\nReturn ONLY a JSON object, no other text, shaped exactly like: "
+    '{"headline": string, "insights": [{"title": string, "detail": string, "confidence": "low"|"medium"|"high"}], '
+    '"recommendations": [string], "caveats": [string]}'
+)
+
+
 async def generate(payload: dict, *, api_key: str, model: str) -> dict:
     if not api_key:
         raise InsightsUnavailable("ANTHROPIC_API_KEY is not set on the server")
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=90.0, max_retries=1)
-    kwargs = dict(
-        model=model,
-        max_tokens=8000,   # adaptive thinking spends part of this before the answer
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": "Statistics for this period (JSON):\n" + json.dumps(payload, separators=(",", ":"))}],
-        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}},
-    )
+    user = "Statistics for this period (JSON):\n" + json.dumps(payload, separators=(",", ":"))
+    base = dict(model=model, max_tokens=8000, system=SYSTEM_PROMPT)   # adaptive thinking spends part of max_tokens
+    structured = dict(base, messages=[{"role": "user", "content": user}],
+                      output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}})
+    plain = dict(base, messages=[{"role": "user", "content": user + _JSON_ONLY}])
+
+    async def beta_with_fallback():
+        # Preferred: if a safety classifier declines the request, the API re-runs it on a fallback model.
+        return await client.beta.messages.create(
+            betas=["server-side-fallback-2026-07-01"], extra_body={"fallbacks": "default"}, **structured)
+
+    attempts = [
+        ("structured output with refusal fallback", beta_with_fallback),
+        ("structured output", lambda: client.messages.create(**structured)),
+        ("plain JSON request", lambda: client.messages.create(**plain)),
+    ]
+    response = None
+    reason = ""
     try:
-        try:
-            # Preferred: let the API re-run a request on a fallback model if a safety classifier declines it.
-            response = await client.beta.messages.create(
-                betas=["server-side-fallback-2026-07-01"], extra_body={"fallbacks": "default"}, **kwargs
-            )
-        except anthropic.BadRequestError:
-            response = await client.messages.create(**kwargs)    # fallbacks not accepted here: plain request
+        for name, call in attempts:
+            try:
+                response = await call()
+                break
+            except anthropic.BadRequestError as exc:
+                reason = api_message(exc)
+                log.warning("insights_request_rejected", attempt=name, reason=reason)
+                if any(w in reason.lower() for w in _ACCOUNT_WORDS):
+                    break
+        if response is None:
+            raise InsightsUnavailable(f"Anthropic rejected the request (400): {reason}")
     except anthropic.AuthenticationError as exc:
         raise InsightsUnavailable("The Anthropic API key was rejected") from exc
     except anthropic.PermissionDeniedError as exc:
-        raise InsightsUnavailable("The Anthropic API key does not have access to this model") from exc
+        raise InsightsUnavailable(f"The Anthropic API key cannot use this model: {api_message(exc)}") from exc
+    except anthropic.NotFoundError as exc:
+        raise InsightsUnavailable(f"Model '{model}' was not found for this API key: {api_message(exc)}") from exc
     except anthropic.RateLimitError as exc:
         raise InsightsUnavailable("Anthropic rate limit reached; try again shortly") from exc
     except anthropic.APIConnectionError as exc:
         raise InsightsUnavailable("Could not reach the Anthropic API") from exc
     except anthropic.APIStatusError as exc:
-        log.warning("insights_api_error", status=exc.status_code, message=str(exc)[:300])
-        raise InsightsUnavailable(f"Anthropic API error ({exc.status_code})") from exc
+        log.warning("insights_api_error", status=exc.status_code, message=api_message(exc))
+        raise InsightsUnavailable(f"Anthropic API error ({exc.status_code}): {api_message(exc)}") from exc
 
     if response.stop_reason == "refusal":
         raise InsightsUnavailable("The model declined to summarise this data")
     if response.stop_reason == "max_tokens":
         raise InsightsUnavailable("The model ran out of room before finishing")
     try:
-        data = json.loads(_text(response))
+        data = parse_json(_text(response))
     except json.JSONDecodeError as exc:
         raise InsightsUnavailable("The model did not return valid JSON") from exc
 
