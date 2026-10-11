@@ -599,8 +599,8 @@ static bool post_pending(void) {
     char ble[700];
     if (presence_ble_json(ble, sizeof(ble)) > 0) xo += snprintf(extra + xo, sizeof(extra) - xo, "\"ble\":%s,", ble);
     int off = snprintf(body, sizeof(body),
-                       "{\"device_id\":\"%s\",\"zone\":\"%s\",\"bridge_name\":\"%s\",\"ip\":\"%s\",%s\"windows\":[",
-                       get_bridge_device_id(), zone, bname, ip, extra);
+                       "{\"device_id\":\"%s\",\"zone\":\"%s\",\"bridge_name\":\"%s\",\"ip\":\"%s\",\"uptime_s\":%u,%s\"windows\":[",
+                       get_bridge_device_id(), zone, bname, ip, (unsigned)(esp_timer_get_time() / 1000000), extra);
     for (int i = 0; i < s_pending_n && off < (int)sizeof(body) - 160; i++) {
         const window_t *w = &s_pending[i];
         off += snprintf(body + off, sizeof(body) - off,

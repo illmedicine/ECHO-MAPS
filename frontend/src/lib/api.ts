@@ -498,3 +498,82 @@ export function configureBridge(deviceId: string, config: BridgeConfig): Promise
 export function getLivePresence(): Promise<LivePresenceResponse> {
   return request<LivePresenceResponse>("/api/presence/zones");
 }
+
+// ── History & AI insights ──
+
+export interface HistoryRange { low: number; high: number; estimate: number; confidence: "low" | "medium" | "high"; basis: string[] }
+
+export interface HistorySummary {
+  window: { start: number; end: number; hours: number; data_minutes: number; coverage: number; first_data: number | null; last_data: number | null; tz: string };
+  devices: HistoryRange & {
+    stable: number; rotating_ids: number; linked: number; rotating_devices: number; fixtures: number; peak_nearby: number;
+    by_manufacturer: { name: string; count: number }[];
+  };
+  people: HistoryRange;
+  guests: { estimate: number; regulars: number; recurring_devices: number; basis: string[] };
+  pets: HistoryRange;
+  visits: { count: number; occupied_minutes: number; occupied_pct: number; median_dwell_s: number; mean_dwell_s: number; longest_s: number };
+}
+
+export interface HistoryHour { t: number; occupied_pct: number; devices_max: number; people_max: number; pets_max: number; minutes: number }
+export interface HistoryArea { area: string; minutes: number; occupied_pct: number; devices_peak: number; people_peak: number; pets_peak: number }
+export interface HistoryObservation { title: string; detail: string; confidence: "low" | "medium" | "high" }
+
+export interface HistoryReport {
+  summary: HistorySummary;
+  hourly: HistoryHour[];
+  areas: HistoryArea[];
+  observations: HistoryObservation[];
+  bridge: { device_id: string | null; uptime_s: number | null; recording_since: number | null };
+  range: string;
+}
+
+export interface HistoryStatus {
+  server_time: number;
+  /** "database" survives restarts; "memory" is lost when the server restarts. */
+  persistence: "database" | "memory";
+  last_error: string | null;
+  ai_configured: boolean;
+  ai_model: string | null;
+  recording_since: number | null;
+  retention_days: number;
+}
+
+export interface HistoryInsights {
+  source: "ai" | "rules";
+  model?: string | null;
+  headline: string;
+  insights: HistoryObservation[];
+  recommendations: string[];
+  caveats: string[];
+  ai_error: string | null;
+  generated_at: number;
+  cached: boolean;
+}
+
+export type HistoryRangeKey = "1h" | "6h" | "24h" | "7d" | "30d" | "boot";
+
+export interface HistoryQuery { deviceId?: string; range: HistoryRangeKey; tz?: string }
+
+function historyParams(q: HistoryQuery): string {
+  const p = new URLSearchParams({ range: q.range });
+  if (q.deviceId) p.set("device_id", q.deviceId);
+  if (q.tz) p.set("tz", q.tz);
+  return p.toString();
+}
+
+export function getHistoryStatus(): Promise<HistoryStatus> {
+  return request<HistoryStatus>("/api/history/status");
+}
+
+export function getHistoryReport(q: HistoryQuery): Promise<HistoryReport> {
+  return request<HistoryReport>(`/api/history/report?${historyParams(q)}`);
+}
+
+/** Claude-written insights for the same period. Only aggregated, anonymous statistics are sent. */
+export function getHistoryInsights(q: HistoryQuery, refresh = false): Promise<HistoryInsights> {
+  return request<HistoryInsights>("/api/history/insights", {
+    method: "POST",
+    body: JSON.stringify({ device_id: q.deviceId ?? null, range: q.range, tz: q.tz ?? null, refresh }),
+  });
+}

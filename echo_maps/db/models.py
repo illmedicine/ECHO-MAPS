@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Self
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, select, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, select, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -204,3 +204,71 @@ class BridgeDeviceRecord(Base):
             select(cls).where(cls.user_id == uuid.UUID(user_id)).order_by(cls.last_seen.desc())
         )
         return list(result.scalars().all())
+
+
+# ── Presence history ──
+# Anonymous, aggregated sensing history. Nothing here identifies a person or a real
+# device address: BLE ids are the bridge's salted/truncated hashes (rotated daily).
+
+
+class PresenceBucketRow(Base):
+    """One row per bridge per minute: how occupied the area was and what was nearby."""
+    __tablename__ = "presence_buckets"
+
+    device_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ts: Mapped[int] = mapped_column(BigInteger, primary_key=True)  # minute start, unix seconds
+    area: Mapped[str] = mapped_column(String(63), default="")
+    bridge_name: Mapped[str] = mapped_column(String(63), default="")
+    samples: Mapped[int] = mapped_column(Integer, default=0)
+    present_samples: Mapped[int] = mapped_column(Integer, default=0)
+    ratio_sum: Mapped[float] = mapped_column(Float, default=0.0)
+    ratio_max: Mapped[float] = mapped_column(Float, default=0.0)
+    people_max: Mapped[int] = mapped_column(Integer, default=0)
+    pets_max: Mapped[int] = mapped_column(Integer, default=0)
+    ble_count_max: Mapped[int] = mapped_column(Integer, default=0)
+    ble_near_max: Mapped[int] = mapped_column(Integer, default=0)
+    ble_stable_max: Mapped[int] = mapped_column(Integer, default=0)
+    ble_persist_max: Mapped[int] = mapped_column(Integer, default=0)
+
+    __table_args__ = (Index("ix_presence_buckets_ts", "ts"),)
+
+
+class BleSightingRow(Base):
+    """One anonymised BLE id as heard by one bridge during one salt epoch."""
+    __tablename__ = "ble_sightings"
+
+    device_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ble_id: Mapped[str] = mapped_column(String(6), primary_key=True)
+    epoch: Mapped[int] = mapped_column(BigInteger, primary_key=True)  # salt epoch the id is valid in
+    area: Mapped[str] = mapped_column(String(63), default="")
+    first_seen: Mapped[int] = mapped_column(BigInteger, default=0)
+    last_seen: Mapped[int] = mapped_column(BigInteger, default=0)
+    visits: Mapped[int] = mapped_column(Integer, default=1)        # separate stays (gap > 5 min)
+    seconds: Mapped[int] = mapped_column(Integer, default=0)       # time heard
+    samples: Mapped[int] = mapped_column(Integer, default=0)
+    near_samples: Mapped[int] = mapped_column(Integer, default=0)  # samples at or above the near RSSI
+    rssi_max: Mapped[int] = mapped_column(Integer, default=-127)
+    rssi_first: Mapped[int] = mapped_column(Integer, default=-127)
+    rssi_last: Mapped[int] = mapped_column(Integer, default=-127)
+    rotating: Mapped[bool] = mapped_column(Boolean, default=False)   # private/rotating address
+    persistent: Mapped[bool] = mapped_column(Boolean, default=False)
+    mfr: Mapped[str] = mapped_column(String(4), default="")          # BLE company id (hex), if advertised
+
+    __table_args__ = (Index("ix_ble_sightings_last_seen", "last_seen"),)
+
+
+class SignatureEpisodeRow(Base):
+    """A breathing signature that persisted: one person-like or pet-like occupant."""
+    __tablename__ = "signature_episodes"
+
+    device_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(8), primary_key=True)     # "slower" | "faster"
+    first_seen: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    area: Mapped[str] = mapped_column(String(63), default="")
+    last_seen: Mapped[int] = mapped_column(BigInteger, default=0)
+    bpm_mean: Mapped[float] = mapped_column(Float, default=0.0)
+    snr_mean: Mapped[float] = mapped_column(Float, default=0.0)
+    readings: Mapped[int] = mapped_column(Integer, default=0)
+
+    __table_args__ = (Index("ix_signature_episodes_last_seen", "last_seen"),)
+

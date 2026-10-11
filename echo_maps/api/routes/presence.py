@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from echo_maps.api.deps import TokenPayload, get_current_user
 from echo_maps.config import get_settings
 from echo_maps.csi.presence import PresenceRegistry
+from echo_maps.history.store import service as history
 
 router = APIRouter()
 _registry = PresenceRegistry()
@@ -44,6 +45,7 @@ class IngestBody(BaseModel):
     zone: str = Field(min_length=1, max_length=63)  # the public area this bridge monitors
     bridge_name: str = Field(default="", max_length=63)  # label for the device itself
     ip: str = Field(default="", max_length=45)  # bridge's LAN address, for its local setup page
+    uptime_s: float | None = Field(default=None, ge=0, le=1e9)  # seconds since the bridge booted
     # Optional extras are parsed leniently (see _parse_*): a malformed extra must never
     # cost us the presence windows in the same request.
     breathing: dict | None = None
@@ -73,6 +75,7 @@ _desired: dict[str, dict[str, str]] = {}
 
 
 _BLE_ID = re.compile(r"^[0-9a-f]{6}$")
+_BLE_MFR = re.compile(r"^[0-9a-f]{4}$")   # Bluetooth SIG company id from the advertisement
 
 
 def _num(v: object, lo: float, hi: float) -> float | None:
@@ -106,13 +109,20 @@ def _parse_ble(raw: dict | None) -> dict | None:
     if any(v is None for v in counts.values()):
         return None
     devices = []
-    for d in (raw.get("devices") or [])[:8]:
+    for d in (raw.get("devices") or [])[:12]:
         if not isinstance(d, dict) or not _BLE_ID.match(str(d.get("id", ""))):
             continue
         rssi, age = _num(d.get("rssi"), -127, 20), _num(d.get("age"), 0, 86400)
         if rssi is None or age is None:
             continue
-        devices.append({"id": d["id"], "rssi": int(rssi), "t": 1 if d.get("t") else 0, "p": 1 if d.get("p") else 0, "age": int(age)})
+        dev = {"id": d["id"], "rssi": int(rssi), "t": 1 if d.get("t") else 0, "p": 1 if d.get("p") else 0, "age": int(age)}
+        mfr = str(d.get("m", "")).lower()
+        if _BLE_MFR.match(mfr):
+            dev["m"] = mfr
+        fa = _num(d.get("fa"), 0, 86400)      # seconds since this id was first heard
+        if fa is not None:
+            dev["fa"] = int(fa)
+        devices.append(dev)
     return {**{k: int(v) for k, v in counts.items()}, "devices": devices}  # type: ignore[arg-type]
 
 
@@ -142,6 +152,14 @@ async def ingest(body: IngestBody, x_device_key: str | None = Header(default=Non
     for w in body.windows:
         ts = w.ts if w.ts and abs(w.ts - now) < 3600 else now  # ESP32 may have no RTC
         zone.update(ts, w.n, w.rssi_mean, w.rssi_std, w.amp_cv, w.decorr)
+    try:   # history must never cost the bridge its presence upload
+        history.recorder.observe(
+            device_id=body.device_id, area=body.zone, bridge_name=body.bridge_name, ts=now,
+            present=zone.present, ratio=max(zone.ratio, 0.0),
+            signatures=zone.breathing_snapshot(now)["signatures"], ble=ble, uptime_s=body.uptime_s,
+        )
+    except Exception:
+        pass
     resp: dict = {"status": "ok", "state": zone.snapshot()["state"]}
     want = _desired.get(body.device_id)
     if want:

@@ -9,7 +9,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from echo_maps.api.routes import auth, bridge, environments, health, presence
+from echo_maps.api.routes import auth, bridge, environments, health, history, presence
 from echo_maps.api.routes import settings as settings_routes
 from echo_maps.config import get_settings
 from echo_maps.db.session import init_db, close_db, create_tables, get_session
@@ -30,8 +30,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info("db_ready", msg="Database connected")
     except Exception as exc:
         log.warning("db_init_skipped", error=str(exc), msg="Database not available — running in demo mode")
+    from echo_maps.history.store import service as history_service
+    history_task = asyncio.create_task(history_service.run(settings.history_flush_seconds, settings.history_retention_days))
     log.info("app_ready", msg="Echo Maps API ready to serve requests")
     yield
+    history_task.cancel()
+    try:
+        await history_service.flush()          # do not lose the last few seconds on a clean shutdown
+    except Exception:
+        pass
     try:
         await close_db()
     except Exception:
@@ -91,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(environments.router, prefix="/api/environments", tags=["environments"])
     app.include_router(bridge.router, prefix="/api/bridge", tags=["bridge"])
     app.include_router(presence.router, prefix="/api/presence", tags=["presence"])
+    app.include_router(history.router, prefix="/api/history", tags=["history"])
     app.include_router(settings_routes.router, prefix="/api", tags=["settings"])
 
     return app

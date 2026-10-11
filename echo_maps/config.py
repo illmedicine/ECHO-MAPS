@@ -30,10 +30,18 @@ class Settings(BaseSettings):
     # ── Database ──
     database_url: str = "postgresql+asyncpg://echo:echo@localhost:5432/echo_maps"
 
-    # ── Milvus ──
     # Shared secret the ESP32 bridge sends as X-Device-Key to /api/presence/ingest
     presence_ingest_key: str = ""
 
+    # ── History & AI insights ──
+    # Claude API key for the AI insights narrative. Without it the dashboard still shows
+    # every statistic plus rule-based observations.
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-opus-5-5"
+    history_retention_days: int = 90
+    history_flush_seconds: int = 30
+
+    # ── Milvus ──
     milvus_host: str = "localhost"
     milvus_port: int = 19530
     milvus_collection: str = "rf_signatures"

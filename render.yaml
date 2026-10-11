@@ -23,6 +23,8 @@ services:
         value: "10000"
       - key: PRESENCE_INGEST_KEY
         sync: false  # set to the PRESENCE_DEVICE_KEY value in firmware/src/secrets.h
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Claude API key for AI insights on the History page
       - key: GOOGLE_CLIENT_ID
         sync: false  # Set manually after deploy
       - key: GOOGLE_CLIENT_SECRET

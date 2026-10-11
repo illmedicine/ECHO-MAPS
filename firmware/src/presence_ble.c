@@ -24,12 +24,13 @@ static const char *TAG = "presence-ble";
 #define PERSIST_MS      (10u * 60 * 1000) /* same id continuously heard for 10 min */
 #define SALT_ROTATE_MS  (24u * 3600 * 1000)
 #define NEAR_RSSI       (-70)             /* roughly within a few metres */
-#define TOP_N           6
+#define TOP_N           8
 
 typedef struct {
     uint8_t  id[3];      /* first 3 bytes of the salted hash */
     uint8_t  stable;     /* 1 = address is a fixed identity (public / static random) */
     int8_t   rssi;       /* smoothed */
+    uint16_t mfr;        /* Bluetooth SIG company id from the advertisement (0 = not advertised) */
     uint32_t first_ms, last_ms;
 } dev_t;
 
@@ -43,7 +44,7 @@ static uint8_t s_own_addr_type;
 
 static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 
-static void note_device(const uint8_t *addr, uint8_t type, int rssi) {
+static void note_device(const uint8_t *addr, uint8_t type, int rssi, uint16_t mfr) {
     uint8_t in[16 + 6 + 1], digest[32];
     memcpy(in, s_salt, 16);
     memcpy(in + 16, addr, 6);
@@ -73,9 +74,11 @@ static void note_device(const uint8_t *addr, uint8_t type, int rssi) {
         memcpy(s_dev[idx].id, digest, 3);
         s_dev[idx].stable = stable;
         s_dev[idx].rssi = r;
+        s_dev[idx].mfr = mfr;
         s_dev[idx].first_ms = t;
     } else {
         s_dev[idx].rssi = (int8_t)((s_dev[idx].rssi * 3 + r) / 4);
+        if (mfr) s_dev[idx].mfr = mfr;     /* learned from a later packet */
     }
     s_dev[idx].last_ms = t;
     taskEXIT_CRITICAL(&s_mux);
@@ -86,7 +89,16 @@ static void start_scan(void);
 static int gap_cb(struct ble_gap_event *ev, void *arg) {
     switch (ev->type) {
     case BLE_GAP_EVENT_DISC:
-        note_device(ev->disc.addr.val, ev->disc.addr.type, ev->disc.rssi);
+    {
+        /* The manufacturer's company id sits at the start of the manufacturer-specific data and,
+         * unlike a private address, stays the same when the address rotates. It identifies a vendor
+         * (Apple, Samsung, ...), not a person or a device. */
+        uint16_t mfr = 0;
+        struct ble_hs_adv_fields f;
+        if (ble_hs_adv_parse_fields(&f, ev->disc.data, ev->disc.length_data) == 0 && f.mfg_data && f.mfg_data_len >= 2)
+            mfr = (uint16_t)(f.mfg_data[0] | (f.mfg_data[1] << 8));
+        note_device(ev->disc.addr.val, ev->disc.addr.type, ev->disc.rssi, mfr);
+    }
         break;
     case BLE_GAP_EVENT_DISC_COMPLETE:
         start_scan();
@@ -175,9 +187,14 @@ int presence_ble_json(char *out, size_t n) {
                        seen, near_n, persistent, stable);
     for (int k = 0; k < ntop && off < (int)n - 80; k++) {
         const dev_t *d = &snap[top[k]];
-        off += snprintf(out + off, n - off, "%s{\"id\":\"%02x%02x%02x\",\"rssi\":%d,\"t\":%d,\"p\":%d,\"age\":%u}",
+        /* "fa" = seconds since this id was first heard; with "age" (seconds since last heard) the
+         * backend can see exactly when one rotating id stops and the next one starts. */
+        off += snprintf(out + off, n - off, "%s{\"id\":\"%02x%02x%02x\",\"rssi\":%d,\"t\":%d,\"p\":%d,\"age\":%u,\"fa\":%u",
                         k ? "," : "", d->id[0], d->id[1], d->id[2], d->rssi, d->stable ? 0 : 1,
-                        (t - d->first_ms >= PERSIST_MS) ? 1 : 0, (unsigned)((t - d->last_ms) / 1000));
+                        (t - d->first_ms >= PERSIST_MS) ? 1 : 0, (unsigned)((t - d->last_ms) / 1000),
+                        (unsigned)((t - d->first_ms) / 1000));
+        if (d->mfr) off += snprintf(out + off, n - off, ",\"m\":\"%04x\"", d->mfr);
+        off += snprintf(out + off, n - off, "}");
     }
     off += snprintf(out + off, n - off, "]}");
     return off;
