@@ -8,6 +8,7 @@
  */
 
 const EFFECTIVE_DATE = "October 7, 2026";
+import Link from "next/link";
 import { CompanyFooter } from "@/components/CompanyLink";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -24,7 +25,7 @@ export default function PrivacyPolicyPage() {
     <main className="min-h-screen" style={{ backgroundColor: "var(--gh-bg)", color: "var(--gh-text)" }}>
       <div className="max-w-3xl mx-auto px-4 md:px-6 py-10">
         <div className="mb-8">
-          <a href="/" className="text-sm hover:underline" style={{ color: "var(--gh-blue)" }}>← Echo Vue</a>
+          <Link href="/" className="text-sm hover:underline" style={{ color: "var(--gh-blue)" }}>← Echo Vue</Link>
           <h1 className="text-2xl md:text-3xl font-bold mt-3">Privacy &amp; Sensing Policy</h1>
           <p className="text-sm mt-1" style={{ color: "var(--gh-text-muted)" }}>Effective {EFFECTIVE_DATE}</p>
         </div>

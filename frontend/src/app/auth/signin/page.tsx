@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { CompanyFooter, LogoLink } from "@/components/CompanyLink";
 import { hasValidSession, isBackendConfigured, verifyGoogleToken } from "@/lib/api";
 
@@ -161,13 +162,13 @@ export default function SignInPage() {
           </p>
         </div>
 
-        <a
+        <Link
           href="/"
           className="mt-8 inline-block text-sm transition hover:opacity-80"
           style={{ color: "var(--gh-text-muted)" }}
         >
           &larr; Back to home
-        </a>
+        </Link>
         <CompanyFooter />
       </div>
     </main>
