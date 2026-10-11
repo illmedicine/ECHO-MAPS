@@ -36,9 +36,7 @@ export function CompanyFooter({ tone = "light" }: { tone?: "light" | "dark" }) {
   return (
     <footer className="py-6 text-center text-xs" style={{ color: dark ? "#71717a" : "var(--gh-text-muted)" }}>
       Echo Vue by{" "}
-      <CompanyLink className="underline hover:no-underline" style={{ color: dark ? "#a1a1aa" : "var(--gh-blue)" }} />
-      <span aria-hidden> · </span>
-      <CompanyLink className="hover:underline" style={{ color: dark ? "#a1a1aa" : "var(--gh-blue)" }}>illyrobotic-ai.com</CompanyLink>
+      <CompanyLink className="hover:underline" style={{ color: dark ? "#a1a1aa" : "var(--gh-blue)" }} />
     </footer>
   );
 }
