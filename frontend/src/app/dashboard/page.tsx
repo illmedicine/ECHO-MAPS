@@ -279,8 +279,15 @@ export default function DashboardPage() {
 
       {/* Sidebar — always visible on md+, slide-out drawer on mobile */}
       <aside className={`w-72 md:w-64 border-r flex flex-col fixed md:static inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`} style={{ borderColor: "var(--gh-border)", backgroundColor: "var(--gh-surface)" }}>
-        <div className="p-4 flex items-center justify-center">
-          <LogoLink><Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotic Instruments" width={306} height={306} unoptimized style={{ background: "transparent" }} /></LogoLink>
+        <div className="px-5 pt-5 pb-3">
+          <Link href="/" className="flex items-center gap-2.5" aria-label="Echo Vue home">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${basePath}/favicon.svg`} alt="" width={30} height={30} />
+            <span className="leading-none">
+              <span className="block font-display text-xl font-bold">Echo Vue</span>
+              <span className="block kicker mt-1" style={{ color: "var(--gh-text-muted)", fontSize: 9 }}>by Illy Robotic Instruments</span>
+            </span>
+          </Link>
         </div>
 
         {/* Environments list */}
@@ -378,7 +385,7 @@ export default function DashboardPage() {
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
             </button>
             <div>
-            <h1 className="text-lg md:text-xl font-semibold">
+            <h1 className="app-title text-xl md:text-2xl">
               {activeTab === "spaces" ? (selectedEnv ? `${selectedEnv.emoji ?? ENV_ICONS[selectedEnv.category] ?? "📍"} ${selectedEnv.name}` : "Select an Environment")
                 : activeTab === "automations" ? "⚡ Automations"
                 : "👤 Presence Detection"}

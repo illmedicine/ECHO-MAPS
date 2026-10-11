@@ -1,0 +1,64 @@
+/* Echo Vue design system: editorial (serif display, spaced kickers, deep-ink hero) on top of the
+   existing app tokens in globals.css. Marketing and app pages share these. */
+
+:root {
+  --ink: #0b1220;
+  --ink-2: #0f172a;
+  --ink-3: #1e3a5f;
+  --font-serif: Georgia, "Times New Roman", "Iowan Old Style", serif;
+}
+
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+:focus-visible { outline: 2px solid var(--gh-blue); outline-offset: 2px; border-radius: 6px; }
+
+/* Type */
+.font-display { font-family: var(--font-serif); letter-spacing: -0.015em; }
+.font-prose { font-family: var(--font-serif); }
+.kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; }
+
+/* Surfaces */
+.hero-ink { background: radial-gradient(120% 90% at 20% 0%, var(--ink-3) 0%, var(--ink-2) 55%, #070b14 100%); }
+.band-ink { background: linear-gradient(135deg, var(--ink-2) 0%, var(--ink-3) 100%); }
+.page-wrap { max-width: 72rem; margin: 0 auto; padding-left: 1.25rem; padding-right: 1.25rem; }
+@media (min-width: 768px) { .page-wrap { padding-left: 1.5rem; padding-right: 1.5rem; } }
+
+/* Buttons: pill, high contrast, comfortable tap target */
+.btn-pill {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: 2.75rem; padding: 0.7rem 1.5rem; border-radius: 9999px;
+  font-size: 0.95rem; font-weight: 600; line-height: 1.1; text-align: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+.btn-pill:hover { transform: translateY(-1px); }
+.btn-pill-white { background: #fff; color: var(--ink); }
+.btn-pill-white:hover { box-shadow: 0 8px 24px rgba(255, 255, 255, 0.18); }
+.btn-pill-blue { background: var(--gh-blue); color: #fff; }
+.btn-pill-blue:hover { box-shadow: 0 8px 24px rgba(66, 133, 244, 0.35); }
+.btn-pill-ink { background: var(--ink); color: #fff; }
+.btn-pill-ink:hover { box-shadow: 0 8px 24px rgba(11, 18, 32, 0.25); }
+.btn-pill-ghost-dark { border: 1px solid rgba(255, 255, 255, 0.3); color: #e2e8f0; }
+.btn-pill-ghost-dark:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.5); }
+.btn-pill-line { border: 1px solid var(--gh-border); color: var(--gh-text); background: var(--gh-surface); }
+.btn-pill-line:hover { border-color: var(--gh-text-muted); }
+
+/* Cards */
+.card-edit {
+  background: var(--gh-surface); border: 1px solid var(--gh-border); border-radius: 1.25rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card-edit:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08); border-color: #cfd6e6; }
+
+/* App polish: the dashboard and inner pages pick these up through the shared classes */
+.btn-primary { background: var(--gh-blue); border-radius: 0.75rem; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
+.btn-primary:hover { opacity: 1; background: #3a78e0; box-shadow: 0 6px 18px rgba(66, 133, 244, 0.28); }
+.device-card, .card-app { border-radius: 1.1rem; }
+.sidebar-item { border-radius: 0.75rem; }
+
+/* App page header (dashboard inner pages) */
+.app-title { font-family: var(--font-serif); font-weight: 700; letter-spacing: -0.015em; }

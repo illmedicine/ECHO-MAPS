@@ -114,7 +114,7 @@ export default function SignInPage() {
           shape: "rectangular",
           text: "signin_with",
           logo_alignment: "left",
-          width: 320,
+          width: Math.min(320, Math.max(200, Math.floor(buttonDiv.parentElement?.clientWidth ?? 320))),
         });
       }
     };
@@ -127,50 +127,68 @@ export default function SignInPage() {
 
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
+  const muted = { color: "var(--gh-text-muted)" } as const;
+  const mark = (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={`${basePath}/favicon.svg`} alt="" width={30} height={30} />
+      <span className="font-display text-xl font-bold">Echo Vue</span>
+    </>
+  );
+
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: "var(--gh-bg)" }}>
-      <div className="max-w-md w-full text-center">
-        {/* Logo */}
-        <div className="flex justify-center mb-8">
-          <LogoLink><Image src={`${basePath}/logo.png`} alt="Echo Vue by Illy Robotics" width={374} height={374} unoptimized style={{ background: "transparent" }} /></LogoLink>
-        </div>
-
-        <div className="p-8 rounded-2xl shadow-sm" style={{ backgroundColor: "var(--gh-surface)", border: "1px solid var(--gh-border)" }}>
-          <h2 className="text-xl font-semibold mb-6">Sign in to continue</h2>
-          {expired && (
-            <p className="text-sm mb-5 p-3 rounded-lg" style={{ backgroundColor: "rgba(251,188,5,0.12)", color: "#8a6d00" }} role="status">
-              Your session expired. Sign in again to reload live data. Your rooms and settings are kept.
-            </p>
-          )}
-
-          {!GOOGLE_CLIENT_ID ? (
-            <div className="text-sm p-4 rounded-xl" style={{ backgroundColor: "rgba(245,197,66,0.08)", color: "var(--gh-yellow)" }}>
-              <p className="font-semibold mb-1">OAuth not configured</p>
-              <p>
-                Set <code>NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> in your environment
-                to enable Google Sign-In.
-              </p>
-            </div>
-          ) : (
-            <div className="flex justify-center">
-              <div id="google-signin-button" />
-            </div>
-          )}
-
-          <p className="mt-6 text-sm" style={{ color: "var(--gh-text-muted)" }}>
-            No cameras. No wearables. Pure WiFi sensing.
+    <main className="min-h-screen grid lg:grid-cols-[1.1fr_1fr]" style={{ backgroundColor: "var(--gh-bg)", color: "var(--gh-text)" }}>
+      {/* Editorial panel (desktop) */}
+      <section className="hero-ink hidden lg:flex flex-col justify-between p-12 xl:p-16">
+        <Link href="/" className="flex items-center gap-2.5 text-white w-fit">{mark}</Link>
+        <div>
+          <p className="kicker mb-4" style={{ color: "#93b8f7" }}>Sign in</p>
+          <h1 className="font-display text-5xl xl:text-6xl font-bold leading-[1.05]" style={{ color: "#f8fafc" }}>See how your space is used.</h1>
+          <p className="font-prose mt-5 text-lg max-w-md leading-snug" style={{ color: "#cbd5e1" }}>
+            Live occupancy for hallways, lobbies and other public areas. No cameras, no wearables, nothing that identifies a guest.
           </p>
         </div>
+        <p className="text-xs" style={{ color: "#94a3b8" }}>Presence, never identity.</p>
+      </section>
 
-        <Link
-          href="/"
-          className="mt-8 inline-block text-sm transition hover:opacity-80"
-          style={{ color: "var(--gh-text-muted)" }}
-        >
-          &larr; Back to home
-        </Link>
-        <CompanyFooter />
-      </div>
+      {/* Sign-in card */}
+      <section className="flex flex-col items-center justify-center px-5 py-10 sm:p-10">
+        <div className="w-full max-w-md">
+          <Link href="/" className="lg:hidden flex items-center justify-center gap-2.5 mb-8">{mark}</Link>
+
+          <div className="card-edit p-7 sm:p-9" style={{ transform: "none" }}>
+            <h2 className="font-display text-3xl font-bold">Sign in to continue</h2>
+            <p className="text-sm mt-2" style={muted}>Use your Google account. Your rooms and settings stay where you left them.</p>
+
+            {expired && (
+              <p className="text-sm mt-5 p-3 rounded-lg" style={{ backgroundColor: "rgba(251,188,5,0.12)", color: "#8a6d00" }} role="status">
+                Your session expired. Sign in again to reload live data. Your rooms and settings are kept.
+              </p>
+            )}
+
+            {!GOOGLE_CLIENT_ID ? (
+              <div className="text-sm mt-6 p-4 rounded-xl" style={{ backgroundColor: "rgba(245,197,66,0.12)", color: "#8a6d00" }}>
+                <p className="font-semibold mb-1">OAuth not configured</p>
+                <p>
+                  Set <code>NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> in your environment
+                  to enable Google Sign-In.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-7 flex justify-center">
+                <div id="google-signin-button" />
+              </div>
+            )}
+
+            <p className="mt-7 text-xs text-center" style={muted}>No cameras. No wearables. Pure WiFi sensing.</p>
+          </div>
+
+          <div className="mt-6 flex items-center justify-center gap-5 text-sm" style={muted}>
+            <Link href="/" className="hover:underline">&larr; Back to home</Link>
+            <Link href="/privacy" className="hover:underline">Privacy</Link>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

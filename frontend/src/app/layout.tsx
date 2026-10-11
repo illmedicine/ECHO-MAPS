@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./design.css";
 import ChunkErrorRecover from "@/components/ChunkErrorRecover";
 
 export const metadata: Metadata = {
@@ -15,7 +16,6 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   return (
     <html lang="en">
       <head>
@@ -24,31 +24,6 @@ export default function RootLayout({
       <body>
         <ChunkErrorRecover />
         <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
-        {/* XL transparent logo watermark */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            pointerEvents: "none",
-            zIndex: 9999,
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`${basePath}/logo.png`}
-            alt=""
-            style={{
-              width: "min(90vw, 90vh)",
-              height: "min(90vw, 90vh)",
-              opacity: 0.045,
-              userSelect: "none",
-            }}
-          />
-        </div>
       </body>
     </html>
   );

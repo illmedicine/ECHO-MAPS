@@ -8,6 +8,7 @@
  */
 
 import Link from "next/link";
+import AppPageHeader from "@/components/site/AppPageHeader";
 import dynamic from "next/dynamic";
 import { CompanyFooter } from "@/components/CompanyLink";
 
@@ -17,17 +18,7 @@ export default function HistoryPage() {
   return (
     <main className="min-h-screen" style={{ backgroundColor: "var(--gh-bg)", color: "var(--gh-text)" }}>
       <div className="max-w-5xl mx-auto p-4 md:p-8">
-        <div className="mb-6">
-          <div className="flex items-center gap-2 text-sm mb-2" style={{ color: "var(--gh-text-muted)" }}>
-            <Link href="/dashboard" className="hover:underline">Dashboard</Link>
-            <span>/</span>
-            <span style={{ color: "var(--gh-text)" }}>History &amp; Insights</span>
-          </div>
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">📈 History &amp; Insights</h1>
-          <p className="mt-1 text-sm md:text-base" style={{ color: "var(--gh-text-muted)" }}>
-            Estimated people, devices and pets that passed through an area over time, and what the pattern suggests.
-          </p>
-        </div>
+        <AppPageHeader crumb="History &amp; Insights" kicker="History &amp; insights" title={"History & Insights"} subtitle="Estimated people, devices and pets that passed through an area over time, and what the pattern suggests." />
         <HistoryInsights />
         <CompanyFooter />
       </div>

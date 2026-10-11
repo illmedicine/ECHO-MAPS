@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { COMPANY_URL, CompanyFooter, CompanyLink } from "@/components/CompanyLink";
+import SiteHeader from "@/components/site/SiteHeader";
+import SiteFooter from "@/components/site/SiteFooter";
 import SessionLink from "@/components/SessionLink";
 import { InstrumentsSketch, JourneyMapSketch, MapSketch, PrototypeSketch, SkeletonSketch } from "@/components/marketing/DaVinciSketches";
 import ActivityCalendar, { type Release } from "@/components/marketing/ActivityCalendar";
@@ -90,13 +92,7 @@ const MAP: { feature: string; then: string; now: string; why: string }[] = [
 export default function ResearchPage() {
   return (
     <main className="min-h-screen" style={{ backgroundColor: "var(--gh-bg)", color: "var(--gh-text)" }}>
-      <nav className="sticky top-0 z-40 border-b backdrop-blur-md" style={{ backgroundColor: "rgba(248,249,252,0.92)", borderColor: "var(--gh-border)" }}>
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-          <SessionLink signedOut={{ href: "/", label: "← Echo Vue" }} signedIn={{ href: "/dashboard", label: "← Dashboard" }} className="text-sm transition hover:opacity-80" style={muted} />
-          <span className="text-[11px] font-bold tracking-[0.28em] uppercase hidden sm:block">Echo Vue <span style={muted}>· The Evolution Issue</span></span>
-          <Link href="/case-study" className="text-xs hover:underline" style={{ color: "var(--gh-blue)" }}>Read the M6 Case Study →</Link>
-        </div>
-      </nav>
+      <SiteHeader />
 
       {/* ── Cover ── */}
       <header style={{ background: "radial-gradient(120% 90% at 20% 0%, #1e3a5f 0%, #0f172a 55%, #070b14 100%)" }}>
@@ -349,7 +345,7 @@ export default function ResearchPage() {
         </section>
       </article>
 
-      <CompanyFooter />
+      <SiteFooter />
     </main>
   );
 }

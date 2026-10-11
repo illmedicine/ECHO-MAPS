@@ -9,7 +9,8 @@
 
 const EFFECTIVE_DATE = "October 7, 2026";
 import Link from "next/link";
-import { CompanyFooter } from "@/components/CompanyLink";
+import SiteHeader from "@/components/site/SiteHeader";
+import SiteFooter from "@/components/site/SiteFooter";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -22,11 +23,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="min-h-screen" style={{ backgroundColor: "var(--gh-bg)", color: "var(--gh-text)" }}>
-      <div className="max-w-3xl mx-auto px-4 md:px-6 py-10">
-        <div className="mb-8">
-          <Link href="/" className="text-sm hover:underline" style={{ color: "var(--gh-blue)" }}>← Echo Vue</Link>
-          <h1 className="text-2xl md:text-3xl font-bold mt-3">Privacy &amp; Sensing Policy</h1>
+    <div style={{ backgroundColor: "var(--gh-bg)", color: "var(--gh-text)" }}>
+      <SiteHeader />
+      <main className="min-h-[70vh]">
+      <div className="max-w-3xl mx-auto px-5 md:px-6 py-12 md:py-16">
+        <div className="mb-10">
+          <p className="kicker" style={{ color: "var(--gh-blue)" }}>Policy</p>
+          <h1 className="font-display text-4xl md:text-5xl font-bold mt-3 leading-tight">Privacy &amp; Sensing Policy</h1>
           <p className="text-sm mt-1" style={{ color: "var(--gh-text-muted)" }}>Effective {EFFECTIVE_DATE}</p>
         </div>
 
@@ -148,8 +151,9 @@ export default function PrivacyPolicyPage() {
           health-data, and landlord-tenant laws, and ensure the technical system actually enforces the opt-in,
           de-identification, minimization, and deletion commitments stated above.
         </div>
-        <CompanyFooter />
       </div>
-    </main>
+      </main>
+      <SiteFooter />
+    </div>
   );
 }

@@ -10,6 +10,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import AppPageHeader from "@/components/site/AppPageHeader";
 import BridgeConfigPanel from "@/components/BridgeConfigPanel";
 import { CompanyFooter } from "@/components/CompanyLink";
 
@@ -17,23 +18,9 @@ const LivePresencePanel = dynamic(() => import("@/components/LivePresencePanel")
 
 export default function BridgePage() {
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen" style={{ backgroundColor: "var(--gh-bg)", color: "var(--gh-text)" }}>
       <div className="max-w-4xl mx-auto p-4 md:p-6">
-        <div className="mb-6 md:mb-8">
-          <div className="flex items-center gap-2 text-zinc-400 text-sm mb-2">
-            <Link href="/dashboard" className="hover:text-white transition-colors">
-              Dashboard
-            </Link>
-            <span>/</span>
-            <span className="text-white">Illy Bridge Config</span>
-          </div>
-          <h1 className="text-2xl md:text-3xl font-bold">
-            <span className="text-cyan-400">Illy</span> Bridge Config
-          </h1>
-          <p className="text-zinc-400 mt-1 text-sm md:text-base">
-            Name each bridge and assign it to a public area (Freenove ESP32-S3 FNK0086)
-          </p>
-        </div>
+        <AppPageHeader crumb="Illy Bridge Config" kicker="Illy Bridge" title={"Illy Bridge Config"} subtitle="Name each bridge and assign it to a public area (Freenove ESP32-S3 FNK0086)" />
 
         <div className="mb-6">
           <BridgeConfigPanel />
@@ -42,7 +29,7 @@ export default function BridgePage() {
         <div className="mb-6">
           <LivePresencePanel />
         </div>
-        <CompanyFooter tone="dark" />
+        <CompanyFooter />
       </div>
     </div>
   );
